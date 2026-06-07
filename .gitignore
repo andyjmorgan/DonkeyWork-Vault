@@ -23,3 +23,7 @@ appsettings.*.Local.json
 
 # OS
 .DS_Store
+
+# EF build-host artifact wrongly named with a backslash on Linux
+bin\\Debug/
+**/bin\\Debug/
