@@ -38,7 +38,10 @@ export const api = {
   apiKeys: () => authed('/api-keys') as Promise<ApiKeyItem[]>,
   createApiKey: (k: NewApiKey) => authed('/api-keys', { method: 'POST', body: JSON.stringify(k) }),
   deleteApiKey: (id: string) => authed(`/api-keys/${id}`, { method: 'DELETE' }),
+  revealApiKey: (name: string) => authed(`/api-keys/${encodeURIComponent(name)}/reveal`) as Promise<{ secret: string }>,
   oauthTokens: () => authed('/oauth/tokens') as Promise<OAuthTokenItem[]>,
+  revealOAuthToken: (provider: string, account?: string) =>
+    authed(`/oauth/${provider}/token${account ? `?account=${encodeURIComponent(account)}` : ''}`) as Promise<{ accessToken: string; expiresAt: string }>,
 
   // provider manifests (catalog CRUD)
   apiKeyProviders: () => authed('/manifests?kind=apikey') as Promise<ApiKeyProvider[]>,
