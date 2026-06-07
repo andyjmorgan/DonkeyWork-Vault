@@ -1,7 +1,13 @@
-# DonkeyWork Vault Portal — BFF + SPA in a single container.
-# NOTE: the React frontend is not vendored yet; the .NET project ships a placeholder
-# wwwroot/index.html that publishes into the image. When the SPA is vendored under
-# src/portal/frontend, reintroduce a node build stage that emits into wwwroot.
+# DonkeyWork Vault Portal — BFF + React SPA in a single container.
+# Stage 1: build the SPA.
+FROM node:22 AS frontend
+WORKDIR /web
+COPY src/portal/frontend/package*.json ./
+RUN npm ci --no-audit --no-fund
+COPY src/portal/frontend/ ./
+RUN npm run build
+
+# Stage 2: build the .NET BFF.
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 COPY . .
@@ -10,9 +16,11 @@ RUN dotnet restore src/portal/DonkeyWork.Portal.Api/DonkeyWork.Portal.Api.csproj
 RUN dotnet publish src/portal/DonkeyWork.Portal.Api/DonkeyWork.Portal.Api.csproj \
     -c Release -o /app --no-restore /p:UseAppHost=false
 
+# Stage 3: runtime — BFF serves the built SPA from wwwroot.
 FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
+COPY --from=frontend /web/dist/ ./wwwroot/
 ENV ASPNETCORE_URLS=http://+:8080
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "DonkeyWork.Portal.Api.dll"]
