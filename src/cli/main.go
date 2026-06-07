@@ -1,4 +1,4 @@
-// dwcred — DonkeyWork Vault credential CLI.
+// dwvault — DonkeyWork Vault credential CLI.
 //
 // Talks directly to the Vault gRPC service. Identity is supplied via env/flags
 // (VAULT_USER_ID / VAULT_TENANT_ID) and sent as x-user-id / x-tenant-id metadata.
@@ -26,6 +26,8 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var version = "dev" // set via -ldflags -X main.version on release builds
+
 var (
 	addr     string
 	userID   string
@@ -40,7 +42,7 @@ func env(k, def string) string {
 }
 
 func fail(format string, a ...any) {
-	fmt.Fprintf(os.Stderr, "dwcred: "+format+"\n", a...)
+	fmt.Fprintf(os.Stderr, "dwvault: "+format+"\n", a...)
 	os.Exit(1)
 }
 
@@ -66,8 +68,9 @@ func dial() (*grpc.ClientConn, context.Context, context.CancelFunc) {
 
 func main() {
 	root := &cobra.Command{
-		Use:           "dwcred",
+		Use:           "dwvault",
 		Short:         "DonkeyWork Vault credential CLI",
+		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
