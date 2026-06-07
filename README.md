@@ -200,9 +200,34 @@ migrations on start. Provide via configuration:
 - Portal: `Vault:GrpcEndpoint`, `Keycloak:Authority` + `Keycloak:Audience`, and
   `Portal:PublicBaseUrl` (used to build OAuth redirect URIs).
 
-You bring your own public DNS + Keycloak realm; register
+You bring your own public DNS and identity provider, and register
 `https://<your-host>/api/oauth/{provider}/callback` as an allowed redirect URI on each
-OAuth app.
+OAuth app you connect.
+
+### Bring your own identity provider (JWT / OIDC)
+
+The Portal authenticates users with **standard OIDC bearer JWTs** — it isn't tied to a
+specific vendor (the config section is just named `Keycloak` for historical reasons). Any
+OIDC-compliant IdP works on the **backend** (Keycloak, Microsoft Entra ID, Auth0, Okta,
+Cognito, Authentik, Zitadel, …):
+
+| Setting | Meaning |
+|---|---|
+| `Keycloak:Authority` | Your issuer URL. The BFF fetches `<authority>/.well-known/openid-configuration` for keys; the issuer is validated against this. Leave **blank to disable auth** (local/dev only). |
+| `Keycloak:Audience`  | Your API/client audience. |
+| `Keycloak:InternalAuthority` | Optional — issuer URL reachable from inside the cluster, if it differs from the public one (metadata is fetched from here). |
+| `Keycloak:RequireHttpsMetadata` | Defaults to `true`. |
+
+Tokens are validated by **signature + issuer via JWKS** (audience validation is currently
+off — tighten if your IdP sets a stable `aud`). The BFF reads two claims and forwards them
+to the Vault: **`sub` → the user id**, and optional **`tenant_id` → the tenant**. So your
+IdP must issue a stable `sub`, and a `tenant_id` claim if you use tenancy.
+
+> **Frontend caveat:** the SPA login is currently implemented with **`keycloak-js`** (and a
+> hardcoded realm/client). The *backend* is generic OIDC, but to log in against a non-Keycloak
+> IdP you must either (a) put a Keycloak in front that federates your IdP, or (b) swap the SPA's
+> `keycloak-js` for a generic OIDC client (e.g. `oidc-client-ts`) — a small, isolated change.
+> Making the SPA IdP-agnostic is a tracked follow-up.
 
 A tagged release (`vX.Y.Z`) also cross-compiles and publishes the `dwvault` binaries via the
 `release-cli` GitHub Actions workflow.
