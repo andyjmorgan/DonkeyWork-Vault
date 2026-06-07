@@ -1,0 +1,15 @@
+key: generic
+name: Generic API Key
+icon_url: ""
+docs_url: ""
+auth:
+  scheme: header
+  header: Authorization
+  prefix: "Bearer "
+  static_headers: {}
+base_url: ""
+fields:
+  - name: api_key
+    label: API Key
+    secret: true
+    required: true

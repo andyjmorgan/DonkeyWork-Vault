@@ -1,0 +1,16 @@
+key: anthropic
+name: Anthropic
+icon_url: ""
+docs_url: https://docs.anthropic.com/en/api/getting-started
+auth:
+  scheme: header
+  header: x-api-key
+  prefix: ""
+  static_headers:
+    anthropic-version: "2023-06-01"
+base_url: https://api.anthropic.com
+fields:
+  - name: api_key
+    label: API Key
+    secret: true
+    required: true

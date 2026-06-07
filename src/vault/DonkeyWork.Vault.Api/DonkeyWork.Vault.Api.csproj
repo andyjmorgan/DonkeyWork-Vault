@@ -2,6 +2,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\DonkeyWork.Vault.Core\DonkeyWork.Vault.Core.csproj" />
+    <ProjectReference Include="..\DonkeyWork.Vault.Contracts\DonkeyWork.Vault.Contracts.csproj" />
+    <ProjectReference Include="..\DonkeyWork.Vault.Persistence\DonkeyWork.Vault.Persistence.csproj" />
     <ProjectReference Include="..\..\proto\DonkeyWork.Vault.Proto\DonkeyWork.Vault.Proto.csproj" />
   </ItemGroup>
 

@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package donkeywork.vault.v1;
+option csharp_namespace = "DonkeyWork.Vault.Proto.V1";
+
+// All RPCs carry x-user-id (and optional x-tenant-id) gRPC metadata set by the caller.
+// The vault returns UNAUTHENTICATED if x-user-id is missing.
+
+// ---------- shared ----------
+message ApiKeyField {
+  string name = 1;
+  string label = 2;
+  bool secret = 3;
+  bool required = 4;
+}
+
+message ApiKeyProvider {
+  string key = 1;            // manifest id, e.g. "grafana"
+  string name = 2;
+  string icon_url = 3;
+  string docs_url = 4;
+  string auth_scheme = 5;    // header | basic
+  string header = 6;         // e.g. Authorization, x-api-key
+  string prefix = 7;         // e.g. "Bearer "
+  map<string, string> static_headers = 8;
+  string base_url = 9;
+  repeated ApiKeyField fields = 10;
+}
+
+// How a stored credential is presented on the wire (for the CLI `shape` command).
+message CredentialShape {
+  string base_url = 1;
+  string header = 2;
+  string prefix = 3;
+  map<string, string> static_headers = 4;
+}
+
+// ---------- credential store (hot path) ----------
+service CredentialStore {
+  rpc GetApiKey(GetApiKeyRequest) returns (GetApiKeyResponse);
+  rpc DescribeCredential(DescribeCredentialRequest) returns (DescribeCredentialResponse);
+}
+
+message GetApiKeyRequest {
+  string provider = 1;
+  string name = 2;           // optional; selects among multiple stored keys
+}
+message GetApiKeyResponse {
+  bool found = 1;
+  string secret = 2;         // the primary secret field value
+  map<string, string> fields = 3;
+}
+
+message DescribeCredentialRequest {
+  string provider = 1;
+  string name = 2;
+}
+message DescribeCredentialResponse {
+  bool found = 1;
+  CredentialShape shape = 2;
+}
+
+// ---------- api key management (brokered by the Portal) ----------
+service ApiKeys {
+  rpc List(ListApiKeysRequest) returns (ListApiKeysResponse);
+  rpc Create(CreateApiKeyRequest) returns (ApiKeyItem);
+  rpc Delete(DeleteApiKeyRequest) returns (DeleteApiKeyResponse);
+}
+
+message ApiKeyItem {
+  string id = 1;
+  string provider = 2;
+  string name = 3;
+  string created_at = 4;     // ISO 8601
+  string last_used_at = 5;   // ISO 8601 or empty
+}
+message ListApiKeysRequest {}
+message ListApiKeysResponse { repeated ApiKeyItem items = 1; }
+
+message CreateApiKeyRequest {
+  string provider = 1;
+  string name = 2;
+  map<string, string> fields = 3;   // validated against the provider manifest
+}
+
+message DeleteApiKeyRequest { string id = 1; }
+message DeleteApiKeyResponse { bool deleted = 1; }
+
+// ---------- api key provider catalog ----------
+service ApiKeyCatalog {
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse);
+  rpc GetProvider(GetProviderRequest) returns (ApiKeyProvider);
+}
+
+message ListProvidersRequest {}
+message ListProvidersResponse { repeated ApiKeyProvider providers = 1; }
+message GetProviderRequest { string key = 1; }
