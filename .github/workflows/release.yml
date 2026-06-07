@@ -1,0 +1,41 @@
+name: release-cli
+
+# Tag a commit `vX.Y.Z` to cross-compile dwvault and publish a GitHub release
+# with the per-arch binaries attached.
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/cli/go.mod
+          cache-dependency-path: src/cli/go.sum
+
+      - name: Build dwvault (multi-arch)
+        working-directory: src/cli
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for t in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
+            os="${t%/*}"; arch="${t#*/}"
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+              go build -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
+              -o "$GITHUB_WORKSPACE/dist/dwvault-$os-$arch" .
+          done
+          ( cd "$GITHUB_WORKSPACE/dist" && sha256sum dwvault-* > SHA256SUMS )
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/dwvault-*
+            dist/SHA256SUMS
+          generate_release_notes: true
