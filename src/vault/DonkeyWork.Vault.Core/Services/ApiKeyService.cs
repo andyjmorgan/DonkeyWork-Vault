@@ -38,14 +38,13 @@ public sealed class ApiKeyService(
         {
             throw new CredentialValidationException("name is required.");
         }
-        if (string.IsNullOrEmpty(secret))
-        {
-            throw new CredentialValidationException("secret is required.");
-        }
-
         var existing = await db.ApiKeys.FirstOrDefaultAsync(k => k.Name == name, ct);
         if (existing is null)
         {
+            if (string.IsNullOrEmpty(secret))
+            {
+                throw new CredentialValidationException("secret is required.");
+            }
             existing = new ApiKeyEntity { UserId = caller.UserId, TenantId = caller.TenantId, ProviderKey = string.Empty, Name = name };
             db.ApiKeys.Add(existing);
         }
@@ -54,7 +53,10 @@ public sealed class ApiKeyService(
         existing.DocsUrl = docsUrl;
         existing.HeaderName = string.IsNullOrWhiteSpace(header) ? null : header;
         existing.Prefix = prefix;
-        existing.FieldsCipher = cipher.EncryptString(secret);
+        if (!string.IsNullOrEmpty(secret)) // blank on edit keeps the existing secret
+        {
+            existing.FieldsCipher = cipher.EncryptString(secret);
+        }
 
         await db.SaveChangesAsync(ct);
         return ToStored(existing);

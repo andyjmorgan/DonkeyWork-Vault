@@ -1,0 +1,21 @@
+<svg viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Donkey head silhouette -->
+  <circle cx="50" cy="50" r="45" fill="#7c3aed"/>
+  <!-- Ears -->
+  <ellipse cx="30" cy="20" rx="8" ry="15" fill="#7c3aed"/>
+  <ellipse cx="70" cy="20" rx="8" ry="15" fill="#7c3aed"/>
+  <!-- Inner ear -->
+  <ellipse cx="30" cy="22" rx="4" ry="8" fill="rgba(255,255,255,0.2)"/>
+  <ellipse cx="70" cy="22" rx="4" ry="8" fill="rgba(255,255,255,0.2)"/>
+  <!-- Face/muzzle -->
+  <ellipse cx="50" cy="62" rx="20" ry="18" fill="rgba(255,255,255,0.2)"/>
+  <!-- Eyes -->
+  <circle cx="38" cy="45" r="5" fill="white"/>
+  <circle cx="62" cy="45" r="5" fill="white"/>
+  <!-- Pupils -->
+  <circle cx="39" cy="45" r="2" fill="#7c3aed"/>
+  <circle cx="63" cy="45" r="2" fill="#7c3aed"/>
+  <!-- Nostrils -->
+  <circle cx="43" cy="68" r="3" fill="rgba(124,58,237,0.6)"/>
+  <circle cx="57" cy="68" r="3" fill="rgba(124,58,237,0.6)"/>
+</svg>

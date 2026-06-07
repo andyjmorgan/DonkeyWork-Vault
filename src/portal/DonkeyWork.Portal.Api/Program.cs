@@ -124,6 +124,27 @@ api.MapDelete("/api-keys/{id}", async (string id, ApiKeys.ApiKeysClient client) 
     return resp.Deleted ? Results.NoContent() : Results.NotFound();
 });
 
+// reveal the stored secret (authed user, on demand)
+api.MapGet("/api-keys/{name}/reveal", async (string name, CredentialStore.CredentialStoreClient cs) =>
+{
+    var r = await cs.GetApiKeyAsync(new GetApiKeyRequest { Name = name });
+    return r.Found ? Results.Ok(new { secret = r.Secret }) : Results.NotFound();
+});
+
+// reveal a live OAuth access token (auto-refreshed by the vault)
+api.MapGet("/oauth/{provider}/token", async (string provider, string? account, CredentialStore.CredentialStoreClient cs) =>
+{
+    try
+    {
+        var r = await cs.GetOAuthAccessTokenAsync(new GetOAuthAccessTokenRequest { Provider = provider, Account = account ?? "" });
+        return r.Found ? Results.Ok(new { accessToken = r.AccessToken, expiresAt = r.ExpiresAt }) : Results.NotFound();
+    }
+    catch (Grpc.Core.RpcException ex)
+    {
+        return Results.BadRequest(new { error = ex.Status.Detail });
+    }
+});
+
 // ---- provider manifests (runtime catalog CRUD) ----
 api.MapGet("/manifests", async (string? kind, Manifests.ManifestsClient m) =>
 {
