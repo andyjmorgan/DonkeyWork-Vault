@@ -6,6 +6,7 @@ import { Input } from '../ui/components/input'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
 import { ProviderIcon } from '../components/ProviderIcon'
+import { CopyButton } from '../components/CopyButton'
 import { cn } from '../ui/lib/utils'
 import { api, type OAuthProvider, type OAuthConfigItem, type OAuthTokenItem } from '../api'
 
@@ -127,7 +128,11 @@ function ProviderSetup({ provider, config, tokens, onChanged }: {
           <div className="sm:col-span-2">
             <Label className={lbl}>Redirect URI</Label>
             <Input value={redirect} onChange={(e) => setRedirect(e.target.value)} placeholder={redirectHint} />
-            <p className="mt-1 text-xs text-muted-foreground">Allow-list this exact URL with the provider: <code className="text-accent">{redirectHint}</code></p>
+            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+              <span>Allow-list this exact URL with the provider:</span>
+              <code className="text-accent">{redirectHint}</code>
+              <CopyButton value={redirectHint} />
+            </div>
           </div>
         </div>
 
