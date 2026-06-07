@@ -24,7 +24,7 @@ public interface IOAuthTokenService
 public sealed class OAuthTokenService(
     VaultDbContext db,
     IEnvelopeCipher cipher,
-    OAuthManifestLoader manifests,
+    ManifestResolver manifests,
     IVaultCallerContext caller,
     IHttpClientFactory httpFactory) : IOAuthTokenService
 {
@@ -61,7 +61,7 @@ public sealed class OAuthTokenService(
         }
 
         // Needs refresh — load the provider app config + manifest.
-        var manifest = manifests.Get(provider);
+        var manifest = await manifests.GetOAuthAsync(provider, ct);
         var config = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderKey == provider, ct);
         if (manifest is null || config is null || token.RefreshTokenCipher.Length == 0)
         {

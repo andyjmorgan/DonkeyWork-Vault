@@ -27,18 +27,18 @@ public interface IApiKeyService
     Task<IReadOnlyList<StoredApiKey>> ListAsync(CancellationToken ct);
     Task<ApiKeySecret?> GetAsync(string provider, string? name, CancellationToken ct);
     Task<bool> DeleteAsync(Guid id, CancellationToken ct);
-    ApiKeyManifest? DescribeShape(string provider);
+    Task<ApiKeyManifest?> DescribeShapeAsync(string provider, CancellationToken ct);
 }
 
 public sealed class ApiKeyService(
     VaultDbContext db,
     IEnvelopeCipher cipher,
-    ApiKeyManifestLoader manifests,
+    ManifestResolver manifests,
     IVaultCallerContext caller) : IApiKeyService
 {
     public async Task<StoredApiKey> CreateAsync(string provider, string name, IReadOnlyDictionary<string, string> fields, CancellationToken ct)
     {
-        var manifest = manifests.Get(provider) ?? throw new ManifestNotFoundException(provider);
+        var manifest = await manifests.GetApiKeyAsync(provider, ct) ?? throw new ManifestNotFoundException(provider);
 
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -97,7 +97,7 @@ public sealed class ApiKeyService(
         var plaintext = cipher.Decrypt(entity.FieldsCipher);
         var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(plaintext) ?? new();
 
-        var primary = manifests.Get(provider)?.PrimarySecretField ?? "api_key";
+        var primary = (await manifests.GetApiKeyAsync(provider, ct))?.PrimarySecretField ?? "api_key";
         var secret = dict.TryGetValue(primary, out var v) ? v : dict.Values.FirstOrDefault() ?? string.Empty;
 
         entity.LastUsedAt = DateTimeOffset.UtcNow;
@@ -119,5 +119,5 @@ public sealed class ApiKeyService(
         return true;
     }
 
-    public ApiKeyManifest? DescribeShape(string provider) => manifests.Get(provider);
+    public Task<ApiKeyManifest?> DescribeShapeAsync(string provider, CancellationToken ct) => manifests.GetApiKeyAsync(provider, ct);
 }

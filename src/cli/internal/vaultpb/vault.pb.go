@@ -1203,6 +1203,809 @@ func (x *GetProviderRequest) GetKey() string {
 	return ""
 }
 
+// ---------- provider manifest management (admin/runtime catalog) ----------
+type Empty struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Empty) Reset() {
+	*x = Empty{}
+	mi := &file_vault_proto_msgTypes[21]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Empty) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Empty) ProtoMessage() {}
+
+func (x *Empty) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[21]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Empty.ProtoReflect.Descriptor instead.
+func (*Empty) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{21}
+}
+
+type OAuthManifestMsg struct {
+	state                 protoimpl.MessageState `protogen:"open.v1"`
+	Key                   string                 `protobuf:"bytes,1,opt,name=key,proto3" json:"key,omitempty"`
+	Name                  string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	AuthorizationEndpoint string                 `protobuf:"bytes,3,opt,name=authorization_endpoint,json=authorizationEndpoint,proto3" json:"authorization_endpoint,omitempty"`
+	TokenEndpoint         string                 `protobuf:"bytes,4,opt,name=token_endpoint,json=tokenEndpoint,proto3" json:"token_endpoint,omitempty"`
+	UserinfoEndpoint      string                 `protobuf:"bytes,5,opt,name=userinfo_endpoint,json=userinfoEndpoint,proto3" json:"userinfo_endpoint,omitempty"`
+	ScopeDelimiter        string                 `protobuf:"bytes,6,opt,name=scope_delimiter,json=scopeDelimiter,proto3" json:"scope_delimiter,omitempty"`
+	DefaultScopes         []string               `protobuf:"bytes,7,rep,name=default_scopes,json=defaultScopes,proto3" json:"default_scopes,omitempty"`
+	unknownFields         protoimpl.UnknownFields
+	sizeCache             protoimpl.SizeCache
+}
+
+func (x *OAuthManifestMsg) Reset() {
+	*x = OAuthManifestMsg{}
+	mi := &file_vault_proto_msgTypes[22]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthManifestMsg) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthManifestMsg) ProtoMessage() {}
+
+func (x *OAuthManifestMsg) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[22]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthManifestMsg.ProtoReflect.Descriptor instead.
+func (*OAuthManifestMsg) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{22}
+}
+
+func (x *OAuthManifestMsg) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+func (x *OAuthManifestMsg) GetName() string {
+	if x != nil {
+		return x.Name
+	}
+	return ""
+}
+
+func (x *OAuthManifestMsg) GetAuthorizationEndpoint() string {
+	if x != nil {
+		return x.AuthorizationEndpoint
+	}
+	return ""
+}
+
+func (x *OAuthManifestMsg) GetTokenEndpoint() string {
+	if x != nil {
+		return x.TokenEndpoint
+	}
+	return ""
+}
+
+func (x *OAuthManifestMsg) GetUserinfoEndpoint() string {
+	if x != nil {
+		return x.UserinfoEndpoint
+	}
+	return ""
+}
+
+func (x *OAuthManifestMsg) GetScopeDelimiter() string {
+	if x != nil {
+		return x.ScopeDelimiter
+	}
+	return ""
+}
+
+func (x *OAuthManifestMsg) GetDefaultScopes() []string {
+	if x != nil {
+		return x.DefaultScopes
+	}
+	return nil
+}
+
+type ListApiKeyManifestsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*ApiKeyProvider      `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListApiKeyManifestsResponse) Reset() {
+	*x = ListApiKeyManifestsResponse{}
+	mi := &file_vault_proto_msgTypes[23]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListApiKeyManifestsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListApiKeyManifestsResponse) ProtoMessage() {}
+
+func (x *ListApiKeyManifestsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[23]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListApiKeyManifestsResponse.ProtoReflect.Descriptor instead.
+func (*ListApiKeyManifestsResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{23}
+}
+
+func (x *ListApiKeyManifestsResponse) GetItems() []*ApiKeyProvider {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type ListOAuthManifestsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*OAuthManifestMsg    `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOAuthManifestsResponse) Reset() {
+	*x = ListOAuthManifestsResponse{}
+	mi := &file_vault_proto_msgTypes[24]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOAuthManifestsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOAuthManifestsResponse) ProtoMessage() {}
+
+func (x *ListOAuthManifestsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[24]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOAuthManifestsResponse.ProtoReflect.Descriptor instead.
+func (*ListOAuthManifestsResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{24}
+}
+
+func (x *ListOAuthManifestsResponse) GetItems() []*OAuthManifestMsg {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type DeleteManifestRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Kind          string                 `protobuf:"bytes,1,opt,name=kind,proto3" json:"kind,omitempty"`
+	Key           string                 `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteManifestRequest) Reset() {
+	*x = DeleteManifestRequest{}
+	mi := &file_vault_proto_msgTypes[25]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteManifestRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteManifestRequest) ProtoMessage() {}
+
+func (x *DeleteManifestRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[25]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteManifestRequest.ProtoReflect.Descriptor instead.
+func (*DeleteManifestRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{25}
+}
+
+func (x *DeleteManifestRequest) GetKind() string {
+	if x != nil {
+		return x.Kind
+	}
+	return ""
+}
+
+func (x *DeleteManifestRequest) GetKey() string {
+	if x != nil {
+		return x.Key
+	}
+	return ""
+}
+
+type DeleteResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Deleted       bool                   `protobuf:"varint,1,opt,name=deleted,proto3" json:"deleted,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteResponse) Reset() {
+	*x = DeleteResponse{}
+	mi := &file_vault_proto_msgTypes[26]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteResponse) ProtoMessage() {}
+
+func (x *DeleteResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[26]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteResponse.ProtoReflect.Descriptor instead.
+func (*DeleteResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{26}
+}
+
+func (x *DeleteResponse) GetDeleted() bool {
+	if x != nil {
+		return x.Deleted
+	}
+	return false
+}
+
+// ---------- oauth provider app configs ----------
+type OAuthConfigItem struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Id             string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	Provider       string                 `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
+	ClientIdMasked string                 `protobuf:"bytes,3,opt,name=client_id_masked,json=clientIdMasked,proto3" json:"client_id_masked,omitempty"`
+	Scopes         []string               `protobuf:"bytes,4,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	RedirectUri    string                 `protobuf:"bytes,5,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	CreatedAt      string                 `protobuf:"bytes,6,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *OAuthConfigItem) Reset() {
+	*x = OAuthConfigItem{}
+	mi := &file_vault_proto_msgTypes[27]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *OAuthConfigItem) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*OAuthConfigItem) ProtoMessage() {}
+
+func (x *OAuthConfigItem) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[27]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use OAuthConfigItem.ProtoReflect.Descriptor instead.
+func (*OAuthConfigItem) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{27}
+}
+
+func (x *OAuthConfigItem) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+func (x *OAuthConfigItem) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *OAuthConfigItem) GetClientIdMasked() string {
+	if x != nil {
+		return x.ClientIdMasked
+	}
+	return ""
+}
+
+func (x *OAuthConfigItem) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *OAuthConfigItem) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+func (x *OAuthConfigItem) GetCreatedAt() string {
+	if x != nil {
+		return x.CreatedAt
+	}
+	return ""
+}
+
+type ListOAuthConfigsResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Items         []*OAuthConfigItem     `protobuf:"bytes,1,rep,name=items,proto3" json:"items,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ListOAuthConfigsResponse) Reset() {
+	*x = ListOAuthConfigsResponse{}
+	mi := &file_vault_proto_msgTypes[28]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ListOAuthConfigsResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ListOAuthConfigsResponse) ProtoMessage() {}
+
+func (x *ListOAuthConfigsResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[28]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ListOAuthConfigsResponse.ProtoReflect.Descriptor instead.
+func (*ListOAuthConfigsResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{28}
+}
+
+func (x *ListOAuthConfigsResponse) GetItems() []*OAuthConfigItem {
+	if x != nil {
+		return x.Items
+	}
+	return nil
+}
+
+type UpsertOAuthConfigRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	ClientId      string                 `protobuf:"bytes,2,opt,name=client_id,json=clientId,proto3" json:"client_id,omitempty"`
+	ClientSecret  string                 `protobuf:"bytes,3,opt,name=client_secret,json=clientSecret,proto3" json:"client_secret,omitempty"` // optional on update
+	Scopes        []string               `protobuf:"bytes,4,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	RedirectUri   string                 `protobuf:"bytes,5,opt,name=redirect_uri,json=redirectUri,proto3" json:"redirect_uri,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UpsertOAuthConfigRequest) Reset() {
+	*x = UpsertOAuthConfigRequest{}
+	mi := &file_vault_proto_msgTypes[29]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UpsertOAuthConfigRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UpsertOAuthConfigRequest) ProtoMessage() {}
+
+func (x *UpsertOAuthConfigRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[29]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UpsertOAuthConfigRequest.ProtoReflect.Descriptor instead.
+func (*UpsertOAuthConfigRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{29}
+}
+
+func (x *UpsertOAuthConfigRequest) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *UpsertOAuthConfigRequest) GetClientId() string {
+	if x != nil {
+		return x.ClientId
+	}
+	return ""
+}
+
+func (x *UpsertOAuthConfigRequest) GetClientSecret() string {
+	if x != nil {
+		return x.ClientSecret
+	}
+	return ""
+}
+
+func (x *UpsertOAuthConfigRequest) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *UpsertOAuthConfigRequest) GetRedirectUri() string {
+	if x != nil {
+		return x.RedirectUri
+	}
+	return ""
+}
+
+type DeleteByIdRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *DeleteByIdRequest) Reset() {
+	*x = DeleteByIdRequest{}
+	mi := &file_vault_proto_msgTypes[30]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *DeleteByIdRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*DeleteByIdRequest) ProtoMessage() {}
+
+func (x *DeleteByIdRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[30]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use DeleteByIdRequest.ProtoReflect.Descriptor instead.
+func (*DeleteByIdRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{30}
+}
+
+func (x *DeleteByIdRequest) GetId() string {
+	if x != nil {
+		return x.Id
+	}
+	return ""
+}
+
+// ---------- oauth connect flow (browser redirect) ----------
+type BeginAuthRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Scopes        []string               `protobuf:"bytes,2,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	PublicBaseUrl string                 `protobuf:"bytes,3,opt,name=public_base_url,json=publicBaseUrl,proto3" json:"public_base_url,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeginAuthRequest) Reset() {
+	*x = BeginAuthRequest{}
+	mi := &file_vault_proto_msgTypes[31]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginAuthRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginAuthRequest) ProtoMessage() {}
+
+func (x *BeginAuthRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[31]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginAuthRequest.ProtoReflect.Descriptor instead.
+func (*BeginAuthRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{31}
+}
+
+func (x *BeginAuthRequest) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *BeginAuthRequest) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *BeginAuthRequest) GetPublicBaseUrl() string {
+	if x != nil {
+		return x.PublicBaseUrl
+	}
+	return ""
+}
+
+type BeginAuthResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	AuthorizeUrl  string                 `protobuf:"bytes,1,opt,name=authorize_url,json=authorizeUrl,proto3" json:"authorize_url,omitempty"`
+	State         string                 `protobuf:"bytes,2,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *BeginAuthResponse) Reset() {
+	*x = BeginAuthResponse{}
+	mi := &file_vault_proto_msgTypes[32]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *BeginAuthResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*BeginAuthResponse) ProtoMessage() {}
+
+func (x *BeginAuthResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[32]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use BeginAuthResponse.ProtoReflect.Descriptor instead.
+func (*BeginAuthResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{32}
+}
+
+func (x *BeginAuthResponse) GetAuthorizeUrl() string {
+	if x != nil {
+		return x.AuthorizeUrl
+	}
+	return ""
+}
+
+func (x *BeginAuthResponse) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type CompleteAuthRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Code          string                 `protobuf:"bytes,2,opt,name=code,proto3" json:"code,omitempty"`
+	State         string                 `protobuf:"bytes,3,opt,name=state,proto3" json:"state,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteAuthRequest) Reset() {
+	*x = CompleteAuthRequest{}
+	mi := &file_vault_proto_msgTypes[33]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteAuthRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteAuthRequest) ProtoMessage() {}
+
+func (x *CompleteAuthRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[33]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteAuthRequest.ProtoReflect.Descriptor instead.
+func (*CompleteAuthRequest) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{33}
+}
+
+func (x *CompleteAuthRequest) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *CompleteAuthRequest) GetCode() string {
+	if x != nil {
+		return x.Code
+	}
+	return ""
+}
+
+func (x *CompleteAuthRequest) GetState() string {
+	if x != nil {
+		return x.State
+	}
+	return ""
+}
+
+type CompleteAuthResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
+	Account       string                 `protobuf:"bytes,2,opt,name=account,proto3" json:"account,omitempty"`
+	Scopes        []string               `protobuf:"bytes,3,rep,name=scopes,proto3" json:"scopes,omitempty"`
+	ExpiresAt     string                 `protobuf:"bytes,4,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *CompleteAuthResponse) Reset() {
+	*x = CompleteAuthResponse{}
+	mi := &file_vault_proto_msgTypes[34]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *CompleteAuthResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*CompleteAuthResponse) ProtoMessage() {}
+
+func (x *CompleteAuthResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_vault_proto_msgTypes[34]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use CompleteAuthResponse.ProtoReflect.Descriptor instead.
+func (*CompleteAuthResponse) Descriptor() ([]byte, []int) {
+	return file_vault_proto_rawDescGZIP(), []int{34}
+}
+
+func (x *CompleteAuthResponse) GetProvider() string {
+	if x != nil {
+		return x.Provider
+	}
+	return ""
+}
+
+func (x *CompleteAuthResponse) GetAccount() string {
+	if x != nil {
+		return x.Account
+	}
+	return ""
+}
+
+func (x *CompleteAuthResponse) GetScopes() []string {
+	if x != nil {
+		return x.Scopes
+	}
+	return nil
+}
+
+func (x *CompleteAuthResponse) GetExpiresAt() string {
+	if x != nil {
+		return x.ExpiresAt
+	}
+	return ""
+}
+
 var File_vault_proto protoreflect.FileDescriptor
 
 const file_vault_proto_rawDesc = "" +
@@ -1300,7 +2103,60 @@ const file_vault_proto_rawDesc = "" +
 	"\x15ListProvidersResponse\x12A\n" +
 	"\tproviders\x18\x01 \x03(\v2#.donkeywork.vault.v1.ApiKeyProviderR\tproviders\"&\n" +
 	"\x12GetProviderRequest\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key2\xde\x02\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\"\a\n" +
+	"\x05Empty\"\x93\x02\n" +
+	"\x10OAuthManifestMsg\x12\x10\n" +
+	"\x03key\x18\x01 \x01(\tR\x03key\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x125\n" +
+	"\x16authorization_endpoint\x18\x03 \x01(\tR\x15authorizationEndpoint\x12%\n" +
+	"\x0etoken_endpoint\x18\x04 \x01(\tR\rtokenEndpoint\x12+\n" +
+	"\x11userinfo_endpoint\x18\x05 \x01(\tR\x10userinfoEndpoint\x12'\n" +
+	"\x0fscope_delimiter\x18\x06 \x01(\tR\x0escopeDelimiter\x12%\n" +
+	"\x0edefault_scopes\x18\a \x03(\tR\rdefaultScopes\"X\n" +
+	"\x1bListApiKeyManifestsResponse\x129\n" +
+	"\x05items\x18\x01 \x03(\v2#.donkeywork.vault.v1.ApiKeyProviderR\x05items\"Y\n" +
+	"\x1aListOAuthManifestsResponse\x12;\n" +
+	"\x05items\x18\x01 \x03(\v2%.donkeywork.vault.v1.OAuthManifestMsgR\x05items\"=\n" +
+	"\x15DeleteManifestRequest\x12\x12\n" +
+	"\x04kind\x18\x01 \x01(\tR\x04kind\x12\x10\n" +
+	"\x03key\x18\x02 \x01(\tR\x03key\"*\n" +
+	"\x0eDeleteResponse\x12\x18\n" +
+	"\adeleted\x18\x01 \x01(\bR\adeleted\"\xc1\x01\n" +
+	"\x0fOAuthConfigItem\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
+	"\bprovider\x18\x02 \x01(\tR\bprovider\x12(\n" +
+	"\x10client_id_masked\x18\x03 \x01(\tR\x0eclientIdMasked\x12\x16\n" +
+	"\x06scopes\x18\x04 \x03(\tR\x06scopes\x12!\n" +
+	"\fredirect_uri\x18\x05 \x01(\tR\vredirectUri\x12\x1d\n" +
+	"\n" +
+	"created_at\x18\x06 \x01(\tR\tcreatedAt\"V\n" +
+	"\x18ListOAuthConfigsResponse\x12:\n" +
+	"\x05items\x18\x01 \x03(\v2$.donkeywork.vault.v1.OAuthConfigItemR\x05items\"\xb3\x01\n" +
+	"\x18UpsertOAuthConfigRequest\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x1b\n" +
+	"\tclient_id\x18\x02 \x01(\tR\bclientId\x12#\n" +
+	"\rclient_secret\x18\x03 \x01(\tR\fclientSecret\x12\x16\n" +
+	"\x06scopes\x18\x04 \x03(\tR\x06scopes\x12!\n" +
+	"\fredirect_uri\x18\x05 \x01(\tR\vredirectUri\"#\n" +
+	"\x11DeleteByIdRequest\x12\x0e\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\"n\n" +
+	"\x10BeginAuthRequest\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x16\n" +
+	"\x06scopes\x18\x02 \x03(\tR\x06scopes\x12&\n" +
+	"\x0fpublic_base_url\x18\x03 \x01(\tR\rpublicBaseUrl\"N\n" +
+	"\x11BeginAuthResponse\x12#\n" +
+	"\rauthorize_url\x18\x01 \x01(\tR\fauthorizeUrl\x12\x14\n" +
+	"\x05state\x18\x02 \x01(\tR\x05state\"[\n" +
+	"\x13CompleteAuthRequest\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x12\n" +
+	"\x04code\x18\x02 \x01(\tR\x04code\x12\x14\n" +
+	"\x05state\x18\x03 \x01(\tR\x05state\"\x83\x01\n" +
+	"\x14CompleteAuthResponse\x12\x1a\n" +
+	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x18\n" +
+	"\aaccount\x18\x02 \x01(\tR\aaccount\x12\x16\n" +
+	"\x06scopes\x18\x03 \x03(\tR\x06scopes\x12\x1d\n" +
+	"\n" +
+	"expires_at\x18\x04 \x01(\tR\texpiresAt2\xde\x02\n" +
 	"\x0fCredentialStore\x12Z\n" +
 	"\tGetApiKey\x12%.donkeywork.vault.v1.GetApiKeyRequest\x1a&.donkeywork.vault.v1.GetApiKeyResponse\x12u\n" +
 	"\x12DescribeCredential\x12..donkeywork.vault.v1.DescribeCredentialRequest\x1a/.donkeywork.vault.v1.DescribeCredentialResponse\x12x\n" +
@@ -1313,7 +2169,21 @@ const file_vault_proto_rawDesc = "" +
 	"\x06Delete\x12(.donkeywork.vault.v1.DeleteApiKeyRequest\x1a).donkeywork.vault.v1.DeleteApiKeyResponse2\xd4\x01\n" +
 	"\rApiKeyCatalog\x12f\n" +
 	"\rListProviders\x12).donkeywork.vault.v1.ListProvidersRequest\x1a*.donkeywork.vault.v1.ListProvidersResponse\x12[\n" +
-	"\vGetProvider\x12'.donkeywork.vault.v1.GetProviderRequest\x1a#.donkeywork.vault.v1.ApiKeyProviderBGZ)donkeywork.dev/vault-cli/internal/vaultpb\xaa\x02\x19DonkeyWork.Vault.Proto.V1b\x06proto3"
+	"\vGetProvider\x12'.donkeywork.vault.v1.GetProviderRequest\x1a#.donkeywork.vault.v1.ApiKeyProvider2\xd3\x03\n" +
+	"\tManifests\x12Z\n" +
+	"\n" +
+	"ListApiKey\x12\x1a.donkeywork.vault.v1.Empty\x1a0.donkeywork.vault.v1.ListApiKeyManifestsResponse\x12X\n" +
+	"\fUpsertApiKey\x12#.donkeywork.vault.v1.ApiKeyProvider\x1a#.donkeywork.vault.v1.ApiKeyProvider\x12X\n" +
+	"\tListOAuth\x12\x1a.donkeywork.vault.v1.Empty\x1a/.donkeywork.vault.v1.ListOAuthManifestsResponse\x12[\n" +
+	"\vUpsertOAuth\x12%.donkeywork.vault.v1.OAuthManifestMsg\x1a%.donkeywork.vault.v1.OAuthManifestMsg\x12Y\n" +
+	"\x06Delete\x12*.donkeywork.vault.v1.DeleteManifestRequest\x1a#.donkeywork.vault.v1.DeleteResponse2\x9f\x02\n" +
+	"\x14OAuthProviderConfigs\x12Q\n" +
+	"\x04List\x12\x1a.donkeywork.vault.v1.Empty\x1a-.donkeywork.vault.v1.ListOAuthConfigsResponse\x12]\n" +
+	"\x06Upsert\x12-.donkeywork.vault.v1.UpsertOAuthConfigRequest\x1a$.donkeywork.vault.v1.OAuthConfigItem\x12U\n" +
+	"\x06Delete\x12&.donkeywork.vault.v1.DeleteByIdRequest\x1a#.donkeywork.vault.v1.DeleteResponse2\xc4\x01\n" +
+	"\tOAuthFlow\x12V\n" +
+	"\x05Begin\x12%.donkeywork.vault.v1.BeginAuthRequest\x1a&.donkeywork.vault.v1.BeginAuthResponse\x12_\n" +
+	"\bComplete\x12(.donkeywork.vault.v1.CompleteAuthRequest\x1a).donkeywork.vault.v1.CompleteAuthResponseBGZ)donkeywork.dev/vault-cli/internal/vaultpb\xaa\x02\x19DonkeyWork.Vault.Proto.V1b\x06proto3"
 
 var (
 	file_vault_proto_rawDescOnce sync.Once
@@ -1327,7 +2197,7 @@ func file_vault_proto_rawDescGZIP() []byte {
 	return file_vault_proto_rawDescData
 }
 
-var file_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 25)
+var file_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
 var file_vault_proto_goTypes = []any{
 	(*ApiKeyField)(nil),                 // 0: donkeywork.vault.v1.ApiKeyField
 	(*ApiKeyProvider)(nil),              // 1: donkeywork.vault.v1.ApiKeyProvider
@@ -1350,44 +2220,81 @@ var file_vault_proto_goTypes = []any{
 	(*ListProvidersRequest)(nil),        // 18: donkeywork.vault.v1.ListProvidersRequest
 	(*ListProvidersResponse)(nil),       // 19: donkeywork.vault.v1.ListProvidersResponse
 	(*GetProviderRequest)(nil),          // 20: donkeywork.vault.v1.GetProviderRequest
-	nil,                                 // 21: donkeywork.vault.v1.ApiKeyProvider.StaticHeadersEntry
-	nil,                                 // 22: donkeywork.vault.v1.CredentialShape.StaticHeadersEntry
-	nil,                                 // 23: donkeywork.vault.v1.GetApiKeyResponse.FieldsEntry
-	nil,                                 // 24: donkeywork.vault.v1.CreateApiKeyRequest.FieldsEntry
+	(*Empty)(nil),                       // 21: donkeywork.vault.v1.Empty
+	(*OAuthManifestMsg)(nil),            // 22: donkeywork.vault.v1.OAuthManifestMsg
+	(*ListApiKeyManifestsResponse)(nil), // 23: donkeywork.vault.v1.ListApiKeyManifestsResponse
+	(*ListOAuthManifestsResponse)(nil),  // 24: donkeywork.vault.v1.ListOAuthManifestsResponse
+	(*DeleteManifestRequest)(nil),       // 25: donkeywork.vault.v1.DeleteManifestRequest
+	(*DeleteResponse)(nil),              // 26: donkeywork.vault.v1.DeleteResponse
+	(*OAuthConfigItem)(nil),             // 27: donkeywork.vault.v1.OAuthConfigItem
+	(*ListOAuthConfigsResponse)(nil),    // 28: donkeywork.vault.v1.ListOAuthConfigsResponse
+	(*UpsertOAuthConfigRequest)(nil),    // 29: donkeywork.vault.v1.UpsertOAuthConfigRequest
+	(*DeleteByIdRequest)(nil),           // 30: donkeywork.vault.v1.DeleteByIdRequest
+	(*BeginAuthRequest)(nil),            // 31: donkeywork.vault.v1.BeginAuthRequest
+	(*BeginAuthResponse)(nil),           // 32: donkeywork.vault.v1.BeginAuthResponse
+	(*CompleteAuthRequest)(nil),         // 33: donkeywork.vault.v1.CompleteAuthRequest
+	(*CompleteAuthResponse)(nil),        // 34: donkeywork.vault.v1.CompleteAuthResponse
+	nil,                                 // 35: donkeywork.vault.v1.ApiKeyProvider.StaticHeadersEntry
+	nil,                                 // 36: donkeywork.vault.v1.CredentialShape.StaticHeadersEntry
+	nil,                                 // 37: donkeywork.vault.v1.GetApiKeyResponse.FieldsEntry
+	nil,                                 // 38: donkeywork.vault.v1.CreateApiKeyRequest.FieldsEntry
 }
 var file_vault_proto_depIdxs = []int32{
-	21, // 0: donkeywork.vault.v1.ApiKeyProvider.static_headers:type_name -> donkeywork.vault.v1.ApiKeyProvider.StaticHeadersEntry
+	35, // 0: donkeywork.vault.v1.ApiKeyProvider.static_headers:type_name -> donkeywork.vault.v1.ApiKeyProvider.StaticHeadersEntry
 	0,  // 1: donkeywork.vault.v1.ApiKeyProvider.fields:type_name -> donkeywork.vault.v1.ApiKeyField
-	22, // 2: donkeywork.vault.v1.CredentialShape.static_headers:type_name -> donkeywork.vault.v1.CredentialShape.StaticHeadersEntry
+	36, // 2: donkeywork.vault.v1.CredentialShape.static_headers:type_name -> donkeywork.vault.v1.CredentialShape.StaticHeadersEntry
 	6,  // 3: donkeywork.vault.v1.ListOAuthTokensResponse.items:type_name -> donkeywork.vault.v1.OAuthTokenSummary
-	23, // 4: donkeywork.vault.v1.GetApiKeyResponse.fields:type_name -> donkeywork.vault.v1.GetApiKeyResponse.FieldsEntry
+	37, // 4: donkeywork.vault.v1.GetApiKeyResponse.fields:type_name -> donkeywork.vault.v1.GetApiKeyResponse.FieldsEntry
 	2,  // 5: donkeywork.vault.v1.DescribeCredentialResponse.shape:type_name -> donkeywork.vault.v1.CredentialShape
 	12, // 6: donkeywork.vault.v1.ListApiKeysResponse.items:type_name -> donkeywork.vault.v1.ApiKeyItem
-	24, // 7: donkeywork.vault.v1.CreateApiKeyRequest.fields:type_name -> donkeywork.vault.v1.CreateApiKeyRequest.FieldsEntry
+	38, // 7: donkeywork.vault.v1.CreateApiKeyRequest.fields:type_name -> donkeywork.vault.v1.CreateApiKeyRequest.FieldsEntry
 	1,  // 8: donkeywork.vault.v1.ListProvidersResponse.providers:type_name -> donkeywork.vault.v1.ApiKeyProvider
-	8,  // 9: donkeywork.vault.v1.CredentialStore.GetApiKey:input_type -> donkeywork.vault.v1.GetApiKeyRequest
-	10, // 10: donkeywork.vault.v1.CredentialStore.DescribeCredential:input_type -> donkeywork.vault.v1.DescribeCredentialRequest
-	3,  // 11: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:input_type -> donkeywork.vault.v1.GetOAuthAccessTokenRequest
-	5,  // 12: donkeywork.vault.v1.OAuthTokens.List:input_type -> donkeywork.vault.v1.ListOAuthTokensRequest
-	13, // 13: donkeywork.vault.v1.ApiKeys.List:input_type -> donkeywork.vault.v1.ListApiKeysRequest
-	15, // 14: donkeywork.vault.v1.ApiKeys.Create:input_type -> donkeywork.vault.v1.CreateApiKeyRequest
-	16, // 15: donkeywork.vault.v1.ApiKeys.Delete:input_type -> donkeywork.vault.v1.DeleteApiKeyRequest
-	18, // 16: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:input_type -> donkeywork.vault.v1.ListProvidersRequest
-	20, // 17: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:input_type -> donkeywork.vault.v1.GetProviderRequest
-	9,  // 18: donkeywork.vault.v1.CredentialStore.GetApiKey:output_type -> donkeywork.vault.v1.GetApiKeyResponse
-	11, // 19: donkeywork.vault.v1.CredentialStore.DescribeCredential:output_type -> donkeywork.vault.v1.DescribeCredentialResponse
-	4,  // 20: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:output_type -> donkeywork.vault.v1.GetOAuthAccessTokenResponse
-	7,  // 21: donkeywork.vault.v1.OAuthTokens.List:output_type -> donkeywork.vault.v1.ListOAuthTokensResponse
-	14, // 22: donkeywork.vault.v1.ApiKeys.List:output_type -> donkeywork.vault.v1.ListApiKeysResponse
-	12, // 23: donkeywork.vault.v1.ApiKeys.Create:output_type -> donkeywork.vault.v1.ApiKeyItem
-	17, // 24: donkeywork.vault.v1.ApiKeys.Delete:output_type -> donkeywork.vault.v1.DeleteApiKeyResponse
-	19, // 25: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:output_type -> donkeywork.vault.v1.ListProvidersResponse
-	1,  // 26: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:output_type -> donkeywork.vault.v1.ApiKeyProvider
-	18, // [18:27] is the sub-list for method output_type
-	9,  // [9:18] is the sub-list for method input_type
-	9,  // [9:9] is the sub-list for extension type_name
-	9,  // [9:9] is the sub-list for extension extendee
-	0,  // [0:9] is the sub-list for field type_name
+	1,  // 9: donkeywork.vault.v1.ListApiKeyManifestsResponse.items:type_name -> donkeywork.vault.v1.ApiKeyProvider
+	22, // 10: donkeywork.vault.v1.ListOAuthManifestsResponse.items:type_name -> donkeywork.vault.v1.OAuthManifestMsg
+	27, // 11: donkeywork.vault.v1.ListOAuthConfigsResponse.items:type_name -> donkeywork.vault.v1.OAuthConfigItem
+	8,  // 12: donkeywork.vault.v1.CredentialStore.GetApiKey:input_type -> donkeywork.vault.v1.GetApiKeyRequest
+	10, // 13: donkeywork.vault.v1.CredentialStore.DescribeCredential:input_type -> donkeywork.vault.v1.DescribeCredentialRequest
+	3,  // 14: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:input_type -> donkeywork.vault.v1.GetOAuthAccessTokenRequest
+	5,  // 15: donkeywork.vault.v1.OAuthTokens.List:input_type -> donkeywork.vault.v1.ListOAuthTokensRequest
+	13, // 16: donkeywork.vault.v1.ApiKeys.List:input_type -> donkeywork.vault.v1.ListApiKeysRequest
+	15, // 17: donkeywork.vault.v1.ApiKeys.Create:input_type -> donkeywork.vault.v1.CreateApiKeyRequest
+	16, // 18: donkeywork.vault.v1.ApiKeys.Delete:input_type -> donkeywork.vault.v1.DeleteApiKeyRequest
+	18, // 19: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:input_type -> donkeywork.vault.v1.ListProvidersRequest
+	20, // 20: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:input_type -> donkeywork.vault.v1.GetProviderRequest
+	21, // 21: donkeywork.vault.v1.Manifests.ListApiKey:input_type -> donkeywork.vault.v1.Empty
+	1,  // 22: donkeywork.vault.v1.Manifests.UpsertApiKey:input_type -> donkeywork.vault.v1.ApiKeyProvider
+	21, // 23: donkeywork.vault.v1.Manifests.ListOAuth:input_type -> donkeywork.vault.v1.Empty
+	22, // 24: donkeywork.vault.v1.Manifests.UpsertOAuth:input_type -> donkeywork.vault.v1.OAuthManifestMsg
+	25, // 25: donkeywork.vault.v1.Manifests.Delete:input_type -> donkeywork.vault.v1.DeleteManifestRequest
+	21, // 26: donkeywork.vault.v1.OAuthProviderConfigs.List:input_type -> donkeywork.vault.v1.Empty
+	29, // 27: donkeywork.vault.v1.OAuthProviderConfigs.Upsert:input_type -> donkeywork.vault.v1.UpsertOAuthConfigRequest
+	30, // 28: donkeywork.vault.v1.OAuthProviderConfigs.Delete:input_type -> donkeywork.vault.v1.DeleteByIdRequest
+	31, // 29: donkeywork.vault.v1.OAuthFlow.Begin:input_type -> donkeywork.vault.v1.BeginAuthRequest
+	33, // 30: donkeywork.vault.v1.OAuthFlow.Complete:input_type -> donkeywork.vault.v1.CompleteAuthRequest
+	9,  // 31: donkeywork.vault.v1.CredentialStore.GetApiKey:output_type -> donkeywork.vault.v1.GetApiKeyResponse
+	11, // 32: donkeywork.vault.v1.CredentialStore.DescribeCredential:output_type -> donkeywork.vault.v1.DescribeCredentialResponse
+	4,  // 33: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:output_type -> donkeywork.vault.v1.GetOAuthAccessTokenResponse
+	7,  // 34: donkeywork.vault.v1.OAuthTokens.List:output_type -> donkeywork.vault.v1.ListOAuthTokensResponse
+	14, // 35: donkeywork.vault.v1.ApiKeys.List:output_type -> donkeywork.vault.v1.ListApiKeysResponse
+	12, // 36: donkeywork.vault.v1.ApiKeys.Create:output_type -> donkeywork.vault.v1.ApiKeyItem
+	17, // 37: donkeywork.vault.v1.ApiKeys.Delete:output_type -> donkeywork.vault.v1.DeleteApiKeyResponse
+	19, // 38: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:output_type -> donkeywork.vault.v1.ListProvidersResponse
+	1,  // 39: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:output_type -> donkeywork.vault.v1.ApiKeyProvider
+	23, // 40: donkeywork.vault.v1.Manifests.ListApiKey:output_type -> donkeywork.vault.v1.ListApiKeyManifestsResponse
+	1,  // 41: donkeywork.vault.v1.Manifests.UpsertApiKey:output_type -> donkeywork.vault.v1.ApiKeyProvider
+	24, // 42: donkeywork.vault.v1.Manifests.ListOAuth:output_type -> donkeywork.vault.v1.ListOAuthManifestsResponse
+	22, // 43: donkeywork.vault.v1.Manifests.UpsertOAuth:output_type -> donkeywork.vault.v1.OAuthManifestMsg
+	26, // 44: donkeywork.vault.v1.Manifests.Delete:output_type -> donkeywork.vault.v1.DeleteResponse
+	28, // 45: donkeywork.vault.v1.OAuthProviderConfigs.List:output_type -> donkeywork.vault.v1.ListOAuthConfigsResponse
+	27, // 46: donkeywork.vault.v1.OAuthProviderConfigs.Upsert:output_type -> donkeywork.vault.v1.OAuthConfigItem
+	26, // 47: donkeywork.vault.v1.OAuthProviderConfigs.Delete:output_type -> donkeywork.vault.v1.DeleteResponse
+	32, // 48: donkeywork.vault.v1.OAuthFlow.Begin:output_type -> donkeywork.vault.v1.BeginAuthResponse
+	34, // 49: donkeywork.vault.v1.OAuthFlow.Complete:output_type -> donkeywork.vault.v1.CompleteAuthResponse
+	31, // [31:50] is the sub-list for method output_type
+	12, // [12:31] is the sub-list for method input_type
+	12, // [12:12] is the sub-list for extension type_name
+	12, // [12:12] is the sub-list for extension extendee
+	0,  // [0:12] is the sub-list for field type_name
 }
 
 func init() { file_vault_proto_init() }
@@ -1401,9 +2308,9 @@ func file_vault_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vault_proto_rawDesc), len(file_vault_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   25,
+			NumMessages:   39,
 			NumExtensions: 0,
-			NumServices:   4,
+			NumServices:   7,
 		},
 		GoTypes:           file_vault_proto_goTypes,
 		DependencyIndexes: file_vault_proto_depIdxs,

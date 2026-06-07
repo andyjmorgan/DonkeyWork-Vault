@@ -631,3 +631,575 @@ var ApiKeyCatalog_ServiceDesc = grpc.ServiceDesc{
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "vault.proto",
 }
+
+const (
+	Manifests_ListApiKey_FullMethodName   = "/donkeywork.vault.v1.Manifests/ListApiKey"
+	Manifests_UpsertApiKey_FullMethodName = "/donkeywork.vault.v1.Manifests/UpsertApiKey"
+	Manifests_ListOAuth_FullMethodName    = "/donkeywork.vault.v1.Manifests/ListOAuth"
+	Manifests_UpsertOAuth_FullMethodName  = "/donkeywork.vault.v1.Manifests/UpsertOAuth"
+	Manifests_Delete_FullMethodName       = "/donkeywork.vault.v1.Manifests/Delete"
+)
+
+// ManifestsClient is the client API for Manifests service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type ManifestsClient interface {
+	ListApiKey(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListApiKeyManifestsResponse, error)
+	UpsertApiKey(ctx context.Context, in *ApiKeyProvider, opts ...grpc.CallOption) (*ApiKeyProvider, error)
+	ListOAuth(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListOAuthManifestsResponse, error)
+	UpsertOAuth(ctx context.Context, in *OAuthManifestMsg, opts ...grpc.CallOption) (*OAuthManifestMsg, error)
+	Delete(ctx context.Context, in *DeleteManifestRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+}
+
+type manifestsClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewManifestsClient(cc grpc.ClientConnInterface) ManifestsClient {
+	return &manifestsClient{cc}
+}
+
+func (c *manifestsClient) ListApiKey(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListApiKeyManifestsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListApiKeyManifestsResponse)
+	err := c.cc.Invoke(ctx, Manifests_ListApiKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *manifestsClient) UpsertApiKey(ctx context.Context, in *ApiKeyProvider, opts ...grpc.CallOption) (*ApiKeyProvider, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ApiKeyProvider)
+	err := c.cc.Invoke(ctx, Manifests_UpsertApiKey_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *manifestsClient) ListOAuth(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListOAuthManifestsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOAuthManifestsResponse)
+	err := c.cc.Invoke(ctx, Manifests_ListOAuth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *manifestsClient) UpsertOAuth(ctx context.Context, in *OAuthManifestMsg, opts ...grpc.CallOption) (*OAuthManifestMsg, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OAuthManifestMsg)
+	err := c.cc.Invoke(ctx, Manifests_UpsertOAuth_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *manifestsClient) Delete(ctx context.Context, in *DeleteManifestRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteResponse)
+	err := c.cc.Invoke(ctx, Manifests_Delete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// ManifestsServer is the server API for Manifests service.
+// All implementations must embed UnimplementedManifestsServer
+// for forward compatibility.
+type ManifestsServer interface {
+	ListApiKey(context.Context, *Empty) (*ListApiKeyManifestsResponse, error)
+	UpsertApiKey(context.Context, *ApiKeyProvider) (*ApiKeyProvider, error)
+	ListOAuth(context.Context, *Empty) (*ListOAuthManifestsResponse, error)
+	UpsertOAuth(context.Context, *OAuthManifestMsg) (*OAuthManifestMsg, error)
+	Delete(context.Context, *DeleteManifestRequest) (*DeleteResponse, error)
+	mustEmbedUnimplementedManifestsServer()
+}
+
+// UnimplementedManifestsServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedManifestsServer struct{}
+
+func (UnimplementedManifestsServer) ListApiKey(context.Context, *Empty) (*ListApiKeyManifestsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListApiKey not implemented")
+}
+func (UnimplementedManifestsServer) UpsertApiKey(context.Context, *ApiKeyProvider) (*ApiKeyProvider, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertApiKey not implemented")
+}
+func (UnimplementedManifestsServer) ListOAuth(context.Context, *Empty) (*ListOAuthManifestsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ListOAuth not implemented")
+}
+func (UnimplementedManifestsServer) UpsertOAuth(context.Context, *OAuthManifestMsg) (*OAuthManifestMsg, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpsertOAuth not implemented")
+}
+func (UnimplementedManifestsServer) Delete(context.Context, *DeleteManifestRequest) (*DeleteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedManifestsServer) mustEmbedUnimplementedManifestsServer() {}
+func (UnimplementedManifestsServer) testEmbeddedByValue()                   {}
+
+// UnsafeManifestsServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to ManifestsServer will
+// result in compilation errors.
+type UnsafeManifestsServer interface {
+	mustEmbedUnimplementedManifestsServer()
+}
+
+func RegisterManifestsServer(s grpc.ServiceRegistrar, srv ManifestsServer) {
+	// If the following call panics, it indicates UnimplementedManifestsServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&Manifests_ServiceDesc, srv)
+}
+
+func _Manifests_ListApiKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManifestsServer).ListApiKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Manifests_ListApiKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManifestsServer).ListApiKey(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Manifests_UpsertApiKey_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ApiKeyProvider)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManifestsServer).UpsertApiKey(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Manifests_UpsertApiKey_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManifestsServer).UpsertApiKey(ctx, req.(*ApiKeyProvider))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Manifests_ListOAuth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManifestsServer).ListOAuth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Manifests_ListOAuth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManifestsServer).ListOAuth(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Manifests_UpsertOAuth_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(OAuthManifestMsg)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManifestsServer).UpsertOAuth(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Manifests_UpsertOAuth_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManifestsServer).UpsertOAuth(ctx, req.(*OAuthManifestMsg))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _Manifests_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteManifestRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManifestsServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Manifests_Delete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManifestsServer).Delete(ctx, req.(*DeleteManifestRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// Manifests_ServiceDesc is the grpc.ServiceDesc for Manifests service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var Manifests_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "donkeywork.vault.v1.Manifests",
+	HandlerType: (*ManifestsServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "ListApiKey",
+			Handler:    _Manifests_ListApiKey_Handler,
+		},
+		{
+			MethodName: "UpsertApiKey",
+			Handler:    _Manifests_UpsertApiKey_Handler,
+		},
+		{
+			MethodName: "ListOAuth",
+			Handler:    _Manifests_ListOAuth_Handler,
+		},
+		{
+			MethodName: "UpsertOAuth",
+			Handler:    _Manifests_UpsertOAuth_Handler,
+		},
+		{
+			MethodName: "Delete",
+			Handler:    _Manifests_Delete_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "vault.proto",
+}
+
+const (
+	OAuthProviderConfigs_List_FullMethodName   = "/donkeywork.vault.v1.OAuthProviderConfigs/List"
+	OAuthProviderConfigs_Upsert_FullMethodName = "/donkeywork.vault.v1.OAuthProviderConfigs/Upsert"
+	OAuthProviderConfigs_Delete_FullMethodName = "/donkeywork.vault.v1.OAuthProviderConfigs/Delete"
+)
+
+// OAuthProviderConfigsClient is the client API for OAuthProviderConfigs service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type OAuthProviderConfigsClient interface {
+	List(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListOAuthConfigsResponse, error)
+	Upsert(ctx context.Context, in *UpsertOAuthConfigRequest, opts ...grpc.CallOption) (*OAuthConfigItem, error)
+	Delete(ctx context.Context, in *DeleteByIdRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+}
+
+type oAuthProviderConfigsClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewOAuthProviderConfigsClient(cc grpc.ClientConnInterface) OAuthProviderConfigsClient {
+	return &oAuthProviderConfigsClient{cc}
+}
+
+func (c *oAuthProviderConfigsClient) List(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListOAuthConfigsResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOAuthConfigsResponse)
+	err := c.cc.Invoke(ctx, OAuthProviderConfigs_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *oAuthProviderConfigsClient) Upsert(ctx context.Context, in *UpsertOAuthConfigRequest, opts ...grpc.CallOption) (*OAuthConfigItem, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OAuthConfigItem)
+	err := c.cc.Invoke(ctx, OAuthProviderConfigs_Upsert_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *oAuthProviderConfigsClient) Delete(ctx context.Context, in *DeleteByIdRequest, opts ...grpc.CallOption) (*DeleteResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(DeleteResponse)
+	err := c.cc.Invoke(ctx, OAuthProviderConfigs_Delete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// OAuthProviderConfigsServer is the server API for OAuthProviderConfigs service.
+// All implementations must embed UnimplementedOAuthProviderConfigsServer
+// for forward compatibility.
+type OAuthProviderConfigsServer interface {
+	List(context.Context, *Empty) (*ListOAuthConfigsResponse, error)
+	Upsert(context.Context, *UpsertOAuthConfigRequest) (*OAuthConfigItem, error)
+	Delete(context.Context, *DeleteByIdRequest) (*DeleteResponse, error)
+	mustEmbedUnimplementedOAuthProviderConfigsServer()
+}
+
+// UnimplementedOAuthProviderConfigsServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedOAuthProviderConfigsServer struct{}
+
+func (UnimplementedOAuthProviderConfigsServer) List(context.Context, *Empty) (*ListOAuthConfigsResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedOAuthProviderConfigsServer) Upsert(context.Context, *UpsertOAuthConfigRequest) (*OAuthConfigItem, error) {
+	return nil, status.Error(codes.Unimplemented, "method Upsert not implemented")
+}
+func (UnimplementedOAuthProviderConfigsServer) Delete(context.Context, *DeleteByIdRequest) (*DeleteResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedOAuthProviderConfigsServer) mustEmbedUnimplementedOAuthProviderConfigsServer() {}
+func (UnimplementedOAuthProviderConfigsServer) testEmbeddedByValue()                              {}
+
+// UnsafeOAuthProviderConfigsServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to OAuthProviderConfigsServer will
+// result in compilation errors.
+type UnsafeOAuthProviderConfigsServer interface {
+	mustEmbedUnimplementedOAuthProviderConfigsServer()
+}
+
+func RegisterOAuthProviderConfigsServer(s grpc.ServiceRegistrar, srv OAuthProviderConfigsServer) {
+	// If the following call panics, it indicates UnimplementedOAuthProviderConfigsServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&OAuthProviderConfigs_ServiceDesc, srv)
+}
+
+func _OAuthProviderConfigs_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(Empty)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OAuthProviderConfigsServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OAuthProviderConfigs_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OAuthProviderConfigsServer).List(ctx, req.(*Empty))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OAuthProviderConfigs_Upsert_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UpsertOAuthConfigRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OAuthProviderConfigsServer).Upsert(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OAuthProviderConfigs_Upsert_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OAuthProviderConfigsServer).Upsert(ctx, req.(*UpsertOAuthConfigRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OAuthProviderConfigs_Delete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DeleteByIdRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OAuthProviderConfigsServer).Delete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OAuthProviderConfigs_Delete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OAuthProviderConfigsServer).Delete(ctx, req.(*DeleteByIdRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// OAuthProviderConfigs_ServiceDesc is the grpc.ServiceDesc for OAuthProviderConfigs service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var OAuthProviderConfigs_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "donkeywork.vault.v1.OAuthProviderConfigs",
+	HandlerType: (*OAuthProviderConfigsServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "List",
+			Handler:    _OAuthProviderConfigs_List_Handler,
+		},
+		{
+			MethodName: "Upsert",
+			Handler:    _OAuthProviderConfigs_Upsert_Handler,
+		},
+		{
+			MethodName: "Delete",
+			Handler:    _OAuthProviderConfigs_Delete_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "vault.proto",
+}
+
+const (
+	OAuthFlow_Begin_FullMethodName    = "/donkeywork.vault.v1.OAuthFlow/Begin"
+	OAuthFlow_Complete_FullMethodName = "/donkeywork.vault.v1.OAuthFlow/Complete"
+)
+
+// OAuthFlowClient is the client API for OAuthFlow service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+type OAuthFlowClient interface {
+	Begin(ctx context.Context, in *BeginAuthRequest, opts ...grpc.CallOption) (*BeginAuthResponse, error)
+	Complete(ctx context.Context, in *CompleteAuthRequest, opts ...grpc.CallOption) (*CompleteAuthResponse, error)
+}
+
+type oAuthFlowClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewOAuthFlowClient(cc grpc.ClientConnInterface) OAuthFlowClient {
+	return &oAuthFlowClient{cc}
+}
+
+func (c *oAuthFlowClient) Begin(ctx context.Context, in *BeginAuthRequest, opts ...grpc.CallOption) (*BeginAuthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(BeginAuthResponse)
+	err := c.cc.Invoke(ctx, OAuthFlow_Begin_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *oAuthFlowClient) Complete(ctx context.Context, in *CompleteAuthRequest, opts ...grpc.CallOption) (*CompleteAuthResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CompleteAuthResponse)
+	err := c.cc.Invoke(ctx, OAuthFlow_Complete_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// OAuthFlowServer is the server API for OAuthFlow service.
+// All implementations must embed UnimplementedOAuthFlowServer
+// for forward compatibility.
+type OAuthFlowServer interface {
+	Begin(context.Context, *BeginAuthRequest) (*BeginAuthResponse, error)
+	Complete(context.Context, *CompleteAuthRequest) (*CompleteAuthResponse, error)
+	mustEmbedUnimplementedOAuthFlowServer()
+}
+
+// UnimplementedOAuthFlowServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedOAuthFlowServer struct{}
+
+func (UnimplementedOAuthFlowServer) Begin(context.Context, *BeginAuthRequest) (*BeginAuthResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Begin not implemented")
+}
+func (UnimplementedOAuthFlowServer) Complete(context.Context, *CompleteAuthRequest) (*CompleteAuthResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Complete not implemented")
+}
+func (UnimplementedOAuthFlowServer) mustEmbedUnimplementedOAuthFlowServer() {}
+func (UnimplementedOAuthFlowServer) testEmbeddedByValue()                   {}
+
+// UnsafeOAuthFlowServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to OAuthFlowServer will
+// result in compilation errors.
+type UnsafeOAuthFlowServer interface {
+	mustEmbedUnimplementedOAuthFlowServer()
+}
+
+func RegisterOAuthFlowServer(s grpc.ServiceRegistrar, srv OAuthFlowServer) {
+	// If the following call panics, it indicates UnimplementedOAuthFlowServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&OAuthFlow_ServiceDesc, srv)
+}
+
+func _OAuthFlow_Begin_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(BeginAuthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OAuthFlowServer).Begin(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OAuthFlow_Begin_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OAuthFlowServer).Begin(ctx, req.(*BeginAuthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _OAuthFlow_Complete_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(CompleteAuthRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OAuthFlowServer).Complete(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OAuthFlow_Complete_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OAuthFlowServer).Complete(ctx, req.(*CompleteAuthRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// OAuthFlow_ServiceDesc is the grpc.ServiceDesc for OAuthFlow service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var OAuthFlow_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "donkeywork.vault.v1.OAuthFlow",
+	HandlerType: (*OAuthFlowServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "Begin",
+			Handler:    _OAuthFlow_Begin_Handler,
+		},
+		{
+			MethodName: "Complete",
+			Handler:    _OAuthFlow_Complete_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "vault.proto",
+}

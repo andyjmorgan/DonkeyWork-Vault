@@ -23,6 +23,8 @@ public sealed class VaultDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<ApiKeyEntity> ApiKeys => Set<ApiKeyEntity>();
     public DbSet<OAuthProviderConfigEntity> OAuthProviderConfigs => Set<OAuthProviderConfigEntity>();
     public DbSet<OAuthTokenEntity> OAuthTokens => Set<OAuthTokenEntity>();
+    public DbSet<ProviderManifestEntity> ProviderManifests => Set<ProviderManifestEntity>();
+    public DbSet<OAuthStateEntity> OAuthStates => Set<OAuthStateEntity>();
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

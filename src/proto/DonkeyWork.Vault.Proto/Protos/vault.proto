@@ -123,3 +123,64 @@ service ApiKeyCatalog {
 message ListProvidersRequest {}
 message ListProvidersResponse { repeated ApiKeyProvider providers = 1; }
 message GetProviderRequest { string key = 1; }
+
+// ---------- provider manifest management (admin/runtime catalog) ----------
+message Empty {}
+
+message OAuthManifestMsg {
+  string key = 1;
+  string name = 2;
+  string authorization_endpoint = 3;
+  string token_endpoint = 4;
+  string userinfo_endpoint = 5;
+  string scope_delimiter = 6;
+  repeated string default_scopes = 7;
+}
+message ListApiKeyManifestsResponse { repeated ApiKeyProvider items = 1; }
+message ListOAuthManifestsResponse { repeated OAuthManifestMsg items = 1; }
+message DeleteManifestRequest { string kind = 1; string key = 2; }
+message DeleteResponse { bool deleted = 1; }
+
+service Manifests {
+  rpc ListApiKey(Empty) returns (ListApiKeyManifestsResponse);
+  rpc UpsertApiKey(ApiKeyProvider) returns (ApiKeyProvider);
+  rpc ListOAuth(Empty) returns (ListOAuthManifestsResponse);
+  rpc UpsertOAuth(OAuthManifestMsg) returns (OAuthManifestMsg);
+  rpc Delete(DeleteManifestRequest) returns (DeleteResponse);
+}
+
+// ---------- oauth provider app configs ----------
+message OAuthConfigItem {
+  string id = 1;
+  string provider = 2;
+  string client_id_masked = 3;
+  repeated string scopes = 4;
+  string redirect_uri = 5;
+  string created_at = 6;
+}
+message ListOAuthConfigsResponse { repeated OAuthConfigItem items = 1; }
+message UpsertOAuthConfigRequest {
+  string provider = 1;
+  string client_id = 2;
+  string client_secret = 3;   // optional on update
+  repeated string scopes = 4;
+  string redirect_uri = 5;
+}
+message DeleteByIdRequest { string id = 1; }
+
+service OAuthProviderConfigs {
+  rpc List(Empty) returns (ListOAuthConfigsResponse);
+  rpc Upsert(UpsertOAuthConfigRequest) returns (OAuthConfigItem);
+  rpc Delete(DeleteByIdRequest) returns (DeleteResponse);
+}
+
+// ---------- oauth connect flow (browser redirect) ----------
+message BeginAuthRequest { string provider = 1; repeated string scopes = 2; string public_base_url = 3; }
+message BeginAuthResponse { string authorize_url = 1; string state = 2; }
+message CompleteAuthRequest { string provider = 1; string code = 2; string state = 3; }
+message CompleteAuthResponse { string provider = 1; string account = 2; repeated string scopes = 3; string expires_at = 4; }
+
+service OAuthFlow {
+  rpc Begin(BeginAuthRequest) returns (BeginAuthResponse);
+  rpc Complete(CompleteAuthRequest) returns (CompleteAuthResponse);
+}

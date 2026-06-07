@@ -4,20 +4,20 @@ using Grpc.Core;
 
 namespace DonkeyWork.Vault.Api.Services;
 
-public sealed class ApiKeyCatalogGrpcService(ApiKeyManifestLoader manifests) : ApiKeyCatalog.ApiKeyCatalogBase
+public sealed class ApiKeyCatalogGrpcService(ManifestResolver manifests) : ApiKeyCatalog.ApiKeyCatalogBase
 {
-    public override Task<ListProvidersResponse> ListProviders(ListProvidersRequest request, ServerCallContext context)
+    public override async Task<ListProvidersResponse> ListProviders(ListProvidersRequest request, ServerCallContext context)
     {
         var response = new ListProvidersResponse();
-        response.Providers.AddRange(manifests.All.Select(ToProto));
-        return Task.FromResult(response);
+        response.Providers.AddRange((await manifests.ListApiKeyAsync(context.CancellationToken)).Select(ToProto));
+        return response;
     }
 
-    public override Task<ApiKeyProvider> GetProvider(GetProviderRequest request, ServerCallContext context)
+    public override async Task<ApiKeyProvider> GetProvider(GetProviderRequest request, ServerCallContext context)
     {
-        var manifest = manifests.Get(request.Key)
+        var manifest = await manifests.GetApiKeyAsync(request.Key, context.CancellationToken)
             ?? throw new RpcException(new Status(StatusCode.NotFound, $"Unknown provider '{request.Key}'."));
-        return Task.FromResult(ToProto(manifest));
+        return ToProto(manifest);
     }
 
     private static ApiKeyProvider ToProto(ApiKeyManifest m)

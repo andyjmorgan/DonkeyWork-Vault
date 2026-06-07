@@ -37,6 +37,9 @@ app.MapGrpcService<CredentialStoreGrpcService>();
 app.MapGrpcService<ApiKeysGrpcService>();
 app.MapGrpcService<ApiKeyCatalogGrpcService>();
 app.MapGrpcService<OAuthTokensGrpcService>();
+app.MapGrpcService<ManifestsGrpcService>();
+app.MapGrpcService<OAuthProviderConfigsGrpcService>();
+app.MapGrpcService<OAuthFlowGrpcService>();
 app.MapGrpcReflectionService();
 
 app.MapHealthChecks("/healthz");

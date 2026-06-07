@@ -48,12 +48,12 @@ public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTok
         return response;
     }
 
-    public override Task<DescribeCredentialResponse> DescribeCredential(DescribeCredentialRequest request, ServerCallContext context)
+    public override async Task<DescribeCredentialResponse> DescribeCredential(DescribeCredentialRequest request, ServerCallContext context)
     {
-        var manifest = apiKeys.DescribeShape(request.Provider);
+        var manifest = await apiKeys.DescribeShapeAsync(request.Provider, context.CancellationToken);
         if (manifest is null)
         {
-            return Task.FromResult(new DescribeCredentialResponse { Found = false });
+            return new DescribeCredentialResponse { Found = false };
         }
 
         var shape = new CredentialShape
@@ -67,6 +67,6 @@ public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTok
             shape.StaticHeaders[k] = v;
         }
 
-        return Task.FromResult(new DescribeCredentialResponse { Found = true, Shape = shape });
+        return new DescribeCredentialResponse { Found = true, Shape = shape };
     }
 }

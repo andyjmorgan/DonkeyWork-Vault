@@ -42,6 +42,12 @@ void AddVaultClient<T>() where T : class
 AddVaultClient<CredentialStore.CredentialStoreClient>();
 AddVaultClient<ApiKeys.ApiKeysClient>();
 AddVaultClient<ApiKeyCatalog.ApiKeyCatalogClient>();
+AddVaultClient<Manifests.ManifestsClient>();
+AddVaultClient<OAuthProviderConfigs.OAuthProviderConfigsClient>();
+AddVaultClient<OAuthFlow.OAuthFlowClient>();
+AddVaultClient<OAuthTokens.OAuthTokensClient>();
+
+var publicBaseUrl = builder.Configuration["Portal:PublicBaseUrl"] ?? "https://vault.donkeywork.dev";
 
 var app = builder.Build();
 
@@ -123,6 +129,90 @@ api.MapDelete("/api-keys/{id}", async (string id, ApiKeys.ApiKeysClient client) 
     return resp.Deleted ? Results.NoContent() : Results.NotFound();
 });
 
+// ---- provider manifests (runtime catalog CRUD) ----
+api.MapGet("/manifests", async (string? kind, Manifests.ManifestsClient m) =>
+{
+    if (kind == "oauth")
+    {
+        var r = await m.ListOAuthAsync(new Empty());
+        return Results.Ok(r.Items.Select(x => new { x.Key, x.Name, x.AuthorizationEndpoint, x.TokenEndpoint, x.UserinfoEndpoint, x.ScopeDelimiter, defaultScopes = x.DefaultScopes }));
+    }
+    var a = await m.ListApiKeyAsync(new Empty());
+    return Results.Ok(a.Items.Select(MapProvider));
+});
+
+api.MapPost("/manifests/apikey", async (ApiKeyManifestDto dto, Manifests.ManifestsClient m) =>
+{
+    var p = new ApiKeyProvider
+    {
+        Key = dto.Key, Name = dto.Name, IconUrl = dto.IconUrl ?? "", DocsUrl = dto.DocsUrl ?? "",
+        AuthScheme = dto.AuthScheme ?? "header", Header = dto.Header ?? "", Prefix = dto.Prefix ?? "", BaseUrl = dto.BaseUrl ?? "",
+    };
+    foreach (var (k, v) in dto.StaticHeaders ?? new()) p.StaticHeaders[k] = v;
+    foreach (var f in dto.Fields ?? new()) p.Fields.Add(new ApiKeyField { Name = f.Name, Label = f.Label ?? "", Secret = f.Secret, Required = f.Required });
+    return Results.Ok(MapProvider(await m.UpsertApiKeyAsync(p)));
+});
+
+api.MapPost("/manifests/oauth", async (OAuthManifestDto dto, Manifests.ManifestsClient m) =>
+{
+    var msg = new OAuthManifestMsg
+    {
+        Key = dto.Key, Name = dto.Name ?? "", AuthorizationEndpoint = dto.AuthorizationEndpoint ?? "",
+        TokenEndpoint = dto.TokenEndpoint ?? "", UserinfoEndpoint = dto.UserinfoEndpoint ?? "", ScopeDelimiter = dto.ScopeDelimiter ?? " ",
+    };
+    if (dto.DefaultScopes is not null) msg.DefaultScopes.AddRange(dto.DefaultScopes);
+    await m.UpsertOAuthAsync(msg);
+    return Results.Ok(new { dto.Key });
+});
+
+api.MapDelete("/manifests/{kind}/{key}", async (string kind, string key, Manifests.ManifestsClient m) =>
+{
+    var r = await m.DeleteAsync(new DeleteManifestRequest { Kind = kind, Key = key });
+    return r.Deleted ? Results.NoContent() : Results.NotFound();
+});
+
+// ---- oauth provider app configs ----
+api.MapGet("/oauth/configs", async (OAuthProviderConfigs.OAuthProviderConfigsClient c) =>
+{
+    var r = await c.ListAsync(new Empty());
+    return Results.Ok(r.Items.Select(i => new { i.Id, i.Provider, clientIdMasked = i.ClientIdMasked, scopes = i.Scopes, i.RedirectUri, i.CreatedAt }));
+});
+api.MapPost("/oauth/configs", async (OAuthConfigDto dto, OAuthProviderConfigs.OAuthProviderConfigsClient c) =>
+{
+    var req = new UpsertOAuthConfigRequest { Provider = dto.Provider, ClientId = dto.ClientId, ClientSecret = dto.ClientSecret ?? "", RedirectUri = dto.RedirectUri ?? "" };
+    if (dto.Scopes is not null) req.Scopes.AddRange(dto.Scopes);
+    try { var i = await c.UpsertAsync(req); return Results.Ok(new { i.Id, i.Provider }); }
+    catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.InvalidArgument) { return Results.BadRequest(new { error = ex.Status.Detail }); }
+});
+api.MapDelete("/oauth/configs/{id}", async (string id, OAuthProviderConfigs.OAuthProviderConfigsClient c) =>
+{
+    var r = await c.DeleteAsync(new DeleteByIdRequest { Id = id });
+    return r.Deleted ? Results.NoContent() : Results.NotFound();
+});
+
+// ---- oauth tokens (connected accounts) ----
+api.MapGet("/oauth/tokens", async (OAuthTokens.OAuthTokensClient t) =>
+{
+    var r = await t.ListAsync(new ListOAuthTokensRequest());
+    return Results.Ok(r.Items.Select(x => new { x.Id, x.Provider, x.Account, x.ExpiresAt, x.LastRefreshedAt, scopes = x.Scopes }));
+});
+
+// ---- oauth connect (returns authorize URL; SPA redirects the browser) ----
+api.MapGet("/oauth/{provider}/connect", async (string provider, OAuthFlow.OAuthFlowClient f) =>
+{
+    try { var r = await f.BeginAsync(new BeginAuthRequest { Provider = provider, PublicBaseUrl = publicBaseUrl }); return Results.Ok(new { authorizeUrl = r.AuthorizeUrl }); }
+    catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.FailedPrecondition) { return Results.BadRequest(new { error = ex.Status.Detail }); }
+});
+
+// ---- public OAuth callback (anonymous; identity derived from state) ----
+app.MapGet("/api/oauth/{provider}/callback", async (string provider, string? code, string? state, string? error, OAuthFlow.OAuthFlowClient f) =>
+{
+    if (!string.IsNullOrEmpty(error)) return Results.Redirect($"/?oauth_error={Uri.EscapeDataString(error)}");
+    if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state)) return Results.Redirect("/?oauth_error=missing_code");
+    try { var r = await f.CompleteAsync(new CompleteAuthRequest { Provider = provider, Code = code, State = state }); return Results.Redirect($"/?connected={Uri.EscapeDataString(r.Provider)}"); }
+    catch (Grpc.Core.RpcException ex) { return Results.Redirect($"/?oauth_error={Uri.EscapeDataString(ex.Status.Detail)}"); }
+});
+
 app.MapFallbackToFile("index.html");
 
 app.Run();
@@ -142,3 +232,7 @@ static object MapProvider(ApiKeyProvider p) => new
 };
 
 internal sealed record CreateApiKeyDto(string Provider, string Name, Dictionary<string, string>? Fields);
+internal sealed record ApiKeyFieldDto(string Name, string? Label, bool Secret, bool Required);
+internal sealed record ApiKeyManifestDto(string Key, string Name, string? IconUrl, string? DocsUrl, string? AuthScheme, string? Header, string? Prefix, string? BaseUrl, Dictionary<string, string>? StaticHeaders, List<ApiKeyFieldDto>? Fields);
+internal sealed record OAuthManifestDto(string Key, string? Name, string? AuthorizationEndpoint, string? TokenEndpoint, string? UserinfoEndpoint, string? ScopeDelimiter, List<string>? DefaultScopes);
+internal sealed record OAuthConfigDto(string Provider, string ClientId, string? ClientSecret, List<string>? Scopes, string? RedirectUri);

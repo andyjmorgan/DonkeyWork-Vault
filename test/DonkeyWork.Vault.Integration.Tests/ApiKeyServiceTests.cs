@@ -42,7 +42,8 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
             Keks = new() { ["local:v1"] = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray()) },
         })));
 
-        return (db, new ApiKeyService(db, cipher, new ApiKeyManifestLoader(), caller));
+        var resolver = new ManifestResolver(db, new ApiKeyManifestLoader(), new OAuthManifestLoader());
+        return (db, new ApiKeyService(db, cipher, resolver, caller));
     }
 
     [Fact]
@@ -64,7 +65,7 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
         Assert.NotNull(got);
         Assert.Equal("secret-123", got!.Secret);
 
-        var shape = svc.DescribeShape("grafana");
+        var shape = await svc.DescribeShapeAsync("grafana", default);
         Assert.Equal("Authorization", shape!.Auth.Header);
         Assert.Equal("Bearer ", shape.Auth.Prefix);
     }

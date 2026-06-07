@@ -9,11 +9,19 @@ namespace DonkeyWork.Vault.Api.Identity;
 /// </summary>
 public sealed class UserContextInterceptor : Interceptor
 {
+    // The OAuth callback exchange is anonymous — it derives identity from the state row.
+    private const string AnonymousMethod = "/donkeywork.vault.v1.OAuthFlow/Complete";
+
     public override Task<TResponse> UnaryServerHandler<TRequest, TResponse>(
         TRequest request,
         ServerCallContext context,
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
+        if (context.Method == AnonymousMethod)
+        {
+            return continuation(request, context);
+        }
+
         var rawUser = context.RequestHeaders.GetValue("x-user-id");
         if (string.IsNullOrEmpty(rawUser) || !Guid.TryParse(rawUser, out var userId))
         {
