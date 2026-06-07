@@ -1,8 +1,5 @@
 <Solution>
   <Folder Name="/src/" />
-  <Folder Name="/src/cli/">
-    <Project Path="src/cli/DonkeyWork.Vault.Cli/DonkeyWork.Vault.Cli.csproj" />
-  </Folder>
   <Folder Name="/src/portal/">
     <Project Path="src/portal/DonkeyWork.Portal.Api/DonkeyWork.Portal.Api.csproj" />
   </Folder>
@@ -16,7 +13,6 @@
     <Project Path="src/vault/DonkeyWork.Vault.Persistence/DonkeyWork.Vault.Persistence.csproj" />
   </Folder>
   <Folder Name="/test/">
-    <Project Path="test/DonkeyWork.Vault.Cli.Tests/DonkeyWork.Vault.Cli.Tests.csproj" />
     <Project Path="test/DonkeyWork.Vault.Core.Tests/DonkeyWork.Vault.Core.Tests.csproj" />
     <Project Path="test/DonkeyWork.Vault.Integration.Tests/DonkeyWork.Vault.Integration.Tests.csproj" />
   </Folder>

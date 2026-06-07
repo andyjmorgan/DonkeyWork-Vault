@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package donkeywork.vault.v1;
 option csharp_namespace = "DonkeyWork.Vault.Proto.V1";
+option go_package = "donkeywork.dev/vault-cli/internal/vaultpb";
 
 // All RPCs carry x-user-id (and optional x-tenant-id) gRPC metadata set by the caller.
 // The vault returns UNAUTHENTICATED if x-user-id is missing.
