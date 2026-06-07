@@ -69,23 +69,25 @@ message OAuthTokenSummary {
 }
 message ListOAuthTokensResponse { repeated OAuthTokenSummary items = 1; }
 
-message GetApiKeyRequest {
-  string provider = 1;
-  string name = 2;           // optional; selects among multiple stored keys
-}
+message GetApiKeyRequest { string name = 1; }
 message GetApiKeyResponse {
   bool found = 1;
-  string secret = 2;         // the primary secret field value
-  map<string, string> fields = 3;
+  string secret = 2;
+  string header = 3;
+  string prefix = 4;
+  string base_url = 5;
+  string docs_url = 6;
+  string description = 7;
 }
 
-message DescribeCredentialRequest {
-  string provider = 1;
-  string name = 2;
-}
+message DescribeCredentialRequest { string name = 1; }
 message DescribeCredentialResponse {
   bool found = 1;
-  CredentialShape shape = 2;
+  string header = 2;
+  string prefix = 3;
+  string base_url = 4;
+  string docs_url = 5;
+  string description = 6;
 }
 
 // ---------- api key management (brokered by the Portal) ----------
@@ -97,18 +99,26 @@ service ApiKeys {
 
 message ApiKeyItem {
   string id = 1;
-  string provider = 2;
-  string name = 3;
-  string created_at = 4;     // ISO 8601
-  string last_used_at = 5;   // ISO 8601 or empty
+  string name = 2;
+  string description = 3;
+  string base_url = 4;
+  string docs_url = 5;
+  string header = 6;
+  string prefix = 7;
+  string created_at = 8;
+  string last_used_at = 9;
 }
 message ListApiKeysRequest {}
 message ListApiKeysResponse { repeated ApiKeyItem items = 1; }
 
 message CreateApiKeyRequest {
-  string provider = 1;
-  string name = 2;
-  map<string, string> fields = 3;   // validated against the provider manifest
+  string name = 1;
+  string secret = 2;
+  string description = 3;
+  string base_url = 4;
+  string docs_url = 5;
+  string header = 6;
+  string prefix = 7;
 }
 
 message DeleteApiKeyRequest { string id = 1; }

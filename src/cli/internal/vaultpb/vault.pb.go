@@ -561,8 +561,7 @@ func (x *ListOAuthTokensResponse) GetItems() []*OAuthTokenSummary {
 
 type GetApiKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"` // optional; selects among multiple stored keys
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -597,13 +596,6 @@ func (*GetApiKeyRequest) Descriptor() ([]byte, []int) {
 	return file_vault_proto_rawDescGZIP(), []int{8}
 }
 
-func (x *GetApiKeyRequest) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
 func (x *GetApiKeyRequest) GetName() string {
 	if x != nil {
 		return x.Name
@@ -614,8 +606,12 @@ func (x *GetApiKeyRequest) GetName() string {
 type GetApiKeyResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
-	Secret        string                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"` // the primary secret field value
-	Fields        map[string]string      `protobuf:"bytes,3,rep,name=fields,proto3" json:"fields,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"`
+	Secret        string                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	Header        string                 `protobuf:"bytes,3,opt,name=header,proto3" json:"header,omitempty"`
+	Prefix        string                 `protobuf:"bytes,4,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	BaseUrl       string                 `protobuf:"bytes,5,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	DocsUrl       string                 `protobuf:"bytes,6,opt,name=docs_url,json=docsUrl,proto3" json:"docs_url,omitempty"`
+	Description   string                 `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -664,17 +660,44 @@ func (x *GetApiKeyResponse) GetSecret() string {
 	return ""
 }
 
-func (x *GetApiKeyResponse) GetFields() map[string]string {
+func (x *GetApiKeyResponse) GetHeader() string {
 	if x != nil {
-		return x.Fields
+		return x.Header
 	}
-	return nil
+	return ""
+}
+
+func (x *GetApiKeyResponse) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
+	}
+	return ""
+}
+
+func (x *GetApiKeyResponse) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *GetApiKeyResponse) GetDocsUrl() string {
+	if x != nil {
+		return x.DocsUrl
+	}
+	return ""
+}
+
+func (x *GetApiKeyResponse) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
 }
 
 type DescribeCredentialRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -709,13 +732,6 @@ func (*DescribeCredentialRequest) Descriptor() ([]byte, []int) {
 	return file_vault_proto_rawDescGZIP(), []int{10}
 }
 
-func (x *DescribeCredentialRequest) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
 func (x *DescribeCredentialRequest) GetName() string {
 	if x != nil {
 		return x.Name
@@ -726,7 +742,11 @@ func (x *DescribeCredentialRequest) GetName() string {
 type DescribeCredentialResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Found         bool                   `protobuf:"varint,1,opt,name=found,proto3" json:"found,omitempty"`
-	Shape         *CredentialShape       `protobuf:"bytes,2,opt,name=shape,proto3" json:"shape,omitempty"`
+	Header        string                 `protobuf:"bytes,2,opt,name=header,proto3" json:"header,omitempty"`
+	Prefix        string                 `protobuf:"bytes,3,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	BaseUrl       string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	DocsUrl       string                 `protobuf:"bytes,5,opt,name=docs_url,json=docsUrl,proto3" json:"docs_url,omitempty"`
+	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -768,20 +788,52 @@ func (x *DescribeCredentialResponse) GetFound() bool {
 	return false
 }
 
-func (x *DescribeCredentialResponse) GetShape() *CredentialShape {
+func (x *DescribeCredentialResponse) GetHeader() string {
 	if x != nil {
-		return x.Shape
+		return x.Header
 	}
-	return nil
+	return ""
+}
+
+func (x *DescribeCredentialResponse) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
+	}
+	return ""
+}
+
+func (x *DescribeCredentialResponse) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *DescribeCredentialResponse) GetDocsUrl() string {
+	if x != nil {
+		return x.DocsUrl
+	}
+	return ""
+}
+
+func (x *DescribeCredentialResponse) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
 }
 
 type ApiKeyItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Provider      string                 `protobuf:"bytes,2,opt,name=provider,proto3" json:"provider,omitempty"`
-	Name          string                 `protobuf:"bytes,3,opt,name=name,proto3" json:"name,omitempty"`
-	CreatedAt     string                 `protobuf:"bytes,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`      // ISO 8601
-	LastUsedAt    string                 `protobuf:"bytes,5,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"` // ISO 8601 or empty
+	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	BaseUrl       string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	DocsUrl       string                 `protobuf:"bytes,5,opt,name=docs_url,json=docsUrl,proto3" json:"docs_url,omitempty"`
+	Header        string                 `protobuf:"bytes,6,opt,name=header,proto3" json:"header,omitempty"`
+	Prefix        string                 `protobuf:"bytes,7,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	CreatedAt     string                 `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	LastUsedAt    string                 `protobuf:"bytes,9,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -823,16 +875,44 @@ func (x *ApiKeyItem) GetId() string {
 	return ""
 }
 
-func (x *ApiKeyItem) GetProvider() string {
+func (x *ApiKeyItem) GetName() string {
 	if x != nil {
-		return x.Provider
+		return x.Name
 	}
 	return ""
 }
 
-func (x *ApiKeyItem) GetName() string {
+func (x *ApiKeyItem) GetDescription() string {
 	if x != nil {
-		return x.Name
+		return x.Description
+	}
+	return ""
+}
+
+func (x *ApiKeyItem) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *ApiKeyItem) GetDocsUrl() string {
+	if x != nil {
+		return x.DocsUrl
+	}
+	return ""
+}
+
+func (x *ApiKeyItem) GetHeader() string {
+	if x != nil {
+		return x.Header
+	}
+	return ""
+}
+
+func (x *ApiKeyItem) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
 	}
 	return ""
 }
@@ -933,9 +1013,13 @@ func (x *ListApiKeysResponse) GetItems() []*ApiKeyItem {
 
 type CreateApiKeyRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
-	Provider      string                 `protobuf:"bytes,1,opt,name=provider,proto3" json:"provider,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Fields        map[string]string      `protobuf:"bytes,3,rep,name=fields,proto3" json:"fields,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // validated against the provider manifest
+	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
+	Secret        string                 `protobuf:"bytes,2,opt,name=secret,proto3" json:"secret,omitempty"`
+	Description   string                 `protobuf:"bytes,3,opt,name=description,proto3" json:"description,omitempty"`
+	BaseUrl       string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
+	DocsUrl       string                 `protobuf:"bytes,5,opt,name=docs_url,json=docsUrl,proto3" json:"docs_url,omitempty"`
+	Header        string                 `protobuf:"bytes,6,opt,name=header,proto3" json:"header,omitempty"`
+	Prefix        string                 `protobuf:"bytes,7,opt,name=prefix,proto3" json:"prefix,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -970,13 +1054,6 @@ func (*CreateApiKeyRequest) Descriptor() ([]byte, []int) {
 	return file_vault_proto_rawDescGZIP(), []int{15}
 }
 
-func (x *CreateApiKeyRequest) GetProvider() string {
-	if x != nil {
-		return x.Provider
-	}
-	return ""
-}
-
 func (x *CreateApiKeyRequest) GetName() string {
 	if x != nil {
 		return x.Name
@@ -984,11 +1061,46 @@ func (x *CreateApiKeyRequest) GetName() string {
 	return ""
 }
 
-func (x *CreateApiKeyRequest) GetFields() map[string]string {
+func (x *CreateApiKeyRequest) GetSecret() string {
 	if x != nil {
-		return x.Fields
+		return x.Secret
 	}
-	return nil
+	return ""
+}
+
+func (x *CreateApiKeyRequest) GetDescription() string {
+	if x != nil {
+		return x.Description
+	}
+	return ""
+}
+
+func (x *CreateApiKeyRequest) GetBaseUrl() string {
+	if x != nil {
+		return x.BaseUrl
+	}
+	return ""
+}
+
+func (x *CreateApiKeyRequest) GetDocsUrl() string {
+	if x != nil {
+		return x.DocsUrl
+	}
+	return ""
+}
+
+func (x *CreateApiKeyRequest) GetHeader() string {
+	if x != nil {
+		return x.Header
+	}
+	return ""
+}
+
+func (x *CreateApiKeyRequest) GetPrefix() string {
+	if x != nil {
+		return x.Prefix
+	}
+	return ""
 }
 
 type DeleteApiKeyRequest struct {
@@ -2059,42 +2171,50 @@ const file_vault_proto_rawDesc = "" +
 	"\x11last_refreshed_at\x18\x05 \x01(\tR\x0flastRefreshedAt\x12\x16\n" +
 	"\x06scopes\x18\x06 \x03(\tR\x06scopes\"W\n" +
 	"\x17ListOAuthTokensResponse\x12<\n" +
-	"\x05items\x18\x01 \x03(\v2&.donkeywork.vault.v1.OAuthTokenSummaryR\x05items\"B\n" +
-	"\x10GetApiKeyRequest\x12\x1a\n" +
-	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"\xc8\x01\n" +
+	"\x05items\x18\x01 \x03(\v2&.donkeywork.vault.v1.OAuthTokenSummaryR\x05items\"&\n" +
+	"\x10GetApiKeyRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xc9\x01\n" +
 	"\x11GetApiKeyResponse\x12\x14\n" +
 	"\x05found\x18\x01 \x01(\bR\x05found\x12\x16\n" +
-	"\x06secret\x18\x02 \x01(\tR\x06secret\x12J\n" +
-	"\x06fields\x18\x03 \x03(\v22.donkeywork.vault.v1.GetApiKeyResponse.FieldsEntryR\x06fields\x1a9\n" +
-	"\vFieldsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"K\n" +
-	"\x19DescribeCredentialRequest\x12\x1a\n" +
-	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\"n\n" +
+	"\x06secret\x18\x02 \x01(\tR\x06secret\x12\x16\n" +
+	"\x06header\x18\x03 \x01(\tR\x06header\x12\x16\n" +
+	"\x06prefix\x18\x04 \x01(\tR\x06prefix\x12\x19\n" +
+	"\bbase_url\x18\x05 \x01(\tR\abaseUrl\x12\x19\n" +
+	"\bdocs_url\x18\x06 \x01(\tR\adocsUrl\x12 \n" +
+	"\vdescription\x18\a \x01(\tR\vdescription\"/\n" +
+	"\x19DescribeCredentialRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xba\x01\n" +
 	"\x1aDescribeCredentialResponse\x12\x14\n" +
-	"\x05found\x18\x01 \x01(\bR\x05found\x12:\n" +
-	"\x05shape\x18\x02 \x01(\v2$.donkeywork.vault.v1.CredentialShapeR\x05shape\"\x8d\x01\n" +
+	"\x05found\x18\x01 \x01(\bR\x05found\x12\x16\n" +
+	"\x06header\x18\x02 \x01(\tR\x06header\x12\x16\n" +
+	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x19\n" +
+	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12\x19\n" +
+	"\bdocs_url\x18\x05 \x01(\tR\adocsUrl\x12 \n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\"\xf9\x01\n" +
 	"\n" +
 	"ApiKeyItem\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12\x1a\n" +
-	"\bprovider\x18\x02 \x01(\tR\bprovider\x12\x12\n" +
-	"\x04name\x18\x03 \x01(\tR\x04name\x12\x1d\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
+	"\x04name\x18\x02 \x01(\tR\x04name\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
+	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12\x19\n" +
+	"\bdocs_url\x18\x05 \x01(\tR\adocsUrl\x12\x16\n" +
+	"\x06header\x18\x06 \x01(\tR\x06header\x12\x16\n" +
+	"\x06prefix\x18\a \x01(\tR\x06prefix\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x04 \x01(\tR\tcreatedAt\x12 \n" +
-	"\flast_used_at\x18\x05 \x01(\tR\n" +
+	"created_at\x18\b \x01(\tR\tcreatedAt\x12 \n" +
+	"\flast_used_at\x18\t \x01(\tR\n" +
 	"lastUsedAt\"\x14\n" +
 	"\x12ListApiKeysRequest\"L\n" +
 	"\x13ListApiKeysResponse\x125\n" +
-	"\x05items\x18\x01 \x03(\v2\x1f.donkeywork.vault.v1.ApiKeyItemR\x05items\"\xce\x01\n" +
-	"\x13CreateApiKeyRequest\x12\x1a\n" +
-	"\bprovider\x18\x01 \x01(\tR\bprovider\x12\x12\n" +
-	"\x04name\x18\x02 \x01(\tR\x04name\x12L\n" +
-	"\x06fields\x18\x03 \x03(\v24.donkeywork.vault.v1.CreateApiKeyRequest.FieldsEntryR\x06fields\x1a9\n" +
-	"\vFieldsEntry\x12\x10\n" +
-	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
-	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01\"%\n" +
+	"\x05items\x18\x01 \x03(\v2\x1f.donkeywork.vault.v1.ApiKeyItemR\x05items\"\xc9\x01\n" +
+	"\x13CreateApiKeyRequest\x12\x12\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
+	"\x06secret\x18\x02 \x01(\tR\x06secret\x12 \n" +
+	"\vdescription\x18\x03 \x01(\tR\vdescription\x12\x19\n" +
+	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12\x19\n" +
+	"\bdocs_url\x18\x05 \x01(\tR\adocsUrl\x12\x16\n" +
+	"\x06header\x18\x06 \x01(\tR\x06header\x12\x16\n" +
+	"\x06prefix\x18\a \x01(\tR\x06prefix\"%\n" +
 	"\x13DeleteApiKeyRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"0\n" +
 	"\x14DeleteApiKeyResponse\x12\x18\n" +
@@ -2197,7 +2317,7 @@ func file_vault_proto_rawDescGZIP() []byte {
 	return file_vault_proto_rawDescData
 }
 
-var file_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 39)
+var file_vault_proto_msgTypes = make([]protoimpl.MessageInfo, 37)
 var file_vault_proto_goTypes = []any{
 	(*ApiKeyField)(nil),                 // 0: donkeywork.vault.v1.ApiKeyField
 	(*ApiKeyProvider)(nil),              // 1: donkeywork.vault.v1.ApiKeyProvider
@@ -2236,65 +2356,60 @@ var file_vault_proto_goTypes = []any{
 	(*CompleteAuthResponse)(nil),        // 34: donkeywork.vault.v1.CompleteAuthResponse
 	nil,                                 // 35: donkeywork.vault.v1.ApiKeyProvider.StaticHeadersEntry
 	nil,                                 // 36: donkeywork.vault.v1.CredentialShape.StaticHeadersEntry
-	nil,                                 // 37: donkeywork.vault.v1.GetApiKeyResponse.FieldsEntry
-	nil,                                 // 38: donkeywork.vault.v1.CreateApiKeyRequest.FieldsEntry
 }
 var file_vault_proto_depIdxs = []int32{
 	35, // 0: donkeywork.vault.v1.ApiKeyProvider.static_headers:type_name -> donkeywork.vault.v1.ApiKeyProvider.StaticHeadersEntry
 	0,  // 1: donkeywork.vault.v1.ApiKeyProvider.fields:type_name -> donkeywork.vault.v1.ApiKeyField
 	36, // 2: donkeywork.vault.v1.CredentialShape.static_headers:type_name -> donkeywork.vault.v1.CredentialShape.StaticHeadersEntry
 	6,  // 3: donkeywork.vault.v1.ListOAuthTokensResponse.items:type_name -> donkeywork.vault.v1.OAuthTokenSummary
-	37, // 4: donkeywork.vault.v1.GetApiKeyResponse.fields:type_name -> donkeywork.vault.v1.GetApiKeyResponse.FieldsEntry
-	2,  // 5: donkeywork.vault.v1.DescribeCredentialResponse.shape:type_name -> donkeywork.vault.v1.CredentialShape
-	12, // 6: donkeywork.vault.v1.ListApiKeysResponse.items:type_name -> donkeywork.vault.v1.ApiKeyItem
-	38, // 7: donkeywork.vault.v1.CreateApiKeyRequest.fields:type_name -> donkeywork.vault.v1.CreateApiKeyRequest.FieldsEntry
-	1,  // 8: donkeywork.vault.v1.ListProvidersResponse.providers:type_name -> donkeywork.vault.v1.ApiKeyProvider
-	1,  // 9: donkeywork.vault.v1.ListApiKeyManifestsResponse.items:type_name -> donkeywork.vault.v1.ApiKeyProvider
-	22, // 10: donkeywork.vault.v1.ListOAuthManifestsResponse.items:type_name -> donkeywork.vault.v1.OAuthManifestMsg
-	27, // 11: donkeywork.vault.v1.ListOAuthConfigsResponse.items:type_name -> donkeywork.vault.v1.OAuthConfigItem
-	8,  // 12: donkeywork.vault.v1.CredentialStore.GetApiKey:input_type -> donkeywork.vault.v1.GetApiKeyRequest
-	10, // 13: donkeywork.vault.v1.CredentialStore.DescribeCredential:input_type -> donkeywork.vault.v1.DescribeCredentialRequest
-	3,  // 14: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:input_type -> donkeywork.vault.v1.GetOAuthAccessTokenRequest
-	5,  // 15: donkeywork.vault.v1.OAuthTokens.List:input_type -> donkeywork.vault.v1.ListOAuthTokensRequest
-	13, // 16: donkeywork.vault.v1.ApiKeys.List:input_type -> donkeywork.vault.v1.ListApiKeysRequest
-	15, // 17: donkeywork.vault.v1.ApiKeys.Create:input_type -> donkeywork.vault.v1.CreateApiKeyRequest
-	16, // 18: donkeywork.vault.v1.ApiKeys.Delete:input_type -> donkeywork.vault.v1.DeleteApiKeyRequest
-	18, // 19: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:input_type -> donkeywork.vault.v1.ListProvidersRequest
-	20, // 20: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:input_type -> donkeywork.vault.v1.GetProviderRequest
-	21, // 21: donkeywork.vault.v1.Manifests.ListApiKey:input_type -> donkeywork.vault.v1.Empty
-	1,  // 22: donkeywork.vault.v1.Manifests.UpsertApiKey:input_type -> donkeywork.vault.v1.ApiKeyProvider
-	21, // 23: donkeywork.vault.v1.Manifests.ListOAuth:input_type -> donkeywork.vault.v1.Empty
-	22, // 24: donkeywork.vault.v1.Manifests.UpsertOAuth:input_type -> donkeywork.vault.v1.OAuthManifestMsg
-	25, // 25: donkeywork.vault.v1.Manifests.Delete:input_type -> donkeywork.vault.v1.DeleteManifestRequest
-	21, // 26: donkeywork.vault.v1.OAuthProviderConfigs.List:input_type -> donkeywork.vault.v1.Empty
-	29, // 27: donkeywork.vault.v1.OAuthProviderConfigs.Upsert:input_type -> donkeywork.vault.v1.UpsertOAuthConfigRequest
-	30, // 28: donkeywork.vault.v1.OAuthProviderConfigs.Delete:input_type -> donkeywork.vault.v1.DeleteByIdRequest
-	31, // 29: donkeywork.vault.v1.OAuthFlow.Begin:input_type -> donkeywork.vault.v1.BeginAuthRequest
-	33, // 30: donkeywork.vault.v1.OAuthFlow.Complete:input_type -> donkeywork.vault.v1.CompleteAuthRequest
-	9,  // 31: donkeywork.vault.v1.CredentialStore.GetApiKey:output_type -> donkeywork.vault.v1.GetApiKeyResponse
-	11, // 32: donkeywork.vault.v1.CredentialStore.DescribeCredential:output_type -> donkeywork.vault.v1.DescribeCredentialResponse
-	4,  // 33: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:output_type -> donkeywork.vault.v1.GetOAuthAccessTokenResponse
-	7,  // 34: donkeywork.vault.v1.OAuthTokens.List:output_type -> donkeywork.vault.v1.ListOAuthTokensResponse
-	14, // 35: donkeywork.vault.v1.ApiKeys.List:output_type -> donkeywork.vault.v1.ListApiKeysResponse
-	12, // 36: donkeywork.vault.v1.ApiKeys.Create:output_type -> donkeywork.vault.v1.ApiKeyItem
-	17, // 37: donkeywork.vault.v1.ApiKeys.Delete:output_type -> donkeywork.vault.v1.DeleteApiKeyResponse
-	19, // 38: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:output_type -> donkeywork.vault.v1.ListProvidersResponse
-	1,  // 39: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:output_type -> donkeywork.vault.v1.ApiKeyProvider
-	23, // 40: donkeywork.vault.v1.Manifests.ListApiKey:output_type -> donkeywork.vault.v1.ListApiKeyManifestsResponse
-	1,  // 41: donkeywork.vault.v1.Manifests.UpsertApiKey:output_type -> donkeywork.vault.v1.ApiKeyProvider
-	24, // 42: donkeywork.vault.v1.Manifests.ListOAuth:output_type -> donkeywork.vault.v1.ListOAuthManifestsResponse
-	22, // 43: donkeywork.vault.v1.Manifests.UpsertOAuth:output_type -> donkeywork.vault.v1.OAuthManifestMsg
-	26, // 44: donkeywork.vault.v1.Manifests.Delete:output_type -> donkeywork.vault.v1.DeleteResponse
-	28, // 45: donkeywork.vault.v1.OAuthProviderConfigs.List:output_type -> donkeywork.vault.v1.ListOAuthConfigsResponse
-	27, // 46: donkeywork.vault.v1.OAuthProviderConfigs.Upsert:output_type -> donkeywork.vault.v1.OAuthConfigItem
-	26, // 47: donkeywork.vault.v1.OAuthProviderConfigs.Delete:output_type -> donkeywork.vault.v1.DeleteResponse
-	32, // 48: donkeywork.vault.v1.OAuthFlow.Begin:output_type -> donkeywork.vault.v1.BeginAuthResponse
-	34, // 49: donkeywork.vault.v1.OAuthFlow.Complete:output_type -> donkeywork.vault.v1.CompleteAuthResponse
-	31, // [31:50] is the sub-list for method output_type
-	12, // [12:31] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	12, // 4: donkeywork.vault.v1.ListApiKeysResponse.items:type_name -> donkeywork.vault.v1.ApiKeyItem
+	1,  // 5: donkeywork.vault.v1.ListProvidersResponse.providers:type_name -> donkeywork.vault.v1.ApiKeyProvider
+	1,  // 6: donkeywork.vault.v1.ListApiKeyManifestsResponse.items:type_name -> donkeywork.vault.v1.ApiKeyProvider
+	22, // 7: donkeywork.vault.v1.ListOAuthManifestsResponse.items:type_name -> donkeywork.vault.v1.OAuthManifestMsg
+	27, // 8: donkeywork.vault.v1.ListOAuthConfigsResponse.items:type_name -> donkeywork.vault.v1.OAuthConfigItem
+	8,  // 9: donkeywork.vault.v1.CredentialStore.GetApiKey:input_type -> donkeywork.vault.v1.GetApiKeyRequest
+	10, // 10: donkeywork.vault.v1.CredentialStore.DescribeCredential:input_type -> donkeywork.vault.v1.DescribeCredentialRequest
+	3,  // 11: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:input_type -> donkeywork.vault.v1.GetOAuthAccessTokenRequest
+	5,  // 12: donkeywork.vault.v1.OAuthTokens.List:input_type -> donkeywork.vault.v1.ListOAuthTokensRequest
+	13, // 13: donkeywork.vault.v1.ApiKeys.List:input_type -> donkeywork.vault.v1.ListApiKeysRequest
+	15, // 14: donkeywork.vault.v1.ApiKeys.Create:input_type -> donkeywork.vault.v1.CreateApiKeyRequest
+	16, // 15: donkeywork.vault.v1.ApiKeys.Delete:input_type -> donkeywork.vault.v1.DeleteApiKeyRequest
+	18, // 16: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:input_type -> donkeywork.vault.v1.ListProvidersRequest
+	20, // 17: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:input_type -> donkeywork.vault.v1.GetProviderRequest
+	21, // 18: donkeywork.vault.v1.Manifests.ListApiKey:input_type -> donkeywork.vault.v1.Empty
+	1,  // 19: donkeywork.vault.v1.Manifests.UpsertApiKey:input_type -> donkeywork.vault.v1.ApiKeyProvider
+	21, // 20: donkeywork.vault.v1.Manifests.ListOAuth:input_type -> donkeywork.vault.v1.Empty
+	22, // 21: donkeywork.vault.v1.Manifests.UpsertOAuth:input_type -> donkeywork.vault.v1.OAuthManifestMsg
+	25, // 22: donkeywork.vault.v1.Manifests.Delete:input_type -> donkeywork.vault.v1.DeleteManifestRequest
+	21, // 23: donkeywork.vault.v1.OAuthProviderConfigs.List:input_type -> donkeywork.vault.v1.Empty
+	29, // 24: donkeywork.vault.v1.OAuthProviderConfigs.Upsert:input_type -> donkeywork.vault.v1.UpsertOAuthConfigRequest
+	30, // 25: donkeywork.vault.v1.OAuthProviderConfigs.Delete:input_type -> donkeywork.vault.v1.DeleteByIdRequest
+	31, // 26: donkeywork.vault.v1.OAuthFlow.Begin:input_type -> donkeywork.vault.v1.BeginAuthRequest
+	33, // 27: donkeywork.vault.v1.OAuthFlow.Complete:input_type -> donkeywork.vault.v1.CompleteAuthRequest
+	9,  // 28: donkeywork.vault.v1.CredentialStore.GetApiKey:output_type -> donkeywork.vault.v1.GetApiKeyResponse
+	11, // 29: donkeywork.vault.v1.CredentialStore.DescribeCredential:output_type -> donkeywork.vault.v1.DescribeCredentialResponse
+	4,  // 30: donkeywork.vault.v1.CredentialStore.GetOAuthAccessToken:output_type -> donkeywork.vault.v1.GetOAuthAccessTokenResponse
+	7,  // 31: donkeywork.vault.v1.OAuthTokens.List:output_type -> donkeywork.vault.v1.ListOAuthTokensResponse
+	14, // 32: donkeywork.vault.v1.ApiKeys.List:output_type -> donkeywork.vault.v1.ListApiKeysResponse
+	12, // 33: donkeywork.vault.v1.ApiKeys.Create:output_type -> donkeywork.vault.v1.ApiKeyItem
+	17, // 34: donkeywork.vault.v1.ApiKeys.Delete:output_type -> donkeywork.vault.v1.DeleteApiKeyResponse
+	19, // 35: donkeywork.vault.v1.ApiKeyCatalog.ListProviders:output_type -> donkeywork.vault.v1.ListProvidersResponse
+	1,  // 36: donkeywork.vault.v1.ApiKeyCatalog.GetProvider:output_type -> donkeywork.vault.v1.ApiKeyProvider
+	23, // 37: donkeywork.vault.v1.Manifests.ListApiKey:output_type -> donkeywork.vault.v1.ListApiKeyManifestsResponse
+	1,  // 38: donkeywork.vault.v1.Manifests.UpsertApiKey:output_type -> donkeywork.vault.v1.ApiKeyProvider
+	24, // 39: donkeywork.vault.v1.Manifests.ListOAuth:output_type -> donkeywork.vault.v1.ListOAuthManifestsResponse
+	22, // 40: donkeywork.vault.v1.Manifests.UpsertOAuth:output_type -> donkeywork.vault.v1.OAuthManifestMsg
+	26, // 41: donkeywork.vault.v1.Manifests.Delete:output_type -> donkeywork.vault.v1.DeleteResponse
+	28, // 42: donkeywork.vault.v1.OAuthProviderConfigs.List:output_type -> donkeywork.vault.v1.ListOAuthConfigsResponse
+	27, // 43: donkeywork.vault.v1.OAuthProviderConfigs.Upsert:output_type -> donkeywork.vault.v1.OAuthConfigItem
+	26, // 44: donkeywork.vault.v1.OAuthProviderConfigs.Delete:output_type -> donkeywork.vault.v1.DeleteResponse
+	32, // 45: donkeywork.vault.v1.OAuthFlow.Begin:output_type -> donkeywork.vault.v1.BeginAuthResponse
+	34, // 46: donkeywork.vault.v1.OAuthFlow.Complete:output_type -> donkeywork.vault.v1.CompleteAuthResponse
+	28, // [28:47] is the sub-list for method output_type
+	9,  // [9:28] is the sub-list for method input_type
+	9,  // [9:9] is the sub-list for extension type_name
+	9,  // [9:9] is the sub-list for extension extendee
+	0,  // [0:9] is the sub-list for field type_name
 }
 
 func init() { file_vault_proto_init() }
@@ -2308,7 +2423,7 @@ func file_vault_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_vault_proto_rawDesc), len(file_vault_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   39,
+			NumMessages:   37,
 			NumExtensions: 0,
 			NumServices:   7,
 		},

@@ -18,13 +18,10 @@ public sealed class ApiKeysGrpcService(IApiKeyService apiKeys) : ApiKeys.ApiKeys
     {
         try
         {
-            var fields = request.Fields.ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-            var stored = await apiKeys.CreateAsync(request.Provider, request.Name, fields, context.CancellationToken);
+            var stored = await apiKeys.CreateAsync(
+                request.Name, request.Secret, request.Description, request.BaseUrl, request.DocsUrl,
+                request.Header, request.Prefix, context.CancellationToken);
             return ToItem(stored);
-        }
-        catch (ManifestNotFoundException ex)
-        {
-            throw new RpcException(new Status(StatusCode.NotFound, ex.Message));
         }
         catch (CredentialValidationException ex)
         {
@@ -38,7 +35,6 @@ public sealed class ApiKeysGrpcService(IApiKeyService apiKeys) : ApiKeys.ApiKeys
         {
             throw new RpcException(new Status(StatusCode.InvalidArgument, "invalid id."));
         }
-
         var deleted = await apiKeys.DeleteAsync(id, context.CancellationToken);
         return new DeleteApiKeyResponse { Deleted = deleted };
     }
@@ -46,8 +42,12 @@ public sealed class ApiKeysGrpcService(IApiKeyService apiKeys) : ApiKeys.ApiKeys
     private static ApiKeyItem ToItem(StoredApiKey k) => new()
     {
         Id = k.Id.ToString(),
-        Provider = k.Provider,
         Name = k.Name,
+        Description = k.Description ?? string.Empty,
+        BaseUrl = k.BaseUrl ?? string.Empty,
+        DocsUrl = k.DocsUrl ?? string.Empty,
+        Header = k.Header ?? string.Empty,
+        Prefix = k.Prefix ?? string.Empty,
         CreatedAt = k.CreatedAt.ToString("o"),
         LastUsedAt = k.LastUsedAt?.ToString("o") ?? string.Empty,
     };

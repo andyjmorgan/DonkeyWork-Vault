@@ -13,7 +13,7 @@ export function Header({ me }: { me: Me | null }) {
   return (
     <header className="flex h-14 items-center justify-between border-b border-border px-4">
       <div className="flex items-center gap-2 font-semibold">
-        <span className="grid h-7 w-7 place-items-center rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 text-xs text-white">DW</span>
+        <img src="/donkeywork.png" alt="DonkeyWork" className="h-8 w-8 shrink-0" />
         <span>DonkeyWork <span className="text-accent">Vault</span></span>
       </div>
       <div className="flex items-center gap-1">

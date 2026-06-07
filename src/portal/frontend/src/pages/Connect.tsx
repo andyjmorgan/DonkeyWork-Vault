@@ -6,6 +6,7 @@ import { Input } from '../ui/components/input'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
 import { api, type OAuthConfigItem, type OAuthProvider, type OAuthTokenItem } from '../api'
+import { ProviderSelect } from '../components/ProviderSelect'
 
 const lbl = 'mb-1 block text-xs text-muted-foreground'
 
@@ -52,10 +53,8 @@ export function ConnectPage() {
         <CardContent className="space-y-3">
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
-              <label className={lbl}>Provider</label>
-              <select className="w-full rounded-xl border border-input bg-background px-3 py-2 text-sm" value={provider} onChange={(e) => setProvider(e.target.value)}>
-                {providers.map((p) => <option key={p.key} value={p.key}>{p.name}</option>)}
-              </select>
+              <Label className={lbl}>Provider</Label>
+              <ProviderSelect value={provider} onChange={setProvider} options={providers.map((p) => ({ key: p.key, name: p.name }))} />
             </div>
             <div><Label className={lbl}>Client ID</Label><Input value={clientId} onChange={(e) => setClientId(e.target.value)} /></div>
             <div><Label className={lbl}>Client secret</Label><Input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="(blank keeps existing)" /></div>

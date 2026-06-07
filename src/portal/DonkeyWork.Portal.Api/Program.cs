@@ -98,26 +98,21 @@ api.MapGet("/providers/{key}", async (string key, ApiKeyCatalog.ApiKeyCatalogCli
 api.MapGet("/api-keys", async (ApiKeys.ApiKeysClient client) =>
 {
     var resp = await client.ListAsync(new ListApiKeysRequest());
-    return Results.Ok(resp.Items.Select(k => new { k.Id, k.Provider, k.Name, k.CreatedAt, k.LastUsedAt }));
+    return Results.Ok(resp.Items.Select(k => new { k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.Header, k.Prefix, k.CreatedAt, k.LastUsedAt }));
 });
 
 api.MapPost("/api-keys", async (CreateApiKeyDto dto, ApiKeys.ApiKeysClient client) =>
 {
     try
     {
-        var req = new CreateApiKeyRequest { Provider = dto.Provider, Name = dto.Name };
-        foreach (var (k, v) in dto.Fields ?? new())
+        var item = await client.CreateAsync(new CreateApiKeyRequest
         {
-            req.Fields[k] = v;
-        }
-        var item = await client.CreateAsync(req);
-        return Results.Ok(new { item.Id, item.Provider, item.Name, item.CreatedAt });
+            Name = dto.Name, Secret = dto.Secret ?? "", Description = dto.Description ?? "",
+            BaseUrl = dto.BaseUrl ?? "", DocsUrl = dto.DocsUrl ?? "", Header = dto.Header ?? "", Prefix = dto.Prefix ?? "",
+        });
+        return Results.Ok(new { item.Id, item.Name });
     }
     catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.InvalidArgument)
-    {
-        return Results.BadRequest(new { error = ex.Status.Detail });
-    }
-    catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
     {
         return Results.BadRequest(new { error = ex.Status.Detail });
     }
@@ -231,7 +226,7 @@ static object MapProvider(ApiKeyProvider p) => new
     fields = p.Fields.Select(f => new { f.Name, f.Label, f.Secret, f.Required }),
 };
 
-internal sealed record CreateApiKeyDto(string Provider, string Name, Dictionary<string, string>? Fields);
+internal sealed record CreateApiKeyDto(string Name, string? Secret, string? Description, string? BaseUrl, string? DocsUrl, string? Header, string? Prefix);
 internal sealed record ApiKeyFieldDto(string Name, string? Label, bool Secret, bool Required);
 internal sealed record ApiKeyManifestDto(string Key, string Name, string? IconUrl, string? DocsUrl, string? AuthScheme, string? Header, string? Prefix, string? BaseUrl, Dictionary<string, string>? StaticHeaders, List<ApiKeyFieldDto>? Fields);
 internal sealed record OAuthManifestDto(string Key, string? Name, string? AuthorizationEndpoint, string? TokenEndpoint, string? UserinfoEndpoint, string? ScopeDelimiter, List<string>? DefaultScopes);

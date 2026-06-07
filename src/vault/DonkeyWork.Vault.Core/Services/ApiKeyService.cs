@@ -1,109 +1,79 @@
-using System.Text.Json;
 using DonkeyWork.Vault.Contracts;
 using DonkeyWork.Vault.Core.Crypto;
-using DonkeyWork.Vault.Core.Manifests;
 using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace DonkeyWork.Vault.Core.Services;
 
-public sealed record StoredApiKey(Guid Id, string Provider, string Name, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
+/// <summary>
+/// A stored, self-describing API key. Metadata (description/base url/docs/header/prefix) lets
+/// an agent discover what the credential is, where it's used and how to send it — without any
+/// fixed provider "type".
+/// </summary>
+public sealed record StoredApiKey(
+    Guid Id, string Name, string? Description, string? BaseUrl, string? DocsUrl,
+    string? Header, string? Prefix, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
 
-public sealed record ApiKeySecret(string Secret, IReadOnlyDictionary<string, string> Fields);
+public sealed record ApiKeySecret(
+    string Secret, string? Header, string? Prefix, string? BaseUrl, string? DocsUrl, string? Description);
 
-/// <summary>Thrown when a referenced provider manifest does not exist.</summary>
-public sealed class ManifestNotFoundException(string provider) : Exception($"Unknown provider '{provider}'.")
-{
-    public string Provider { get; } = provider;
-}
-
-/// <summary>Thrown when create input fails manifest validation.</summary>
+/// <summary>Thrown when create input is invalid.</summary>
 public sealed class CredentialValidationException(string message) : Exception(message);
 
 public interface IApiKeyService
 {
-    Task<StoredApiKey> CreateAsync(string provider, string name, IReadOnlyDictionary<string, string> fields, CancellationToken ct);
+    Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, CancellationToken ct);
     Task<IReadOnlyList<StoredApiKey>> ListAsync(CancellationToken ct);
-    Task<ApiKeySecret?> GetAsync(string provider, string? name, CancellationToken ct);
+    Task<ApiKeySecret?> GetByNameAsync(string name, CancellationToken ct);
     Task<bool> DeleteAsync(Guid id, CancellationToken ct);
-    Task<ApiKeyManifest?> DescribeShapeAsync(string provider, CancellationToken ct);
 }
 
 public sealed class ApiKeyService(
-    VaultDbContext db,
-    IEnvelopeCipher cipher,
-    ManifestResolver manifests,
-    IVaultCallerContext caller) : IApiKeyService
+    VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller) : IApiKeyService
 {
-    public async Task<StoredApiKey> CreateAsync(string provider, string name, IReadOnlyDictionary<string, string> fields, CancellationToken ct)
+    public async Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, CancellationToken ct)
     {
-        var manifest = await manifests.GetApiKeyAsync(provider, ct) ?? throw new ManifestNotFoundException(provider);
-
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new CredentialValidationException("name is required.");
         }
-
-        foreach (var f in manifest.Fields.Where(f => f.Required))
+        if (string.IsNullOrEmpty(secret))
         {
-            if (!fields.TryGetValue(f.Name, out var v) || string.IsNullOrEmpty(v))
-            {
-                throw new CredentialValidationException($"missing required field '{f.Name}'.");
-            }
+            throw new CredentialValidationException("secret is required.");
         }
 
-        var known = manifest.Fields.Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
-        var filtered = fields.Where(kv => known.Contains(kv.Key))
-            .ToDictionary(kv => kv.Key, kv => kv.Value, StringComparer.Ordinal);
-
-        var plaintext = JsonSerializer.SerializeToUtf8Bytes(filtered);
-
-        var entity = new ApiKeyEntity
+        var existing = await db.ApiKeys.FirstOrDefaultAsync(k => k.Name == name, ct);
+        if (existing is null)
         {
-            UserId = caller.UserId,
-            TenantId = caller.TenantId,
-            ProviderKey = provider,
-            Name = name,
-            FieldsCipher = cipher.Encrypt(plaintext),
-        };
+            existing = new ApiKeyEntity { UserId = caller.UserId, TenantId = caller.TenantId, ProviderKey = string.Empty, Name = name };
+            db.ApiKeys.Add(existing);
+        }
+        existing.Description = description;
+        existing.BaseUrl = baseUrl;
+        existing.DocsUrl = docsUrl;
+        existing.HeaderName = string.IsNullOrWhiteSpace(header) ? "Authorization" : header;
+        existing.Prefix = prefix;
+        existing.FieldsCipher = cipher.EncryptString(secret);
 
-        db.ApiKeys.Add(entity);
         await db.SaveChangesAsync(ct);
-
-        return new StoredApiKey(entity.Id, entity.ProviderKey, entity.Name, entity.CreatedAt, entity.LastUsedAt);
+        return ToStored(existing);
     }
 
     public async Task<IReadOnlyList<StoredApiKey>> ListAsync(CancellationToken ct) =>
-        await db.ApiKeys
-            .OrderByDescending(k => k.CreatedAt)
-            .Select(k => new StoredApiKey(k.Id, k.ProviderKey, k.Name, k.CreatedAt, k.LastUsedAt))
-            .ToListAsync(ct);
+        (await db.ApiKeys.OrderByDescending(k => k.CreatedAt).ToListAsync(ct)).Select(ToStored).ToList();
 
-    public async Task<ApiKeySecret?> GetAsync(string provider, string? name, CancellationToken ct)
+    public async Task<ApiKeySecret?> GetByNameAsync(string name, CancellationToken ct)
     {
-        var query = db.ApiKeys.Where(k => k.ProviderKey == provider);
-        if (!string.IsNullOrEmpty(name))
-        {
-            query = query.Where(k => k.Name == name);
-        }
-
-        var entity = await query.OrderByDescending(k => k.CreatedAt).FirstOrDefaultAsync(ct);
+        var entity = await db.ApiKeys.FirstOrDefaultAsync(k => k.Name == name, ct);
         if (entity is null)
         {
             return null;
         }
-
-        var plaintext = cipher.Decrypt(entity.FieldsCipher);
-        var dict = JsonSerializer.Deserialize<Dictionary<string, string>>(plaintext) ?? new();
-
-        var primary = (await manifests.GetApiKeyAsync(provider, ct))?.PrimarySecretField ?? "api_key";
-        var secret = dict.TryGetValue(primary, out var v) ? v : dict.Values.FirstOrDefault() ?? string.Empty;
-
+        var secret = cipher.DecryptToString(entity.FieldsCipher);
         entity.LastUsedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-
-        return new ApiKeySecret(secret, dict);
+        return new ApiKeySecret(secret, entity.HeaderName, entity.Prefix, entity.BaseUrl, entity.DocsUrl, entity.Description);
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct)
@@ -113,11 +83,11 @@ public sealed class ApiKeyService(
         {
             return false;
         }
-
         db.ApiKeys.Remove(entity);
         await db.SaveChangesAsync(ct);
         return true;
     }
 
-    public Task<ApiKeyManifest?> DescribeShapeAsync(string provider, CancellationToken ct) => manifests.GetApiKeyAsync(provider, ct);
+    private static StoredApiKey ToStored(ApiKeyEntity k) =>
+        new(k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.HeaderName, k.Prefix, k.CreatedAt, k.LastUsedAt);
 }

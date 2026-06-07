@@ -113,7 +113,7 @@ func cmdProviders() *cobra.Command {
 func cmdList() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List your stored API keys",
+		Short: "List your API keys with how to use each (header/prefix/base-url/docs)",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			conn, ctx, cancel := dial()
 			defer conn.Close()
@@ -123,9 +123,9 @@ func cmdList() *cobra.Command {
 				return err
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "PROVIDER\tNAME\tID\tCREATED")
+			fmt.Fprintln(w, "NAME\tDESCRIPTION\tHEADER\tPREFIX\tBASE URL\tDOCS")
 			for _, k := range resp.Items {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", k.Provider, k.Name, k.Id, k.CreatedAt)
+				fmt.Fprintf(w, "%s\t%s\t%s\t%q\t%s\t%s\n", k.Name, k.Description, k.Header, k.Prefix, k.BaseUrl, k.DocsUrl)
 			}
 			return w.Flush()
 		},
@@ -133,59 +133,54 @@ func cmdList() *cobra.Command {
 }
 
 func cmdGet() *cobra.Command {
-	var name string
-	c := &cobra.Command{
-		Use:   "get <provider>",
+	return &cobra.Command{
+		Use:   "get <name>",
 		Short: "Print a stored secret to stdout (for shell substitution)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			conn, ctx, cancel := dial()
 			defer conn.Close()
 			defer cancel()
-			resp, err := pb.NewCredentialStoreClient(conn).GetApiKey(ctx, &pb.GetApiKeyRequest{Provider: args[0], Name: name})
+			resp, err := pb.NewCredentialStoreClient(conn).GetApiKey(ctx, &pb.GetApiKeyRequest{Name: args[0]})
 			if err != nil {
 				return err
 			}
 			if !resp.Found {
-				fail("no credential for provider %q", args[0])
+				fail("no credential named %q", args[0])
 			}
 			fmt.Println(resp.Secret) // ONLY the secret to stdout
 			return nil
 		},
 	}
-	c.Flags().StringVar(&name, "name", "", "select among multiple stored keys")
-	return c
 }
 
 func cmdShape() *cobra.Command {
-	var name string
-	c := &cobra.Command{
-		Use:   "shape <provider>",
-		Short: "Print how to present the credential (base url, header, prefix, static headers)",
+	return &cobra.Command{
+		Use:   "shape <name>",
+		Short: "Print how to use the credential (description, base url, header, prefix, docs)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			conn, ctx, cancel := dial()
 			defer conn.Close()
 			defer cancel()
-			resp, err := pb.NewCredentialStoreClient(conn).DescribeCredential(ctx, &pb.DescribeCredentialRequest{Provider: args[0], Name: name})
+			resp, err := pb.NewCredentialStoreClient(conn).DescribeCredential(ctx, &pb.DescribeCredentialRequest{Name: args[0]})
 			if err != nil {
 				return err
 			}
-			if !resp.Found || resp.Shape == nil {
-				fail("no shape for provider %q", args[0])
+			if !resp.Found {
+				fail("no credential named %q", args[0])
 			}
 			out, _ := json.MarshalIndent(map[string]any{
-				"base_url":       resp.Shape.BaseUrl,
-				"header":         resp.Shape.Header,
-				"prefix":         resp.Shape.Prefix,
-				"static_headers": resp.Shape.StaticHeaders,
+				"description": resp.Description,
+				"base_url":    resp.BaseUrl,
+				"header":      resp.Header,
+				"prefix":      resp.Prefix,
+				"docs_url":    resp.DocsUrl,
 			}, "", "  ")
 			fmt.Println(string(out))
 			return nil
 		},
 	}
-	c.Flags().StringVar(&name, "name", "", "select among multiple stored keys")
-	return c
 }
 
 func cmdOAuthToken() *cobra.Command {
@@ -238,33 +233,31 @@ func cmdOAuthList() *cobra.Command {
 }
 
 func cmdCreate() *cobra.Command {
-	var name string
-	var fields []string
+	var secret, description, baseURL, docs, header, prefix string
 	c := &cobra.Command{
-		Use:   "create <provider>",
-		Short: "Store an API key (--field name=value, repeatable)",
+		Use:   "create <name>",
+		Short: "Store a self-describing API key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			fm := map[string]string{}
-			for _, f := range fields {
-				k, v, ok := strings.Cut(f, "=")
-				if !ok {
-					fail("bad --field %q (want name=value)", f)
-				}
-				fm[k] = v
-			}
 			conn, ctx, cancel := dial()
 			defer conn.Close()
 			defer cancel()
-			item, err := pb.NewApiKeysClient(conn).Create(ctx, &pb.CreateApiKeyRequest{Provider: args[0], Name: name, Fields: fm})
+			item, err := pb.NewApiKeysClient(conn).Create(ctx, &pb.CreateApiKeyRequest{
+				Name: args[0], Secret: secret, Description: description,
+				BaseUrl: baseURL, DocsUrl: docs, Header: header, Prefix: prefix,
+			})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "stored %s/%s (%s)\n", item.Provider, item.Name, item.Id)
+			fmt.Fprintf(os.Stderr, "stored %s (%s)\n", item.Name, item.Id)
 			return nil
 		},
 	}
-	c.Flags().StringVar(&name, "name", "default", "credential name")
-	c.Flags().StringArrayVar(&fields, "field", nil, "field as name=value (repeatable)")
+	c.Flags().StringVar(&secret, "secret", "", "the API key value (required)")
+	c.Flags().StringVar(&description, "description", "", "what this credential is for")
+	c.Flags().StringVar(&baseURL, "base-url", "", "host / base URL where it's used")
+	c.Flags().StringVar(&docs, "docs", "", "API documentation link")
+	c.Flags().StringVar(&header, "header", "Authorization", "header name to send")
+	c.Flags().StringVar(&prefix, "prefix", "", "optional value prefix, e.g. 'Bearer '")
 	return c
 }

@@ -23,7 +23,8 @@ export interface OAuthProvider {
   key: string; name: string; authorizationEndpoint: string; tokenEndpoint: string
   userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]
 }
-export interface ApiKeyItem { id: string; provider: string; name: string; createdAt: string; lastUsedAt: string }
+export interface ApiKeyItem { id: string; name: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string; createdAt: string; lastUsedAt: string }
+export interface NewApiKey { name: string; secret: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string }
 export interface OAuthTokenItem { id: string; provider: string; account: string; expiresAt: string; lastRefreshedAt: string; scopes: string[] }
 export interface OAuthConfigItem { id: string; provider: string; clientIdMasked: string; scopes: string[]; redirectUri: string; createdAt: string }
 export interface Me { userId: string; tenantId: string; email?: string; name?: string }
@@ -33,8 +34,7 @@ export const api = {
 
   // stored credentials
   apiKeys: () => authed('/api-keys') as Promise<ApiKeyItem[]>,
-  createApiKey: (provider: string, name: string, fields: Record<string, string>) =>
-    authed('/api-keys', { method: 'POST', body: JSON.stringify({ provider, name, fields }) }),
+  createApiKey: (k: NewApiKey) => authed('/api-keys', { method: 'POST', body: JSON.stringify(k) }),
   deleteApiKey: (id: string) => authed(`/api-keys/${id}`, { method: 'DELETE' }),
   oauthTokens: () => authed('/oauth/tokens') as Promise<OAuthTokenItem[]>,
 

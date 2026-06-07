@@ -6,6 +6,43 @@ namespace DonkeyWork.Vault.Api.Services;
 
 public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTokenService oauth) : CredentialStore.CredentialStoreBase
 {
+    public override async Task<GetApiKeyResponse> GetApiKey(GetApiKeyRequest request, ServerCallContext context)
+    {
+        var result = await apiKeys.GetByNameAsync(request.Name, context.CancellationToken);
+        if (result is null)
+        {
+            return new GetApiKeyResponse { Found = false };
+        }
+        return new GetApiKeyResponse
+        {
+            Found = true,
+            Secret = result.Secret,
+            Header = result.Header ?? string.Empty,
+            Prefix = result.Prefix ?? string.Empty,
+            BaseUrl = result.BaseUrl ?? string.Empty,
+            DocsUrl = result.DocsUrl ?? string.Empty,
+            Description = result.Description ?? string.Empty,
+        };
+    }
+
+    public override async Task<DescribeCredentialResponse> DescribeCredential(DescribeCredentialRequest request, ServerCallContext context)
+    {
+        var item = (await apiKeys.ListAsync(context.CancellationToken)).FirstOrDefault(k => k.Name == request.Name);
+        if (item is null)
+        {
+            return new DescribeCredentialResponse { Found = false };
+        }
+        return new DescribeCredentialResponse
+        {
+            Found = true,
+            Header = item.Header ?? string.Empty,
+            Prefix = item.Prefix ?? string.Empty,
+            BaseUrl = item.BaseUrl ?? string.Empty,
+            DocsUrl = item.DocsUrl ?? string.Empty,
+            Description = item.Description ?? string.Empty,
+        };
+    }
+
     public override async Task<GetOAuthAccessTokenResponse> GetOAuthAccessToken(GetOAuthAccessTokenRequest request, ServerCallContext context)
     {
         var account = string.IsNullOrEmpty(request.Account) ? null : request.Account;
@@ -29,44 +66,5 @@ public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTok
         {
             throw new RpcException(new Status(StatusCode.Unavailable, ex.Message));
         }
-    }
-
-    public override async Task<GetApiKeyResponse> GetApiKey(GetApiKeyRequest request, ServerCallContext context)
-    {
-        var name = string.IsNullOrEmpty(request.Name) ? null : request.Name;
-        var result = await apiKeys.GetAsync(request.Provider, name, context.CancellationToken);
-        if (result is null)
-        {
-            return new GetApiKeyResponse { Found = false };
-        }
-
-        var response = new GetApiKeyResponse { Found = true, Secret = result.Secret };
-        foreach (var (k, v) in result.Fields)
-        {
-            response.Fields[k] = v;
-        }
-        return response;
-    }
-
-    public override async Task<DescribeCredentialResponse> DescribeCredential(DescribeCredentialRequest request, ServerCallContext context)
-    {
-        var manifest = await apiKeys.DescribeShapeAsync(request.Provider, context.CancellationToken);
-        if (manifest is null)
-        {
-            return new DescribeCredentialResponse { Found = false };
-        }
-
-        var shape = new CredentialShape
-        {
-            BaseUrl = manifest.BaseUrl,
-            Header = manifest.Auth.Header,
-            Prefix = manifest.Auth.Prefix,
-        };
-        foreach (var (k, v) in manifest.Auth.StaticHeaders)
-        {
-            shape.StaticHeaders[k] = v;
-        }
-
-        return new DescribeCredentialResponse { Found = true, Shape = shape };
     }
 }

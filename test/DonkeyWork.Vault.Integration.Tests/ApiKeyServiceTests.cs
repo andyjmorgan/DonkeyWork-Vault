@@ -1,7 +1,6 @@
 using System.Text;
 using DonkeyWork.Vault.Contracts;
 using DonkeyWork.Vault.Core.Crypto;
-using DonkeyWork.Vault.Core.Manifests;
 using DonkeyWork.Vault.Core.Services;
 using DonkeyWork.Vault.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -14,10 +13,7 @@ namespace DonkeyWork.Vault.Integration.Tests;
 [Trait("Category", "Integration")]
 public sealed class ApiKeyServiceTests : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer _pg = new PostgreSqlBuilder()
-        .WithImage("postgres:17")
-        .WithDatabase("donkeywork_vault")
-        .Build();
+    private readonly PostgreSqlContainer _pg = new PostgreSqlBuilder().WithImage("postgres:17").WithDatabase("donkeywork_vault").Build();
 
     public Task InitializeAsync() => _pg.StartAsync();
     public Task DisposeAsync() => _pg.DisposeAsync().AsTask();
@@ -38,59 +34,42 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
 
         var cipher = new EnvelopeCipherService(new LocalKekProvider(Options.Create(new VaultCryptoOptions
         {
-            ActiveKekId = "local:v1",
-            Keks = new() { ["local:v1"] = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray()) },
+            ActiveKekId = "v1",
+            Keks = new() { ["v1"] = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray()) },
         })));
-
-        var resolver = new ManifestResolver(db, new ApiKeyManifestLoader(), new OAuthManifestLoader());
-        return (db, new ApiKeyService(db, cipher, resolver, caller));
+        return (db, new ApiKeyService(db, cipher, caller));
     }
 
     [Fact]
-    public async Task CreateThenGet_RoundTrips_AndStoresCiphertext()
+    public async Task CreateThenGet_RoundTrips_SelfDescribing_AndCiphertextAtRest()
     {
-        var caller = new FixedCaller(Guid.NewGuid());
-        var (db, svc) = await BuildAsync(caller);
+        var (db, svc) = await BuildAsync(new FixedCaller(Guid.NewGuid()));
         await using var _ = db;
 
-        var created = await svc.CreateAsync("grafana", "prod",
-            new Dictionary<string, string> { ["api_key"] = "secret-123" }, default);
-        Assert.NotEqual(Guid.Empty, created.Id);
+        await svc.CreateAsync("grafana", "secret-123", "Grafana prod", "https://grafana.donkeywork.dev",
+            "https://grafana.com/docs", "Authorization", "Bearer ", default);
 
-        // The persisted blob must not contain the plaintext secret.
         var raw = await db.ApiKeys.AsNoTracking().FirstAsync();
         Assert.DoesNotContain("secret-123", Encoding.UTF8.GetString(raw.FieldsCipher));
 
-        var got = await svc.GetAsync("grafana", null, default);
+        var got = await svc.GetByNameAsync("grafana", default);
         Assert.NotNull(got);
         Assert.Equal("secret-123", got!.Secret);
-
-        var shape = await svc.DescribeShapeAsync("grafana", default);
-        Assert.Equal("Authorization", shape!.Auth.Header);
-        Assert.Equal("Bearer ", shape.Auth.Prefix);
+        Assert.Equal("Authorization", got.Header);
+        Assert.Equal("Bearer ", got.Prefix);
+        Assert.Equal("https://grafana.donkeywork.dev", got.BaseUrl);
+        Assert.Equal("https://grafana.com/docs", got.DocsUrl);
+        Assert.Equal("Grafana prod", got.Description);
     }
 
     [Fact]
-    public async Task Create_MissingRequiredField_Throws()
+    public async Task Create_MissingSecret_Throws()
     {
-        var caller = new FixedCaller(Guid.NewGuid());
-        var (db, svc) = await BuildAsync(caller);
+        var (db, svc) = await BuildAsync(new FixedCaller(Guid.NewGuid()))
+            ;
         await using var _ = db;
-
         await Assert.ThrowsAsync<CredentialValidationException>(() =>
-            svc.CreateAsync("grafana", "prod", new Dictionary<string, string>(), default));
-    }
-
-    [Fact]
-    public async Task Create_UnknownProvider_Throws()
-    {
-        var caller = new FixedCaller(Guid.NewGuid());
-        var (db, svc) = await BuildAsync(caller);
-        await using var _ = db;
-
-        await Assert.ThrowsAsync<ManifestNotFoundException>(() =>
-            svc.CreateAsync("does-not-exist", "x",
-                new Dictionary<string, string> { ["api_key"] = "v" }, default));
+            svc.CreateAsync("x", "", null, null, null, "Authorization", null, default));
     }
 
     [Fact]
@@ -98,18 +77,9 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
     {
         var owner = new FixedCaller(Guid.NewGuid());
         var (db1, svc1) = await BuildAsync(owner);
-        await using (db1)
-        {
-            await svc1.CreateAsync("openai", "k", new Dictionary<string, string> { ["api_key"] = "owned" }, default);
-        }
+        await using (db1) { await svc1.CreateAsync("svc", "owned", null, null, null, "Authorization", "Bearer ", default); }
 
-        // A different user shares the DB but must not see the owner's row (query filter).
-        var other = new FixedCaller(Guid.NewGuid());
-        var (db2, svc2) = await BuildAsync(other);
-        await using (db2)
-        {
-            var got = await svc2.GetAsync("openai", null, default);
-            Assert.Null(got);
-        }
+        var (db2, svc2) = await BuildAsync(new FixedCaller(Guid.NewGuid()));
+        await using (db2) { Assert.Null(await svc2.GetByNameAsync("svc", default)); }
     }
 }
