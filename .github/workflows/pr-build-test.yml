@@ -1,0 +1,38 @@
+name: PR Build & Test
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-test:
+    name: Build & Test
+    runs-on: [self-hosted, Linux, X64]
+    env:
+      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Configure NuGet for local proxy
+        run: cp _nuget.config nuget.config
+
+      - name: Restore
+        run: dotnet restore DonkeyWork.Vault.slnx
+
+      - name: Build
+        run: dotnet build DonkeyWork.Vault.slnx -c Release --no-restore
+
+      - name: Test (unit tier)
+        run: dotnet test DonkeyWork.Vault.slnx -c Release --no-build --verbosity normal --filter "Category!=Integration"

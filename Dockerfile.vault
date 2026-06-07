@@ -1,0 +1,15 @@
+# DonkeyWork Vault — internal gRPC service
+FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+WORKDIR /src
+COPY . .
+# CI swaps in the in-cluster Nexus NuGet proxy; locally this no-ops to nuget.org.
+RUN cp _nuget.config nuget.config 2>/dev/null || true
+RUN dotnet restore src/vault/DonkeyWork.Vault.Api/DonkeyWork.Vault.Api.csproj
+RUN dotnet publish src/vault/DonkeyWork.Vault.Api/DonkeyWork.Vault.Api.csproj \
+    -c Release -o /app --no-restore /p:UseAppHost=false
+
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+WORKDIR /app
+COPY --from=build /app .
+EXPOSE 8080
+ENTRYPOINT ["dotnet", "DonkeyWork.Vault.Api.dll"]

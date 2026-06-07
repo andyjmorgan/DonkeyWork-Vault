@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\proto\DonkeyWork.Vault.Proto\DonkeyWork.Vault.Proto.csproj" />
+    <ProjectReference Include="..\..\vault\DonkeyWork.Vault.Contracts\DonkeyWork.Vault.Contracts.csproj" />
+  </ItemGroup>
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+</Project>

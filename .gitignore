@@ -1,0 +1,25 @@
+# .NET
+bin/
+obj/
+*.user
+artifacts/
+publish/
+*.binlog
+
+# Rider / VS
+.vs/
+.idea/
+
+# Node / frontend
+node_modules/
+dist/
+.vite/
+
+# Local env / secrets
+.env
+.env.*
+appsettings.*.Local.json
+*.local.json
+
+# OS
+.DS_Store
