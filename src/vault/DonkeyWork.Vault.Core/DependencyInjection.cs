@@ -16,8 +16,11 @@ public static class DependencyInjection
         services.AddSingleton<IKekProvider, LocalKekProvider>();
         services.AddSingleton<IEnvelopeCipher, EnvelopeCipherService>();
         services.AddSingleton<ApiKeyManifestLoader>();
+        services.AddSingleton<OAuthManifestLoader>();
 
+        services.AddHttpClient();
         services.AddScoped<IApiKeyService, ApiKeyService>();
+        services.AddScoped<IOAuthTokenService, OAuthTokenService>();
 
         return services;
     }

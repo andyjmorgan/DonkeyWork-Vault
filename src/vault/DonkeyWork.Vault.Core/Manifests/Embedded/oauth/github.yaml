@@ -1,0 +1,7 @@
+key: github
+name: GitHub
+authorization_endpoint: https://github.com/login/oauth/authorize
+token_endpoint: https://github.com/login/oauth/access_token
+userinfo_endpoint: https://api.github.com/user
+scope_delimiter: " "
+default_scopes: [read:user, user:email]

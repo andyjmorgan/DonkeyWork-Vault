@@ -77,7 +77,11 @@ func main() {
 
 	creds := &cobra.Command{Use: "creds", Short: "Manage and retrieve API-key credentials"}
 	creds.AddCommand(cmdList(), cmdGet(), cmdShape(), cmdCreate())
-	root.AddCommand(creds, cmdProviders())
+
+	oauth := &cobra.Command{Use: "oauth", Short: "Retrieve OAuth access tokens"}
+	oauth.AddCommand(cmdOAuthToken(), cmdOAuthList())
+
+	root.AddCommand(creds, oauth, cmdProviders())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
@@ -182,6 +186,55 @@ func cmdShape() *cobra.Command {
 	}
 	c.Flags().StringVar(&name, "name", "", "select among multiple stored keys")
 	return c
+}
+
+func cmdOAuthToken() *cobra.Command {
+	var account string
+	c := &cobra.Command{
+		Use:   "token <provider>",
+		Short: "Print a valid OAuth access token to stdout (auto-refreshed)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			conn, ctx, cancel := dial()
+			defer conn.Close()
+			defer cancel()
+			resp, err := pb.NewCredentialStoreClient(conn).GetOAuthAccessToken(ctx, &pb.GetOAuthAccessTokenRequest{Provider: args[0], Account: account})
+			if err != nil {
+				return err
+			}
+			if !resp.Found {
+				// Not connected. A browser/device connect flow would start here.
+				fmt.Fprintf(os.Stderr, "not connected to %s — no stored token\n", args[0])
+				os.Exit(2)
+			}
+			fmt.Println(resp.AccessToken) // ONLY the token to stdout
+			return nil
+		},
+	}
+	c.Flags().StringVar(&account, "account", "", "select among multiple connected accounts")
+	return c
+}
+
+func cmdOAuthList() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List connected OAuth providers",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			conn, ctx, cancel := dial()
+			defer conn.Close()
+			defer cancel()
+			resp, err := pb.NewOAuthTokensClient(conn).List(ctx, &pb.ListOAuthTokensRequest{})
+			if err != nil {
+				return err
+			}
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "PROVIDER\tACCOUNT\tEXPIRES\tSCOPES")
+			for _, t := range resp.Items {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Provider, t.Account, t.ExpiresAt, strings.Join(t.Scopes, " "))
+			}
+			return w.Flush()
+		},
+	}
 }
 
 func cmdCreate() *cobra.Command {

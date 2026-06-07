@@ -1,0 +1,14 @@
+namespace DonkeyWork.Vault.Persistence.Entities;
+
+/// <summary>
+/// Per-user OAuth app credentials for a provider (manifest id). client_id/secret are
+/// envelope-encrypted. Endpoints come from the provider manifest, not this row.
+/// </summary>
+public sealed class OAuthProviderConfigEntity : BaseEntity
+{
+    public string ProviderKey { get; set; } = string.Empty;
+    public byte[] ClientIdCipher { get; set; } = [];
+    public byte[] ClientSecretCipher { get; set; } = [];
+    public string? ScopesJson { get; set; }
+    public string? RedirectUri { get; set; }
+}

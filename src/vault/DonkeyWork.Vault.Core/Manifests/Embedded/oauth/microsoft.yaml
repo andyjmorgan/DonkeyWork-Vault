@@ -1,0 +1,7 @@
+key: microsoft
+name: Microsoft
+authorization_endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+token_endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/token
+userinfo_endpoint: https://graph.microsoft.com/oidc/userinfo
+scope_delimiter: " "
+default_scopes: [openid, email, profile, offline_access, User.Read]

@@ -4,8 +4,33 @@ using Grpc.Core;
 
 namespace DonkeyWork.Vault.Api.Services;
 
-public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys) : CredentialStore.CredentialStoreBase
+public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTokenService oauth) : CredentialStore.CredentialStoreBase
 {
+    public override async Task<GetOAuthAccessTokenResponse> GetOAuthAccessToken(GetOAuthAccessTokenRequest request, ServerCallContext context)
+    {
+        var account = string.IsNullOrEmpty(request.Account) ? null : request.Account;
+        try
+        {
+            var token = await oauth.GetAccessTokenAsync(request.Provider, account, context.CancellationToken);
+            if (token is null)
+            {
+                return new GetOAuthAccessTokenResponse { Found = false };
+            }
+            var resp = new GetOAuthAccessTokenResponse
+            {
+                Found = true,
+                AccessToken = token.AccessToken,
+                ExpiresAt = token.ExpiresAt?.ToString("o") ?? string.Empty,
+            };
+            resp.Scopes.AddRange(token.Scopes);
+            return resp;
+        }
+        catch (OAuthRefreshException ex)
+        {
+            throw new RpcException(new Status(StatusCode.Unavailable, ex.Message));
+        }
+    }
+
     public override async Task<GetApiKeyResponse> GetApiKey(GetApiKeyRequest request, ServerCallContext context)
     {
         var name = string.IsNullOrEmpty(request.Name) ? null : request.Name;

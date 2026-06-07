@@ -40,7 +40,34 @@ message CredentialShape {
 service CredentialStore {
   rpc GetApiKey(GetApiKeyRequest) returns (GetApiKeyResponse);
   rpc DescribeCredential(DescribeCredentialRequest) returns (DescribeCredentialResponse);
+  rpc GetOAuthAccessToken(GetOAuthAccessTokenRequest) returns (GetOAuthAccessTokenResponse);
 }
+
+message GetOAuthAccessTokenRequest {
+  string provider = 1;
+  string account = 2;        // optional
+}
+message GetOAuthAccessTokenResponse {
+  bool found = 1;
+  string access_token = 2;
+  string expires_at = 3;     // ISO 8601 or empty
+  repeated string scopes = 4;
+}
+
+// ---------- oauth token management ----------
+service OAuthTokens {
+  rpc List(ListOAuthTokensRequest) returns (ListOAuthTokensResponse);
+}
+message ListOAuthTokensRequest {}
+message OAuthTokenSummary {
+  string id = 1;
+  string provider = 2;
+  string account = 3;
+  string expires_at = 4;
+  string last_refreshed_at = 5;
+  repeated string scopes = 6;
+}
+message ListOAuthTokensResponse { repeated OAuthTokenSummary items = 1; }
 
 message GetApiKeyRequest {
   string provider = 1;

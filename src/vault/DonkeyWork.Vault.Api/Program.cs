@@ -36,6 +36,7 @@ using (var scope = app.Services.CreateScope())
 app.MapGrpcService<CredentialStoreGrpcService>();
 app.MapGrpcService<ApiKeysGrpcService>();
 app.MapGrpcService<ApiKeyCatalogGrpcService>();
+app.MapGrpcService<OAuthTokensGrpcService>();
 app.MapGrpcReflectionService();
 
 app.MapHealthChecks("/healthz");

@@ -19,8 +19,9 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	CredentialStore_GetApiKey_FullMethodName          = "/donkeywork.vault.v1.CredentialStore/GetApiKey"
-	CredentialStore_DescribeCredential_FullMethodName = "/donkeywork.vault.v1.CredentialStore/DescribeCredential"
+	CredentialStore_GetApiKey_FullMethodName           = "/donkeywork.vault.v1.CredentialStore/GetApiKey"
+	CredentialStore_DescribeCredential_FullMethodName  = "/donkeywork.vault.v1.CredentialStore/DescribeCredential"
+	CredentialStore_GetOAuthAccessToken_FullMethodName = "/donkeywork.vault.v1.CredentialStore/GetOAuthAccessToken"
 )
 
 // CredentialStoreClient is the client API for CredentialStore service.
@@ -31,6 +32,7 @@ const (
 type CredentialStoreClient interface {
 	GetApiKey(ctx context.Context, in *GetApiKeyRequest, opts ...grpc.CallOption) (*GetApiKeyResponse, error)
 	DescribeCredential(ctx context.Context, in *DescribeCredentialRequest, opts ...grpc.CallOption) (*DescribeCredentialResponse, error)
+	GetOAuthAccessToken(ctx context.Context, in *GetOAuthAccessTokenRequest, opts ...grpc.CallOption) (*GetOAuthAccessTokenResponse, error)
 }
 
 type credentialStoreClient struct {
@@ -61,6 +63,16 @@ func (c *credentialStoreClient) DescribeCredential(ctx context.Context, in *Desc
 	return out, nil
 }
 
+func (c *credentialStoreClient) GetOAuthAccessToken(ctx context.Context, in *GetOAuthAccessTokenRequest, opts ...grpc.CallOption) (*GetOAuthAccessTokenResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(GetOAuthAccessTokenResponse)
+	err := c.cc.Invoke(ctx, CredentialStore_GetOAuthAccessToken_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // CredentialStoreServer is the server API for CredentialStore service.
 // All implementations must embed UnimplementedCredentialStoreServer
 // for forward compatibility.
@@ -69,6 +81,7 @@ func (c *credentialStoreClient) DescribeCredential(ctx context.Context, in *Desc
 type CredentialStoreServer interface {
 	GetApiKey(context.Context, *GetApiKeyRequest) (*GetApiKeyResponse, error)
 	DescribeCredential(context.Context, *DescribeCredentialRequest) (*DescribeCredentialResponse, error)
+	GetOAuthAccessToken(context.Context, *GetOAuthAccessTokenRequest) (*GetOAuthAccessTokenResponse, error)
 	mustEmbedUnimplementedCredentialStoreServer()
 }
 
@@ -84,6 +97,9 @@ func (UnimplementedCredentialStoreServer) GetApiKey(context.Context, *GetApiKeyR
 }
 func (UnimplementedCredentialStoreServer) DescribeCredential(context.Context, *DescribeCredentialRequest) (*DescribeCredentialResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method DescribeCredential not implemented")
+}
+func (UnimplementedCredentialStoreServer) GetOAuthAccessToken(context.Context, *GetOAuthAccessTokenRequest) (*GetOAuthAccessTokenResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetOAuthAccessToken not implemented")
 }
 func (UnimplementedCredentialStoreServer) mustEmbedUnimplementedCredentialStoreServer() {}
 func (UnimplementedCredentialStoreServer) testEmbeddedByValue()                         {}
@@ -142,6 +158,24 @@ func _CredentialStore_DescribeCredential_Handler(srv interface{}, ctx context.Co
 	return interceptor(ctx, in, info, handler)
 }
 
+func _CredentialStore_GetOAuthAccessToken_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GetOAuthAccessTokenRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(CredentialStoreServer).GetOAuthAccessToken(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: CredentialStore_GetOAuthAccessToken_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(CredentialStoreServer).GetOAuthAccessToken(ctx, req.(*GetOAuthAccessTokenRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // CredentialStore_ServiceDesc is the grpc.ServiceDesc for CredentialStore service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -156,6 +190,116 @@ var CredentialStore_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "DescribeCredential",
 			Handler:    _CredentialStore_DescribeCredential_Handler,
+		},
+		{
+			MethodName: "GetOAuthAccessToken",
+			Handler:    _CredentialStore_GetOAuthAccessToken_Handler,
+		},
+	},
+	Streams:  []grpc.StreamDesc{},
+	Metadata: "vault.proto",
+}
+
+const (
+	OAuthTokens_List_FullMethodName = "/donkeywork.vault.v1.OAuthTokens/List"
+)
+
+// OAuthTokensClient is the client API for OAuthTokens service.
+//
+// For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
+//
+// ---------- oauth token management ----------
+type OAuthTokensClient interface {
+	List(ctx context.Context, in *ListOAuthTokensRequest, opts ...grpc.CallOption) (*ListOAuthTokensResponse, error)
+}
+
+type oAuthTokensClient struct {
+	cc grpc.ClientConnInterface
+}
+
+func NewOAuthTokensClient(cc grpc.ClientConnInterface) OAuthTokensClient {
+	return &oAuthTokensClient{cc}
+}
+
+func (c *oAuthTokensClient) List(ctx context.Context, in *ListOAuthTokensRequest, opts ...grpc.CallOption) (*ListOAuthTokensResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ListOAuthTokensResponse)
+	err := c.cc.Invoke(ctx, OAuthTokens_List_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+// OAuthTokensServer is the server API for OAuthTokens service.
+// All implementations must embed UnimplementedOAuthTokensServer
+// for forward compatibility.
+//
+// ---------- oauth token management ----------
+type OAuthTokensServer interface {
+	List(context.Context, *ListOAuthTokensRequest) (*ListOAuthTokensResponse, error)
+	mustEmbedUnimplementedOAuthTokensServer()
+}
+
+// UnimplementedOAuthTokensServer must be embedded to have
+// forward compatible implementations.
+//
+// NOTE: this should be embedded by value instead of pointer to avoid a nil
+// pointer dereference when methods are called.
+type UnimplementedOAuthTokensServer struct{}
+
+func (UnimplementedOAuthTokensServer) List(context.Context, *ListOAuthTokensRequest) (*ListOAuthTokensResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method List not implemented")
+}
+func (UnimplementedOAuthTokensServer) mustEmbedUnimplementedOAuthTokensServer() {}
+func (UnimplementedOAuthTokensServer) testEmbeddedByValue()                     {}
+
+// UnsafeOAuthTokensServer may be embedded to opt out of forward compatibility for this service.
+// Use of this interface is not recommended, as added methods to OAuthTokensServer will
+// result in compilation errors.
+type UnsafeOAuthTokensServer interface {
+	mustEmbedUnimplementedOAuthTokensServer()
+}
+
+func RegisterOAuthTokensServer(s grpc.ServiceRegistrar, srv OAuthTokensServer) {
+	// If the following call panics, it indicates UnimplementedOAuthTokensServer was
+	// embedded by pointer and is nil.  This will cause panics if an
+	// unimplemented method is ever invoked, so we test this at initialization
+	// time to prevent it from happening at runtime later due to I/O.
+	if t, ok := srv.(interface{ testEmbeddedByValue() }); ok {
+		t.testEmbeddedByValue()
+	}
+	s.RegisterService(&OAuthTokens_ServiceDesc, srv)
+}
+
+func _OAuthTokens_List_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ListOAuthTokensRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(OAuthTokensServer).List(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: OAuthTokens_List_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(OAuthTokensServer).List(ctx, req.(*ListOAuthTokensRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+// OAuthTokens_ServiceDesc is the grpc.ServiceDesc for OAuthTokens service.
+// It's only intended for direct use with grpc.RegisterService,
+// and not to be introspected or modified (even as a copy)
+var OAuthTokens_ServiceDesc = grpc.ServiceDesc{
+	ServiceName: "donkeywork.vault.v1.OAuthTokens",
+	HandlerType: (*OAuthTokensServer)(nil),
+	Methods: []grpc.MethodDesc{
+		{
+			MethodName: "List",
+			Handler:    _OAuthTokens_List_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
