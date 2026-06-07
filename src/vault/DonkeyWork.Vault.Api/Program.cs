@@ -8,10 +8,12 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// gRPC-only internal service. HTTP/1+2 cleartext on 8080: gRPC over h2c + /healthz over HTTP/1.
+// gRPC on 8080 as HTTP/2-only cleartext (h2c) — Kestrel does not serve h2c under
+// Http1AndHttp2. /healthz lives on 8081 (HTTP/1.1) for the k8s httpGet probe.
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.ListenAnyIP(8080, listen => listen.Protocols = HttpProtocols.Http1AndHttp2);
+    options.ListenAnyIP(8080, listen => listen.Protocols = HttpProtocols.Http2);
+    options.ListenAnyIP(8081, listen => listen.Protocols = HttpProtocols.Http1);
 });
 
 builder.Services.AddSingleton<UserContextInterceptor>();
