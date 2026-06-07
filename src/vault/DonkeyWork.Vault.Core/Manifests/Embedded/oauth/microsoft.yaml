@@ -1,7 +1,19 @@
 key: microsoft
 name: Microsoft
+icon_url: https://s3.donkeywork.dev/provider-icons/microsoft.svg
+docs_url: https://learn.microsoft.com/graph/permissions-reference
 authorization_endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
 token_endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/token
 userinfo_endpoint: https://graph.microsoft.com/oidc/userinfo
 scope_delimiter: " "
 default_scopes: [openid, email, profile, offline_access, User.Read]
+scopes:
+  - { value: openid, description: Sign you in, category: Identity }
+  - { value: email, description: Your email address, category: Identity }
+  - { value: profile, description: Basic profile info, category: Identity }
+  - { value: offline_access, description: Stay signed in (issue refresh tokens), category: Identity }
+  - { value: User.Read, description: Read your profile, category: Profile }
+  - { value: Mail.Read, description: Read your mail, category: Mail, sensitive: true }
+  - { value: Mail.Send, description: Send mail as you, category: Mail, sensitive: true }
+  - { value: Calendars.ReadWrite, description: Manage your calendar, category: Calendar, sensitive: true }
+  - { value: Files.Read, description: Read your OneDrive files, category: Files }

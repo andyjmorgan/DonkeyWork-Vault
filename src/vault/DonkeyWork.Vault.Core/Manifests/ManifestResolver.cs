@@ -52,6 +52,9 @@ public sealed class ManifestResolver(
         return row is not null ? JsonSerializer.Deserialize<OAuthManifest>(row.DocumentJson, Json) : oauthBuiltins.Get(key);
     }
 
+    public bool IsOAuthBuiltin(string key) => oauthBuiltins.Get(key) is not null;
+    public bool IsApiKeyBuiltin(string key) => apiKeyBuiltins.Get(key) is not null;
+
     public Task UpsertApiKeyAsync(ApiKeyManifest m, CancellationToken ct) =>
         UpsertAsync(ApiKeyKind, m.Key, JsonSerializer.Serialize(m, Json), ct);
 

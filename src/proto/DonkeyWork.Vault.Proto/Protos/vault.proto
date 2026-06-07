@@ -137,6 +137,12 @@ message GetProviderRequest { string key = 1; }
 // ---------- provider manifest management (admin/runtime catalog) ----------
 message Empty {}
 
+message OAuthScopeMsg {
+  string value = 1;
+  string description = 2;
+  string category = 3;
+  bool sensitive = 4;
+}
 message OAuthManifestMsg {
   string key = 1;
   string name = 2;
@@ -145,11 +151,16 @@ message OAuthManifestMsg {
   string userinfo_endpoint = 5;
   string scope_delimiter = 6;
   repeated string default_scopes = 7;
+  string icon_url = 8;
+  string docs_url = 9;
+  bool builtin = 10;          // seeded built-in (read-only in the UI)
+  repeated OAuthScopeMsg scopes = 11;
 }
 message ListApiKeyManifestsResponse { repeated ApiKeyProvider items = 1; }
 message ListOAuthManifestsResponse { repeated OAuthManifestMsg items = 1; }
 message DeleteManifestRequest { string kind = 1; string key = 2; }
 message DeleteResponse { bool deleted = 1; }
+message DiscoverOidcRequest { string url = 1; }
 
 service Manifests {
   rpc ListApiKey(Empty) returns (ListApiKeyManifestsResponse);
@@ -157,6 +168,7 @@ service Manifests {
   rpc ListOAuth(Empty) returns (ListOAuthManifestsResponse);
   rpc UpsertOAuth(OAuthManifestMsg) returns (OAuthManifestMsg);
   rpc Delete(DeleteManifestRequest) returns (DeleteResponse);
+  rpc DiscoverOidc(DiscoverOidcRequest) returns (OAuthManifestMsg);
 }
 
 // ---------- oauth provider app configs ----------

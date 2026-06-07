@@ -1,7 +1,19 @@
 key: google
 name: Google
+icon_url: https://s3.donkeywork.dev/provider-icons/google.svg
+docs_url: https://developers.google.com/identity/protocols/oauth2/scopes
 authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
 token_endpoint: https://oauth2.googleapis.com/token
 userinfo_endpoint: https://www.googleapis.com/oauth2/v3/userinfo
 scope_delimiter: " "
 default_scopes: [openid, email, profile]
+scopes:
+  - { value: openid, description: Sign you in, category: Identity }
+  - { value: email, description: Your email address, category: Identity }
+  - { value: profile, description: Basic profile info, category: Identity }
+  - { value: "https://www.googleapis.com/auth/gmail.readonly", description: Read your Gmail, category: Gmail, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/gmail.send", description: Send email as you, category: Gmail, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/drive.file", description: Access only files this app opens or creates, category: Drive }
+  - { value: "https://www.googleapis.com/auth/drive.readonly", description: Read all your Drive files, category: Drive, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/calendar", description: Manage your calendars, category: Calendar, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/calendar.readonly", description: Read your calendars, category: Calendar }

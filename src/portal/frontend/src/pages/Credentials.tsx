@@ -78,7 +78,7 @@ export function CredentialsPage() {
 }
 
 function StoreKey({ onStored }: { onStored: () => void }) {
-  const [k, setK] = useState({ name: '', secret: '', description: '', baseUrl: '', docsUrl: '', header: 'Authorization', prefix: 'Bearer ' })
+  const [k, setK] = useState({ name: '', secret: '', description: '', baseUrl: '', docsUrl: '', header: '', prefix: '' })
   const [msg, setMsg] = useState<string>()
   const set = (patch: Partial<typeof k>) => setK({ ...k, ...patch })
 
@@ -101,7 +101,7 @@ function StoreKey({ onStored }: { onStored: () => void }) {
         <div className="sm:col-span-2"><Label className={lbl}>Description</Label><Input value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="what this credential is for" /></div>
         <div><Label className={lbl}>Base URL / host</Label><Input value={k.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" /></div>
         <div><Label className={lbl}>API docs link</Label><Input value={k.docsUrl} onChange={(e) => set({ docsUrl: e.target.value })} placeholder="https://docs.example.com" /></div>
-        <div><Label className={lbl}>Header name</Label><Input value={k.header} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
+        <div><Label className={lbl}>Header (optional)</Label><Input value={k.header} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
         <div><Label className={lbl}>Prefix (optional)</Label><Input value={k.prefix} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " /></div>
         {msg && <p className="text-sm text-muted-foreground sm:col-span-2">{msg}</p>}
         <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || !k.secret}>Save key</Button></div>

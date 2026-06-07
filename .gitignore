@@ -27,3 +27,6 @@ appsettings.*.Local.json
 # EF build-host artifact wrongly named with a backslash on Linux
 bin\\Debug/
 **/bin\\Debug/
+
+# Local secrets backup (never commit)
+.secrets/

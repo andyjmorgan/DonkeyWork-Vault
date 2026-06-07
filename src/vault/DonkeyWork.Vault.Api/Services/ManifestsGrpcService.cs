@@ -4,7 +4,7 @@ using Grpc.Core;
 
 namespace DonkeyWork.Vault.Api.Services;
 
-public sealed class ManifestsGrpcService(ManifestResolver resolver) : Manifests.ManifestsBase
+public sealed class ManifestsGrpcService(ManifestResolver resolver, OAuthDiscoveryService discovery) : Manifests.ManifestsBase
 {
     public override async Task<ListApiKeyManifestsResponse> ListApiKey(Empty request, ServerCallContext context)
     {
@@ -25,6 +25,18 @@ public sealed class ManifestsGrpcService(ManifestResolver resolver) : Manifests.
         var resp = new ListOAuthManifestsResponse();
         resp.Items.AddRange((await resolver.ListOAuthAsync(context.CancellationToken)).Select(ToOAuthProto));
         return resp;
+    }
+
+    public override async Task<OAuthManifestMsg> DiscoverOidc(DiscoverOidcRequest request, ServerCallContext context)
+    {
+        try
+        {
+            return ToOAuthProto(await discovery.DiscoverAsync(request.Url, context.CancellationToken));
+        }
+        catch (Exception ex)
+        {
+            throw new RpcException(new Status(StatusCode.InvalidArgument, $"discovery failed: {ex.Message}"));
+        }
     }
 
     public override async Task<OAuthManifestMsg> UpsertOAuth(OAuthManifestMsg request, ServerCallContext context)
@@ -60,22 +72,26 @@ public sealed class ManifestsGrpcService(ManifestResolver resolver) : Manifests.
         Fields = p.Fields.Select(f => new ApiKeyFieldDef { Name = f.Name, Label = f.Label, Secret = f.Secret, Required = f.Required }).ToList(),
     };
 
-    private static OAuthManifestMsg ToOAuthProto(OAuthManifest m)
+    private OAuthManifestMsg ToOAuthProto(OAuthManifest m)
     {
         var x = new OAuthManifestMsg
         {
             Key = m.Key, Name = m.Name, AuthorizationEndpoint = m.AuthorizationEndpoint,
             TokenEndpoint = m.TokenEndpoint, UserinfoEndpoint = m.UserinfoEndpoint, ScopeDelimiter = m.ScopeDelimiter,
+            IconUrl = m.IconUrl, DocsUrl = m.DocsUrl, Builtin = !string.IsNullOrEmpty(m.Key) && resolver.IsOAuthBuiltin(m.Key),
         };
         x.DefaultScopes.AddRange(m.DefaultScopes);
+        x.Scopes.AddRange(m.Scopes.Select(s => new OAuthScopeMsg { Value = s.Value, Description = s.Description, Category = s.Category, Sensitive = s.Sensitive }));
         return x;
     }
 
     private static OAuthManifest FromOAuthProto(OAuthManifestMsg m) => new()
     {
-        Key = m.Key, Name = m.Name, AuthorizationEndpoint = m.AuthorizationEndpoint,
+        Key = m.Key, Name = m.Name, IconUrl = m.IconUrl, DocsUrl = m.DocsUrl,
+        AuthorizationEndpoint = m.AuthorizationEndpoint,
         TokenEndpoint = m.TokenEndpoint, UserinfoEndpoint = m.UserinfoEndpoint,
         ScopeDelimiter = string.IsNullOrEmpty(m.ScopeDelimiter) ? " " : m.ScopeDelimiter,
         DefaultScopes = m.DefaultScopes.ToList(),
+        Scopes = m.Scopes.Select(s => new OAuthScopeDef { Value = s.Value, Description = s.Description, Category = s.Category, Sensitive = s.Sensitive }).ToList(),
     };
 }

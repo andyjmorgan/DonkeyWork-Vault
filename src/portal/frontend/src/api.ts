@@ -19,9 +19,11 @@ export interface ApiKeyProvider {
   authScheme: string; header: string; prefix: string; baseUrl: string
   staticHeaders: Record<string, string>; fields: ProviderField[]
 }
+export interface OAuthScope { value: string; description?: string; category?: string; sensitive?: boolean }
 export interface OAuthProvider {
-  key: string; name: string; authorizationEndpoint: string; tokenEndpoint: string
-  userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]
+  key: string; name: string; iconUrl?: string; docsUrl?: string; builtin?: boolean
+  authorizationEndpoint: string; tokenEndpoint: string
+  userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]; scopes?: OAuthScope[]
 }
 export interface ApiKeyItem { id: string; name: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string; createdAt: string; lastUsedAt: string }
 export interface NewApiKey { name: string; secret: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string }
@@ -45,6 +47,8 @@ export const api = {
     authed('/manifests/apikey', { method: 'POST', body: JSON.stringify(m) }),
   upsertOAuthProvider: (m: Partial<OAuthProvider>) =>
     authed('/manifests/oauth', { method: 'POST', body: JSON.stringify(m) }),
+  discoverOidc: (url: string) =>
+    authed('/manifests/oauth/discover', { method: 'POST', body: JSON.stringify({ url }) }) as Promise<Partial<OAuthProvider>>,
   deleteProvider: (kind: string, key: string) => authed(`/manifests/${kind}/${key}`, { method: 'DELETE' }),
 
   // oauth provider configs + connect

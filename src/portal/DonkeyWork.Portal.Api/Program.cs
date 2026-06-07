@@ -130,7 +130,12 @@ api.MapGet("/manifests", async (string? kind, Manifests.ManifestsClient m) =>
     if (kind == "oauth")
     {
         var r = await m.ListOAuthAsync(new Empty());
-        return Results.Ok(r.Items.Select(x => new { x.Key, x.Name, x.AuthorizationEndpoint, x.TokenEndpoint, x.UserinfoEndpoint, x.ScopeDelimiter, defaultScopes = x.DefaultScopes }));
+        return Results.Ok(r.Items.Select(x => new
+        {
+            x.Key, x.Name, x.IconUrl, x.DocsUrl, x.Builtin, x.AuthorizationEndpoint, x.TokenEndpoint, x.UserinfoEndpoint, x.ScopeDelimiter,
+            defaultScopes = x.DefaultScopes,
+            scopes = x.Scopes.Select(s => new { s.Value, s.Description, s.Category, s.Sensitive }),
+        }));
     }
     var a = await m.ListApiKeyAsync(new Empty());
     return Results.Ok(a.Items.Select(MapProvider));
@@ -152,12 +157,32 @@ api.MapPost("/manifests/oauth", async (OAuthManifestDto dto, Manifests.Manifests
 {
     var msg = new OAuthManifestMsg
     {
-        Key = dto.Key, Name = dto.Name ?? "", AuthorizationEndpoint = dto.AuthorizationEndpoint ?? "",
+        Key = dto.Key, Name = dto.Name ?? "", IconUrl = dto.IconUrl ?? "", DocsUrl = dto.DocsUrl ?? "",
+        AuthorizationEndpoint = dto.AuthorizationEndpoint ?? "",
         TokenEndpoint = dto.TokenEndpoint ?? "", UserinfoEndpoint = dto.UserinfoEndpoint ?? "", ScopeDelimiter = dto.ScopeDelimiter ?? " ",
     };
     if (dto.DefaultScopes is not null) msg.DefaultScopes.AddRange(dto.DefaultScopes);
+    foreach (var s in dto.Scopes ?? new()) msg.Scopes.Add(new OAuthScopeMsg { Value = s.Value, Description = s.Description ?? "", Category = s.Category ?? "", Sensitive = s.Sensitive });
     await m.UpsertOAuthAsync(msg);
     return Results.Ok(new { dto.Key });
+});
+
+api.MapPost("/manifests/oauth/discover", async (DiscoverDto dto, Manifests.ManifestsClient m) =>
+{
+    try
+    {
+        var x = await m.DiscoverOidcAsync(new DiscoverOidcRequest { Url = dto.Url ?? "" });
+        return Results.Ok(new
+        {
+            x.Key, x.Name, x.AuthorizationEndpoint, x.TokenEndpoint, x.UserinfoEndpoint, x.ScopeDelimiter,
+            defaultScopes = x.DefaultScopes,
+            scopes = x.Scopes.Select(s => new { s.Value, s.Description, s.Category, s.Sensitive }),
+        });
+    }
+    catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.InvalidArgument)
+    {
+        return Results.BadRequest(new { error = ex.Status.Detail });
+    }
 });
 
 api.MapDelete("/manifests/{kind}/{key}", async (string kind, string key, Manifests.ManifestsClient m) =>
@@ -229,5 +254,7 @@ static object MapProvider(ApiKeyProvider p) => new
 internal sealed record CreateApiKeyDto(string Name, string? Secret, string? Description, string? BaseUrl, string? DocsUrl, string? Header, string? Prefix);
 internal sealed record ApiKeyFieldDto(string Name, string? Label, bool Secret, bool Required);
 internal sealed record ApiKeyManifestDto(string Key, string Name, string? IconUrl, string? DocsUrl, string? AuthScheme, string? Header, string? Prefix, string? BaseUrl, Dictionary<string, string>? StaticHeaders, List<ApiKeyFieldDto>? Fields);
-internal sealed record OAuthManifestDto(string Key, string? Name, string? AuthorizationEndpoint, string? TokenEndpoint, string? UserinfoEndpoint, string? ScopeDelimiter, List<string>? DefaultScopes);
+internal sealed record OAuthScopeDto(string Value, string? Description, string? Category, bool Sensitive);
+internal sealed record OAuthManifestDto(string Key, string? Name, string? IconUrl, string? DocsUrl, string? AuthorizationEndpoint, string? TokenEndpoint, string? UserinfoEndpoint, string? ScopeDelimiter, List<string>? DefaultScopes, List<OAuthScopeDto>? Scopes);
+internal sealed record DiscoverDto(string? Url);
 internal sealed record OAuthConfigDto(string Provider, string ClientId, string? ClientSecret, List<string>? Scopes, string? RedirectUri);

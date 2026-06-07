@@ -52,7 +52,7 @@ public sealed class ApiKeyService(
         existing.Description = description;
         existing.BaseUrl = baseUrl;
         existing.DocsUrl = docsUrl;
-        existing.HeaderName = string.IsNullOrWhiteSpace(header) ? "Authorization" : header;
+        existing.HeaderName = string.IsNullOrWhiteSpace(header) ? null : header;
         existing.Prefix = prefix;
         existing.FieldsCipher = cipher.EncryptString(secret);
 

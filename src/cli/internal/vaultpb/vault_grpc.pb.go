@@ -638,6 +638,7 @@ const (
 	Manifests_ListOAuth_FullMethodName    = "/donkeywork.vault.v1.Manifests/ListOAuth"
 	Manifests_UpsertOAuth_FullMethodName  = "/donkeywork.vault.v1.Manifests/UpsertOAuth"
 	Manifests_Delete_FullMethodName       = "/donkeywork.vault.v1.Manifests/Delete"
+	Manifests_DiscoverOidc_FullMethodName = "/donkeywork.vault.v1.Manifests/DiscoverOidc"
 )
 
 // ManifestsClient is the client API for Manifests service.
@@ -649,6 +650,7 @@ type ManifestsClient interface {
 	ListOAuth(ctx context.Context, in *Empty, opts ...grpc.CallOption) (*ListOAuthManifestsResponse, error)
 	UpsertOAuth(ctx context.Context, in *OAuthManifestMsg, opts ...grpc.CallOption) (*OAuthManifestMsg, error)
 	Delete(ctx context.Context, in *DeleteManifestRequest, opts ...grpc.CallOption) (*DeleteResponse, error)
+	DiscoverOidc(ctx context.Context, in *DiscoverOidcRequest, opts ...grpc.CallOption) (*OAuthManifestMsg, error)
 }
 
 type manifestsClient struct {
@@ -709,6 +711,16 @@ func (c *manifestsClient) Delete(ctx context.Context, in *DeleteManifestRequest,
 	return out, nil
 }
 
+func (c *manifestsClient) DiscoverOidc(ctx context.Context, in *DiscoverOidcRequest, opts ...grpc.CallOption) (*OAuthManifestMsg, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(OAuthManifestMsg)
+	err := c.cc.Invoke(ctx, Manifests_DiscoverOidc_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // ManifestsServer is the server API for Manifests service.
 // All implementations must embed UnimplementedManifestsServer
 // for forward compatibility.
@@ -718,6 +730,7 @@ type ManifestsServer interface {
 	ListOAuth(context.Context, *Empty) (*ListOAuthManifestsResponse, error)
 	UpsertOAuth(context.Context, *OAuthManifestMsg) (*OAuthManifestMsg, error)
 	Delete(context.Context, *DeleteManifestRequest) (*DeleteResponse, error)
+	DiscoverOidc(context.Context, *DiscoverOidcRequest) (*OAuthManifestMsg, error)
 	mustEmbedUnimplementedManifestsServer()
 }
 
@@ -742,6 +755,9 @@ func (UnimplementedManifestsServer) UpsertOAuth(context.Context, *OAuthManifestM
 }
 func (UnimplementedManifestsServer) Delete(context.Context, *DeleteManifestRequest) (*DeleteResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Delete not implemented")
+}
+func (UnimplementedManifestsServer) DiscoverOidc(context.Context, *DiscoverOidcRequest) (*OAuthManifestMsg, error) {
+	return nil, status.Error(codes.Unimplemented, "method DiscoverOidc not implemented")
 }
 func (UnimplementedManifestsServer) mustEmbedUnimplementedManifestsServer() {}
 func (UnimplementedManifestsServer) testEmbeddedByValue()                   {}
@@ -854,6 +870,24 @@ func _Manifests_Delete_Handler(srv interface{}, ctx context.Context, dec func(in
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Manifests_DiscoverOidc_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(DiscoverOidcRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(ManifestsServer).DiscoverOidc(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: Manifests_DiscoverOidc_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(ManifestsServer).DiscoverOidc(ctx, req.(*DiscoverOidcRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Manifests_ServiceDesc is the grpc.ServiceDesc for Manifests service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -880,6 +914,10 @@ var Manifests_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Delete",
 			Handler:    _Manifests_Delete_Handler,
+		},
+		{
+			MethodName: "DiscoverOidc",
+			Handler:    _Manifests_DiscoverOidc_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
