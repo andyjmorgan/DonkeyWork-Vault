@@ -30,6 +30,12 @@ export interface NewApiKey { name: string; secret: string; description?: string;
 export interface OAuthTokenItem { id: string; provider: string; account: string; expiresAt: string; lastRefreshedAt: string; scopes: string[] }
 export interface OAuthConfigItem { id: string; provider: string; clientIdMasked: string; scopes: string[]; redirectUri: string; createdAt: string }
 export interface Me { userId: string; tenantId: string; email?: string; name?: string }
+export type AccessScope = 'frontend:read' | 'frontend:readwrite' | 'vault:read' | 'vault:readwrite'
+export interface AccessKey {
+  id: string; name: string; description?: string; scopes: AccessScope[]
+  enabled: boolean; prefix: string; createdAt: string; lastUsedAt: string
+}
+export interface NewAccessKey { name: string; description?: string; scopes: AccessScope[] }
 
 export const api = {
   me: () => authed('/me') as Promise<Me>,
@@ -42,6 +48,14 @@ export const api = {
   oauthTokens: () => authed('/oauth/tokens') as Promise<OAuthTokenItem[]>,
   revealOAuthToken: (provider: string, account?: string) =>
     authed(`/oauth/${provider}/token${account ? `?account=${encodeURIComponent(account)}` : ''}`) as Promise<{ accessToken: string; expiresAt: string }>,
+
+  // access keys (scoped auth credentials; secret shown once)
+  accessKeys: () => authed('/access-keys') as Promise<AccessKey[]>,
+  createAccessKey: (k: NewAccessKey) =>
+    authed('/access-keys', { method: 'POST', body: JSON.stringify(k) }) as Promise<{ id: string; name: string; scopes: AccessScope[]; secret: string }>,
+  setAccessKeyEnabled: (id: string, enabled: boolean) =>
+    authed(`/access-keys/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
+  deleteAccessKey: (id: string) => authed(`/access-keys/${id}`, { method: 'DELETE' }),
 
   // provider manifests (catalog CRUD)
   apiKeyProviders: () => authed('/manifests?kind=apikey') as Promise<ApiKeyProvider[]>,

@@ -1,7 +1,7 @@
 import { KeyRound, Boxes, Plug } from 'lucide-react'
 import { cn } from '../ui/lib/utils'
 
-export type Tab = 'credentials' | 'providers' | 'connect'
+export type Tab = 'credentials' | 'providers' | 'connect' | 'profile'
 
 const items: { id: Tab; label: string; icon: typeof KeyRound }[] = [
   { id: 'credentials', label: 'Credentials', icon: KeyRound },

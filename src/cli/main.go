@@ -10,6 +10,7 @@ package main
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
@@ -32,6 +34,8 @@ var (
 	addr     string
 	userID   string
 	tenantID string
+	apiKey   string
+	useTLS   bool
 )
 
 func env(k, def string) string {
@@ -46,24 +50,61 @@ func fail(format string, a ...any) {
 	os.Exit(1)
 }
 
-// dial opens a plaintext (h2c) connection and returns a context carrying identity metadata.
+// dial opens a connection and returns a context carrying the caller's auth metadata.
+//
+// Transport: TLS when --tls / VAULT_TLS is set or the address uses a grpcs://|https:// scheme
+// (for an internet-facing vault behind a TLS edge); plaintext h2c otherwise (local/in-cluster).
+//
+// Identity: an API key (x-api-key) is preferred; falling back to a bare user id (x-user-id) which
+// the vault only honours when its on-prem AllowUnauthenticatedUserId flag is set.
 func dial() (*grpc.ClientConn, context.Context, context.CancelFunc) {
-	if userID == "" {
-		fail("no user id; set VAULT_USER_ID or --user")
+	target, secure := parseTarget(addr, useTLS)
+
+	var creds credentials.TransportCredentials
+	if secure {
+		creds = credentials.NewTLS(&tls.Config{})
+	} else {
+		creds = insecure.NewCredentials()
 	}
-	conn, err := grpc.NewClient(addr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(creds))
 	if err != nil {
-		fail("connect %s: %v", addr, err)
+		fail("connect %s: %v", target, err)
 	}
-	pairs := []string{"x-user-id", userID}
-	if tenantID != "" {
-		pairs = append(pairs, "x-tenant-id", tenantID)
+
+	var pairs []string
+	switch {
+	case apiKey != "":
+		pairs = []string{"x-api-key", apiKey}
+	case userID != "":
+		pairs = []string{"x-user-id", userID}
+		if tenantID != "" {
+			pairs = append(pairs, "x-tenant-id", tenantID)
+		}
+	default:
+		fail("no credentials; set VAULT_API_KEY (mint one with `dwvault keys create`) or VAULT_USER_ID for on-prem")
 	}
 	ctx, cancel := context.WithTimeout(
 		metadata.NewOutgoingContext(context.Background(), metadata.Pairs(pairs...)),
 		20*time.Second,
 	)
 	return conn, ctx, cancel
+}
+
+// parseTarget strips a scheme from addr and decides the transport. An explicit grpcs://|https://
+// (or --tls) selects TLS; grpc://|http:// or a bare host:port stays plaintext.
+func parseTarget(addr string, tlsFlag bool) (target string, secure bool) {
+	secure = tlsFlag
+	switch {
+	case strings.HasPrefix(addr, "grpcs://"):
+		return addr[len("grpcs://"):], true
+	case strings.HasPrefix(addr, "https://"):
+		return addr[len("https://"):], true
+	case strings.HasPrefix(addr, "grpc://"):
+		return addr[len("grpc://"):], false
+	case strings.HasPrefix(addr, "http://"):
+		return addr[len("http://"):], false
+	}
+	return addr, secure
 }
 
 func main() {
@@ -74,9 +115,11 @@ func main() {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "localhost:8080"), "vault gRPC address")
-	root.PersistentFlags().StringVar(&userID, "user", env("VAULT_USER_ID", ""), "caller user id (x-user-id)")
+	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "localhost:8080"), "vault gRPC address (host:port or grpcs://host:port)")
+	root.PersistentFlags().StringVar(&userID, "user", env("VAULT_USER_ID", ""), "caller user id (x-user-id; on-prem only)")
 	root.PersistentFlags().StringVar(&tenantID, "tenant", env("VAULT_TENANT_ID", ""), "caller tenant id (x-tenant-id)")
+	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (x-api-key)")
+	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by a grpcs://host address)")
 
 	creds := &cobra.Command{Use: "creds", Short: "Manage and retrieve API-key credentials"}
 	creds.AddCommand(cmdList(), cmdGet(), cmdShape(), cmdCreate())
@@ -84,7 +127,10 @@ func main() {
 	oauth := &cobra.Command{Use: "oauth", Short: "Retrieve OAuth access tokens"}
 	oauth.AddCommand(cmdOAuthToken(), cmdOAuthList())
 
-	root.AddCommand(creds, oauth, cmdProviders())
+	keys := &cobra.Command{Use: "keys", Short: "Manage access keys (scoped auth credentials)"}
+	keys.AddCommand(cmdKeysList(), cmdKeysCreate(), cmdKeysSetEnabled(true), cmdKeysSetEnabled(false), cmdKeysDelete())
+
+	root.AddCommand(creds, oauth, keys, cmdProviders())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
@@ -263,4 +309,103 @@ func cmdCreate() *cobra.Command {
 	c.Flags().StringVar(&header, "header", "Authorization", "header name to send")
 	c.Flags().StringVar(&prefix, "prefix", "", "optional value prefix, e.g. 'Bearer '")
 	return c
+}
+
+func cmdKeysList() *cobra.Command {
+	return &cobra.Command{
+		Use:   "list",
+		Short: "List your access keys (id, scopes, enabled state)",
+		RunE: func(_ *cobra.Command, _ []string) error {
+			conn, ctx, cancel := dial()
+			defer conn.Close()
+			defer cancel()
+			resp, err := pb.NewAccessKeysClient(conn).List(ctx, &pb.Empty{})
+			if err != nil {
+				return err
+			}
+			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+			fmt.Fprintln(w, "ID\tNAME\tSCOPES\tENABLED\tPREFIX\tLAST USED")
+			for _, k := range resp.Items {
+				last := k.LastUsedAt
+				if last == "" {
+					last = "-"
+				}
+				fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s…\t%s\n", k.Id, k.Name, strings.Join(k.Scopes, ","), k.Enabled, k.Prefix, last)
+			}
+			return w.Flush()
+		},
+	}
+}
+
+func cmdKeysCreate() *cobra.Command {
+	var description string
+	var scopes []string
+	c := &cobra.Command{
+		Use:   "create <name>",
+		Short: "Mint an access key; the secret is printed once to stdout",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			conn, ctx, cancel := dial()
+			defer conn.Close()
+			defer cancel()
+			resp, err := pb.NewAccessKeysClient(conn).Create(ctx, &pb.CreateAccessKeyRequest{
+				Name: args[0], Description: description, Scopes: scopes,
+			})
+			if err != nil {
+				return err
+			}
+			// Metadata to stderr; ONLY the secret to stdout (safe for capture, shown once).
+			fmt.Fprintf(os.Stderr, "created %s (%s) scopes=[%s]\n", resp.Item.Name, resp.Item.Id, strings.Join(resp.Item.Scopes, " "))
+			fmt.Println(resp.Secret)
+			return nil
+		},
+	}
+	c.Flags().StringVar(&description, "description", "", "what this key is for")
+	c.Flags().StringArrayVar(&scopes, "scope", nil, "grant a scope (repeatable): frontend:read|frontend:readwrite|vault:read|vault:readwrite")
+	return c
+}
+
+func cmdKeysSetEnabled(enabled bool) *cobra.Command {
+	use, short := "disable <id>", "Disable an access key"
+	if enabled {
+		use, short = "enable <id>", "Enable an access key"
+	}
+	return &cobra.Command{
+		Use:   use,
+		Short: short,
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			conn, ctx, cancel := dial()
+			defer conn.Close()
+			defer cancel()
+			item, err := pb.NewAccessKeysClient(conn).SetEnabled(ctx, &pb.SetAccessKeyEnabledRequest{Id: args[0], Enabled: enabled})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(os.Stderr, "%s is now enabled=%t\n", item.Name, item.Enabled)
+			return nil
+		},
+	}
+}
+
+func cmdKeysDelete() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <id>",
+		Short: "Delete an access key",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			conn, ctx, cancel := dial()
+			defer conn.Close()
+			defer cancel()
+			resp, err := pb.NewAccessKeysClient(conn).Delete(ctx, &pb.DeleteByIdRequest{Id: args[0]})
+			if err != nil {
+				return err
+			}
+			if !resp.Deleted {
+				fail("no access key with id %q", args[0])
+			}
+			fmt.Fprintf(os.Stderr, "deleted %s\n", args[0])
+			return nil
+		},
+	}
 }

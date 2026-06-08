@@ -16,6 +16,7 @@ builder.WebHost.ConfigureKestrel(options =>
     options.ListenAnyIP(8081, listen => listen.Protocols = HttpProtocols.Http1);
 });
 
+builder.Services.AddOptions<VaultAuthOptions>().BindConfiguration(VaultAuthOptions.SectionName);
 builder.Services.AddSingleton<UserContextInterceptor>();
 builder.Services.AddGrpc(options => options.Interceptors.Add<UserContextInterceptor>());
 builder.Services.AddGrpcReflection();
@@ -35,6 +36,7 @@ using (var scope = app.Services.CreateScope())
 
 app.MapGrpcService<CredentialStoreGrpcService>();
 app.MapGrpcService<ApiKeysGrpcService>();
+app.MapGrpcService<AccessKeysGrpcService>();
 app.MapGrpcService<ApiKeyCatalogGrpcService>();
 app.MapGrpcService<OAuthTokensGrpcService>();
 app.MapGrpcService<ManifestsGrpcService>();

@@ -2,6 +2,7 @@ using System.Security.Claims;
 using DonkeyWork.Portal.Api.Auth;
 using DonkeyWork.Portal.Api.Vault;
 using DonkeyWork.Vault.Proto.V1;
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.IdentityModel.Tokens;
 
@@ -16,10 +17,14 @@ builder.Services.AddHealthChecks();
 var keycloak = builder.Configuration.GetSection(KeycloakOptions.SectionName).Get<KeycloakOptions>() ?? new KeycloakOptions();
 var authConfigured = !string.IsNullOrWhiteSpace(keycloak.Authority);
 
+// Two ways in: interactive users via Keycloak JWT, and scripts/agents via an access key
+// (dwv_…). A policy scheme routes each request to the right handler so HttpContext.User is set
+// from whichever credential was presented. The ApiKey scheme is always available.
+var authBuilder = builder.Services.AddAuthentication(authConfigured ? "Multi" : ApiKeyAuthenticationHandler.SchemeName);
+authBuilder.AddScheme<AuthenticationSchemeOptions, ApiKeyAuthenticationHandler>(ApiKeyAuthenticationHandler.SchemeName, null);
 if (authConfigured)
 {
-    builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-        .AddJwtBearer(options =>
+    authBuilder.AddJwtBearer(options =>
         {
             options.Authority = keycloak.Authority;
             options.MetadataAddress = $"{(keycloak.InternalAuthority ?? keycloak.Authority).TrimEnd('/')}/.well-known/openid-configuration";
@@ -31,6 +36,20 @@ if (authConfigured)
                 NameClaimType = "sub",
             };
         });
+    authBuilder.AddPolicyScheme("Multi", "JWT or API key", o =>
+    {
+        o.ForwardDefaultSelector = ctx =>
+        {
+            if (!string.IsNullOrEmpty(ctx.Request.Headers["X-Api-Key"]))
+            {
+                return ApiKeyAuthenticationHandler.SchemeName;
+            }
+            var auth = ctx.Request.Headers.Authorization.ToString();
+            return auth.StartsWith("Bearer " + ApiKeyAuthenticationHandler.KeyPrefix, StringComparison.OrdinalIgnoreCase)
+                ? ApiKeyAuthenticationHandler.SchemeName
+                : JwtBearerDefaults.AuthenticationScheme;
+        };
+    });
 }
 builder.Services.AddAuthorization();
 
@@ -41,6 +60,7 @@ void AddVaultClient<T>() where T : class
     => builder.Services.AddGrpcClient<T>(o => o.Address = new Uri(vaultEndpoint)).AddInterceptor<UserIdInterceptor>();
 AddVaultClient<CredentialStore.CredentialStoreClient>();
 AddVaultClient<ApiKeys.ApiKeysClient>();
+AddVaultClient<AccessKeys.AccessKeysClient>();
 AddVaultClient<ApiKeyCatalog.ApiKeyCatalogClient>();
 AddVaultClient<Manifests.ManifestsClient>();
 AddVaultClient<OAuthProviderConfigs.OAuthProviderConfigsClient>();
@@ -54,11 +74,10 @@ var app = builder.Build();
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
-if (authConfigured)
-{
-    app.UseAuthentication();
-    app.UseAuthorization();
-}
+// Always on: the ApiKey scheme is registered even when Keycloak isn't, so keys authenticate
+// (and their scopes are enforced) in every configuration.
+app.UseAuthentication();
+app.UseAuthorization();
 
 app.MapHealthChecks("/healthz");
 
@@ -67,6 +86,26 @@ if (authConfigured)
 {
     api.RequireAuthorization();
 }
+
+// Scope gate for API-key callers: GET/HEAD need frontend:read, mutations need frontend:readwrite
+// (readwrite implies read). Interactive JWT users are not scope-limited.
+api.AddEndpointFilter(async (ctx, next) =>
+{
+    var user = ctx.HttpContext.User;
+    if (user.Identity?.AuthenticationType == ApiKeyAuthenticationHandler.SchemeName)
+    {
+        var method = ctx.HttpContext.Request.Method;
+        var required = HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method)
+            ? "frontend:read"
+            : "frontend:readwrite";
+        var scopes = user.FindAll("scope").Select(c => c.Value).ToHashSet();
+        if (!scopes.Contains(required) && !scopes.Contains("frontend:readwrite"))
+        {
+            return Results.Json(new { error = $"API key missing required scope '{required}'." }, statusCode: StatusCodes.Status403Forbidden);
+        }
+    }
+    return await next(ctx);
+});
 
 api.MapGet("/me", (ClaimsPrincipal user) => Results.Ok(new
 {
@@ -143,6 +182,51 @@ api.MapGet("/oauth/{provider}/token", async (string provider, string? account, C
     {
         return Results.BadRequest(new { error = ex.Status.Detail });
     }
+});
+
+// ---- access keys (scoped auth credentials; secret shown once on create) ----
+api.MapGet("/access-keys", async (AccessKeys.AccessKeysClient client) =>
+{
+    var resp = await client.ListAsync(new Empty());
+    return Results.Ok(resp.Items.Select(k => new
+    {
+        k.Id, k.Name, k.Description, scopes = k.Scopes, k.Enabled, k.Prefix, k.CreatedAt, k.LastUsedAt,
+    }));
+});
+
+api.MapPost("/access-keys", async (CreateAccessKeyDto dto, AccessKeys.AccessKeysClient client) =>
+{
+    var req = new CreateAccessKeyRequest { Name = dto.Name, Description = dto.Description ?? "" };
+    if (dto.Scopes is not null) req.Scopes.AddRange(dto.Scopes);
+    try
+    {
+        var resp = await client.CreateAsync(req);
+        // The plaintext secret is returned ONCE here and never again.
+        return Results.Ok(new { resp.Item.Id, resp.Item.Name, scopes = resp.Item.Scopes, secret = resp.Secret });
+    }
+    catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.InvalidArgument)
+    {
+        return Results.BadRequest(new { error = ex.Status.Detail });
+    }
+});
+
+api.MapPatch("/access-keys/{id}", async (string id, SetEnabledDto dto, AccessKeys.AccessKeysClient client) =>
+{
+    try
+    {
+        var item = await client.SetEnabledAsync(new SetAccessKeyEnabledRequest { Id = id, Enabled = dto.Enabled });
+        return Results.Ok(new { item.Id, item.Enabled });
+    }
+    catch (Grpc.Core.RpcException ex) when (ex.StatusCode == Grpc.Core.StatusCode.NotFound)
+    {
+        return Results.NotFound();
+    }
+});
+
+api.MapDelete("/access-keys/{id}", async (string id, AccessKeys.AccessKeysClient client) =>
+{
+    var resp = await client.DeleteAsync(new DeleteByIdRequest { Id = id });
+    return resp.Deleted ? Results.NoContent() : Results.NotFound();
 });
 
 // ---- provider manifests (runtime catalog CRUD) ----
@@ -273,6 +357,8 @@ static object MapProvider(ApiKeyProvider p) => new
 };
 
 internal sealed record CreateApiKeyDto(string Name, string? Secret, string? Description, string? BaseUrl, string? DocsUrl, string? Header, string? Prefix);
+internal sealed record CreateAccessKeyDto(string Name, string? Description, List<string>? Scopes);
+internal sealed record SetEnabledDto(bool Enabled);
 internal sealed record ApiKeyFieldDto(string Name, string? Label, bool Secret, bool Required);
 internal sealed record ApiKeyManifestDto(string Key, string Name, string? IconUrl, string? DocsUrl, string? AuthScheme, string? Header, string? Prefix, string? BaseUrl, Dictionary<string, string>? StaticHeaders, List<ApiKeyFieldDto>? Fields);
 internal sealed record OAuthScopeDto(string Value, string? Description, string? Category, bool Sensitive);

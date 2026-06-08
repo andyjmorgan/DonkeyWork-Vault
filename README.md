@@ -18,6 +18,7 @@ secret only at the moment of use — without it ever being printed.
 - [Security model](#security-model)
 - [Install the CLI](#install-the-cli)
 - [Using the CLI](#using-the-cli)
+- [Authentication & access keys](#authentication--access-keys)
 - [The Portal](#the-portal)
 - [Credential model](#credential-model)
 - [Repository layout](#repository-layout)
@@ -68,6 +69,12 @@ secret only at the moment of use — without it ever being printed.
 - **Auth.** The Portal trusts JWTs from your Keycloak realm. OAuth connect uses the
   authorization-code flow with **PKCE (S256)**; one-time state + PKCE verifier are stored
   server-side and consumed on callback.
+- **Access keys.** Scripts and agents authenticate with a database-backed **access key**
+  (`dwv_…`) carrying scopes (`frontend:read|readwrite`, `vault:read|readwrite`) and an
+  enabled flag. Keys are **show-once**: only a SHA-256 hash + a display prefix are stored, so
+  a database dump never yields a usable key — a lost key is rotated, not recovered. The Vault
+  enforces `vault:*` scopes on each gRPC method; the Portal enforces `frontend:*` on its HTTP
+  API. See [Authentication & access keys](#authentication--access-keys).
 
 ## Install the CLI
 
@@ -121,6 +128,12 @@ dwvault creds create <name> --secret <v> [--description ..] [--base-url ..] [--d
 
 dwvault oauth list                 # connected OAuth providers (provider/account/expiry/scopes)
 dwvault oauth token <provider> [--account <a>]   # a valid access token to stdout (auto-refreshed)
+
+dwvault keys list                  # your access keys (id/scopes/enabled/prefix/last-used)
+dwvault keys create <name> --scope vault:read [--scope ..] [--description ..]   # secret → stdout, ONCE
+dwvault keys enable  <id>          # re-enable a key
+dwvault keys disable <id>          # revoke without deleting
+dwvault keys delete  <id>          # remove a key
 ```
 
 **Workflow: discover → select → interpret → use.** Read `creds list` / `creds shape` to learn
@@ -139,6 +152,42 @@ TOKEN=$(dwvault oauth token microsoft) && \
 > visible command argument, a URL query, `curl -v`, or any committed/printed text. Confirm
 > success by a side effect (e.g. HTTP 200), not by printing the secret.
 
+## Authentication & access keys
+
+The Vault accepts a caller three ways, in this order of preference:
+
+1. **Access key** (`x-api-key: dwv_…`) — a scoped, revocable credential resolved to its owner
+   and scopes. The Vault enforces the method's required `vault:*` scope; the Portal enforces
+   `frontend:*` on its HTTP API. **This is the way for internet-facing vaults.**
+2. **Internal service token** (`x-internal-token`) — proves a call comes from the trusted
+   Portal BFF on the private in-cluster hop, letting it act for a logged-in (Keycloak) user
+   without minting per-user keys. Injected only on that hop; an internet edge must strip it.
+3. **Bare user id** (`x-user-id`) with no credential — the original, **insecure** model. It is
+   **off by default** and acceptable only for **on-prem / fully-trusted-network** deployments;
+   enable with `Vault:Auth:AllowUnauthenticatedUserId=true`.
+
+**Scopes**
+
+| Scope | Grants |
+|---|---|
+| `vault:read` | read RPCs — get a credential/OAuth token, describe, list |
+| `vault:readwrite` | the above **plus** create/delete/upsert (implies `vault:read`) |
+| `frontend:read` | `GET` on the Portal API |
+| `frontend:readwrite` | mutating Portal API calls (implies `frontend:read`) |
+
+**Minting & lifecycle.** Create keys from the Portal **Profile** page (top-right user menu →
+*Profile & API keys*) or with `dwvault keys create`. The secret is shown **once** — copy it
+then; it's stored only as a SHA-256 hash and can never be revealed again. Disable a key to
+revoke it instantly without deleting it, or delete it outright. Each key is owned by a user
+and scoped to that user's credentials.
+
+```bash
+# mint a read-only key for an agent (secret prints once, to stdout)
+export VAULT_API_KEY=$(dwvault keys create agent-bot --scope vault:read)
+dwvault creds get grafana            # works (vault:read)
+dwvault creds create x --secret y    # PermissionDenied (needs vault:readwrite)
+```
+
 ## The Portal
 
 A web console (served at your chosen host, authenticated via Keycloak) to:
@@ -149,6 +198,8 @@ A web console (served at your chosen host, authenticated via Keycloak) to:
   endpoints are fetched from `.well-known/openid-configuration`); built-ins are read-only.
 - **OAuth Connect** — brand provider cards; enter your OAuth app's client id/secret, pick
   scopes from a described catalog (with *sensitive* flags), and connect via browser redirect.
+- **Profile** (top-right user menu) — your user id + tenant id, and where you create, scope,
+  enable/disable and delete **access keys**. The full key value is shown once, on creation.
 
 ## Credential model
 
@@ -197,12 +248,31 @@ migrations on start. Provide via configuration:
 
 - `Vault:Persistence:ConnectionString` — Postgres.
 - `Vault:Crypto:ActiveKekId` + `Vault:Crypto:Keks:<id>` — the KEK(s).
-- Portal: `Vault:GrpcEndpoint`, `Keycloak:Authority` + `Keycloak:Audience`, and
-  `Portal:PublicBaseUrl` (used to build OAuth redirect URIs).
+- `Vault:Auth:InternalToken` — shared secret the Portal presents on its in-cluster hop; set
+  the **same** value on both the Vault and the Portal (`Vault:InternalToken`).
+- `Vault:Auth:AllowUnauthenticatedUserId` — defaults `false`; set `true` **only** for
+  on-prem / trusted-network deployments that want the keyless `x-user-id` model.
+- Portal: `Vault:GrpcEndpoint`, `Vault:InternalToken`, `Keycloak:Authority` +
+  `Keycloak:Audience`, and `Portal:PublicBaseUrl` (used to build OAuth redirect URIs).
 
 You bring your own public DNS and identity provider, and register
 `https://<your-host>/api/oauth/{provider}/callback` as an allowed redirect URI on each
 OAuth app you connect.
+
+### One public host for both gRPC and HTTP
+
+To expose the gRPC Vault (for `dwvault` over the internet) and the Portal on a **single**
+TLS host, terminate TLS at an L7 edge with **HTTP/2 (ALPN `h2`) enabled** and path-route —
+gRPC method paths never collide with the Portal's:
+
+- `PathPrefix(/donkeywork.vault.v1.)` → the **Vault** Service (h2c upstream)
+- everything else (`/`, `/api/v1/*`, assets) → the **Portal**
+
+On k3s that's a single Traefik `IngressRoute` (an h2c `ServersTransport` for the vault rule,
+`websecure`/TLS on the host). **The edge MUST strip inbound `x-internal-token`, `x-user-id`
+and `x-tenant-id`** so the public can't forge the trusted-hop identity — internet callers may
+only set `x-api-key`. The CLI then dials the public host over TLS:
+`dwvault --addr grpcs://vault.example.com:443 …` (or `VAULT_ADDR=grpcs://…`).
 
 ### Bring your own identity provider (JWT / OIDC)
 

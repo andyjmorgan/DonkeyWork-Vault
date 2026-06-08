@@ -5,6 +5,7 @@ import { api, type Me } from './api'
 import { CredentialsPage } from './pages/Credentials'
 import { ProvidersPage } from './pages/Providers'
 import { ConnectPage } from './pages/Connect'
+import { ProfilePage } from './pages/Profile'
 
 export function App() {
   const [tab, setTab] = useState<Tab>('credentials')
@@ -27,6 +28,7 @@ export function App() {
       {tab === 'credentials' && <CredentialsPage />}
       {tab === 'providers' && <ProvidersPage />}
       {tab === 'connect' && <ConnectPage />}
+      {tab === 'profile' && <ProfilePage me={me} />}
       {me && (
         <p className="pt-2 text-xs text-muted-foreground">
           {me.name || me.email} · userId {me.userId} · tenantId {me.tenantId || '(default)'}
