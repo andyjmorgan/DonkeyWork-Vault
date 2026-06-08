@@ -68,7 +68,7 @@ export function ProfilePage({ me }: { me: Me | null }) {
                   <TableRow key={k.id}>
                     <TableCell>
                       <div className="font-medium">{k.name}</div>
-                      {k.description && <div className="text-xs text-muted-foreground">{k.description}</div>}
+                      {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
                     </TableCell>
                     <TableCell><code className="text-xs text-muted-foreground">{k.prefix}…</code></TableCell>
                     <TableCell><div className="flex max-w-[18rem] flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}</div></TableCell>
