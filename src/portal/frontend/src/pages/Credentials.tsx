@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Plus, Pencil, Eye } from 'lucide-react'
+import { Trash2, Plus, Pencil, Eye, KeyRound, UserRound } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
 import { Button } from '../ui/components/button'
@@ -7,7 +7,7 @@ import { Input } from '../ui/components/input'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
-import { Tabs, TabsList, TabsTrigger } from '../ui/components/tabs'
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../ui/components/dropdown-menu'
 import { CopyButton } from '../components/CopyButton'
 import { Field } from '../components/Field'
 import { api, type ApiKeyItem, type OAuthTokenItem } from '../api'
@@ -18,13 +18,17 @@ export function CredentialsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
   const [err, setErr] = useState<string>()
-  const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem }>({ open: false })
+  const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; scheme: Scheme }>({ open: false, scheme: 'header' })
 
   const load = () => {
     api.apiKeys().then(setKeys).catch((e) => setErr(String(e)))
     api.oauthTokens().then(setTokens).catch(() => {})
   }
   useEffect(() => { load() }, [])
+
+  // When editing, the scheme is fixed by the stored credential (presence of a username ⇒ Basic);
+  // when adding, it's whatever the + dropdown picked.
+  const formScheme: Scheme = form.item ? (form.item.username ? 'basic' : 'header') : form.scheme
 
   return (
     <>
@@ -34,7 +38,19 @@ export function CredentialsPage() {
             <CardTitle>API keys</CardTitle>
             <CardDescription>What's stored and how to use each.</CardDescription>
           </div>
-          <Button size="icon" variant="outline" aria-label="Add API key" onClick={() => setForm({ open: true })}><Plus className="size-4" /></Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="icon" variant="outline" aria-label="Add credential"><Plus className="size-4" /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setForm({ open: true, scheme: 'header' })}>
+                <KeyRound className="size-4" /> API key / token
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setForm({ open: true, scheme: 'basic' })}>
+                <UserRound className="size-4" /> Username + password
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </CardHeader>
         <CardContent>
           {err && <p className="text-sm text-destructive">{err}</p>}
@@ -95,13 +111,13 @@ export function CredentialsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={form.open} onOpenChange={(o) => setForm({ open: o, item: o ? form.item : undefined })}>
+      <Dialog open={form.open} onOpenChange={(o) => setForm({ ...form, open: o, item: o ? form.item : undefined })}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{form.item ? `Edit ${form.item.name}` : 'Add a credential'}</DialogTitle>
-            <DialogDescription>Pick how it authenticates. Self-describing — description / host / docs help agents use it.</DialogDescription>
+            <DialogTitle>{form.item ? `Edit ${form.item.name}` : (formScheme === 'basic' ? 'Add username + password' : 'Add an API key / token')}</DialogTitle>
+            <DialogDescription>Self-describing — description / host / docs help agents discover how to use it.</DialogDescription>
           </DialogHeader>
-          <StoreKey initial={form.item} onStored={() => { load(); setForm({ open: false }) }} />
+          <StoreKey key={`${form.item?.id ?? 'new'}-${formScheme}`} initial={form.item} scheme={formScheme} onStored={() => { load(); setForm({ open: false, scheme: 'header' }) }} />
         </DialogContent>
       </Dialog>
 
@@ -197,10 +213,9 @@ function RevealButton({ title, load }: { title: string; load: () => Promise<stri
 
 type Scheme = 'header' | 'basic'
 
-function StoreKey({ initial, onStored }: { initial?: ApiKeyItem; onStored: () => void }) {
-  // Scheme is chosen explicitly, not inferred from a field. Pre-select Basic when editing
-  // a credential that already has a username.
-  const [mode, setMode] = useState<Scheme>(initial?.username ? 'basic' : 'header')
+function StoreKey({ initial, scheme, onStored }: { initial?: ApiKeyItem; scheme: Scheme; onStored: () => void }) {
+  // The scheme is fixed for the lifetime of the dialog — chosen from the + dropdown when adding,
+  // or derived from the stored credential when editing. The parent remounts this on a scheme change.
   const [k, setK] = useState({
     name: initial?.name ?? '', secret: '', description: initial?.description ?? '',
     baseUrl: initial?.baseUrl ?? '', docsUrl: initial?.docsUrl ?? '', header: initial?.header ?? '', prefix: initial?.prefix ?? '',
@@ -209,7 +224,7 @@ function StoreKey({ initial, onStored }: { initial?: ApiKeyItem; onStored: () =>
   const [msg, setMsg] = useState<string>()
   const set = (patch: Partial<typeof k>) => setK({ ...k, ...patch })
   const editing = !!initial
-  const basic = mode === 'basic'
+  const basic = scheme === 'basic'
 
   const submit = async () => {
     setMsg(undefined)
@@ -223,13 +238,6 @@ function StoreKey({ initial, onStored }: { initial?: ApiKeyItem; onStored: () =>
 
   return (
     <div className="grid gap-3">
-      <Tabs value={mode} onValueChange={(v) => setMode(v as Scheme)}>
-        <TabsList>
-          <TabsTrigger value="header" className="flex-1">API key / token</TabsTrigger>
-          <TabsTrigger value="basic" className="flex-1">Username + password</TabsTrigger>
-        </TabsList>
-      </Tabs>
-
       <div className="grid gap-3 sm:grid-cols-2">
         <div><Label className={lbl}>Name *</Label><Input value={k.name} readOnly={editing} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. grafana-prod" /></div>
 
