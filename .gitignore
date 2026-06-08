@@ -30,3 +30,6 @@ bin\\Debug/
 
 # Local secrets backup (never commit)
 .secrets/
+
+# Claude Code session/worktree state
+.claude/
