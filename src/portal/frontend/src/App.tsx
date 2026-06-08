@@ -29,11 +29,6 @@ export function App() {
       {tab === 'providers' && <ProvidersPage />}
       {tab === 'connect' && <ConnectPage />}
       {tab === 'profile' && <ProfilePage me={me} />}
-      {me && (
-        <p className="pt-2 text-xs text-muted-foreground">
-          {me.name || me.email} · userId {me.userId} · tenantId {me.tenantId || '(default)'}
-        </p>
-      )}
     </AppLayout>
   )
 }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Plus, Pencil, Eye, EyeOff } from 'lucide-react'
+import { Trash2, Plus, Pencil, Eye } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
 import { Button } from '../ui/components/button'
@@ -40,15 +40,17 @@ export function CredentialsPage() {
             <p className="text-sm text-muted-foreground">No API keys yet — add one with the + button.</p>
           ) : (
             <Table>
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Description</TableHead><TableHead>Header</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
+              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Header</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
               <TableBody>
                 {keys.map((k) => (
                   <TableRow key={k.id}>
-                    <TableCell className="font-medium">{k.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{k.description}</TableCell>
-                    <TableCell className="text-muted-foreground">{k.header}{k.prefix ? ` · ${k.prefix.trim()}` : ''}</TableCell>
-                    <TableCell className="text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer">{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
-                    <TableCell><RevealCell load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
+                    <TableCell>
+                      <div className="font-medium">{k.name}</div>
+                      {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
+                    </TableCell>
+                    <TableCell className="whitespace-nowrap text-muted-foreground">{k.header}{k.prefix ? ` · ${k.prefix.trim()}` : ''}</TableCell>
+                    <TableCell className="max-w-[12rem] truncate text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer">{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
+                    <TableCell><RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k })}><Pencil className="size-4" /></Button>
                       <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteApiKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
@@ -86,7 +88,7 @@ export function CredentialsPage() {
                     <TableCell>{t.account}</TableCell>
                     <TableCell className="text-muted-foreground">{t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '—'}</TableCell>
                     <TableCell><div className="flex max-w-[16rem] flex-wrap gap-1">{t.scopes.slice(0, 3).map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}{t.scopes.length > 3 && <Badge variant="secondary">+{t.scopes.length - 3}</Badge>}</div></TableCell>
-                    <TableCell><RevealCell load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} /></TableCell>
+                    <TableCell><RevealButton title={`${t.provider}${t.account ? ` · ${t.account}` : ''}`} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} /></TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -98,23 +100,41 @@ export function CredentialsPage() {
   )
 }
 
-function RevealCell({ load }: { load: () => Promise<string> }) {
+// Reveal a secret in a modal (not inline) so long values can't push the row off-screen on
+// mobile. The value is fetched on click and discarded when the dialog closes.
+function RevealButton({ title, load }: { title: string; load: () => Promise<string> }) {
+  const [open, setOpen] = useState(false)
   const [val, setVal] = useState<string>()
   const [busy, setBusy] = useState(false)
-  if (val !== undefined) {
-    return (
-      <span className="flex items-center gap-1">
-        <code className="max-w-[14rem] truncate text-xs">{val}</code>
-        <CopyButton value={val} />
-        <Button variant="ghost" size="icon" aria-label="Hide" onClick={() => setVal(undefined)}><EyeOff className="size-4" /></Button>
-      </span>
-    )
+  const [err, setErr] = useState<string>()
+
+  const reveal = async () => {
+    setBusy(true); setErr(undefined)
+    try { setVal(await load()); setOpen(true) }
+    catch (e) { setErr(String(e)); setOpen(true) }
+    finally { setBusy(false) }
   }
+
   return (
-    <Button variant="ghost" size="icon" aria-label="Reveal" disabled={busy}
-      onClick={async () => { setBusy(true); try { setVal(await load()) } catch { /* ignore */ } finally { setBusy(false) } }}>
-      <Eye className="size-4" />
-    </Button>
+    <>
+      <Button variant="ghost" size="icon" aria-label="Reveal" disabled={busy} onClick={reveal}><Eye className="size-4" /></Button>
+      <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setVal(undefined) }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="break-all">{title}</DialogTitle>
+            <DialogDescription>Copy the value — keep it secret.</DialogDescription>
+          </DialogHeader>
+          {err ? (
+            <p className="text-sm text-destructive">{err}</p>
+          ) : (
+            <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
+              <code className="min-w-0 flex-1 break-all text-sm">{val}</code>
+              {val !== undefined && <CopyButton value={val} />}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   )
 }
 
