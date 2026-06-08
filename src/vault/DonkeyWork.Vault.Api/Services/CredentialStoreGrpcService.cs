@@ -39,7 +39,7 @@ public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTok
         return new DescribeCredentialResponse
         {
             Found = true,
-            Header = item.Header ?? string.Empty,
+            Header = CredentialUsage.HeaderName(item.Header),
             Prefix = item.Prefix ?? string.Empty,
             BaseUrl = item.BaseUrl ?? string.Empty,
             DocsUrl = item.DocsUrl ?? string.Empty,

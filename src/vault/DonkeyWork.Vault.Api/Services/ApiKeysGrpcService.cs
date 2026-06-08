@@ -46,7 +46,7 @@ public sealed class ApiKeysGrpcService(IApiKeyService apiKeys) : ApiKeys.ApiKeys
         Description = k.Description ?? string.Empty,
         BaseUrl = k.BaseUrl ?? string.Empty,
         DocsUrl = k.DocsUrl ?? string.Empty,
-        Header = k.Header ?? string.Empty,
+        Header = CredentialUsage.HeaderName(k.Header),
         Prefix = k.Prefix ?? string.Empty,
         Username = k.Username ?? string.Empty,
         CreatedAt = k.CreatedAt.ToString("o"),

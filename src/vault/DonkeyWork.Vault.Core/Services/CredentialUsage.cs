@@ -18,6 +18,14 @@ public static class CredentialUsage
         string.IsNullOrEmpty(username) ? Header : Basic;
 
     /// <summary>
+    /// The effective header name to send under. A credential always travels in some header;
+    /// when none was stored we default to Authorization so list/shape/assembly never present
+    /// an empty header name (which would yield a malformed "<c>: value</c>" line).
+    /// </summary>
+    public static string HeaderName(string? header) =>
+        string.IsNullOrEmpty(header) ? "Authorization" : header;
+
+    /// <summary>
     /// The ready-to-send HTTP header for this credential. For Basic, emits
     /// <c>Authorization: Basic base64(username:secret)</c>; otherwise <c>{header}: {prefix}{secret}</c>.
     /// Contains secret material — only ever returned on the authenticated secret path.
@@ -27,9 +35,9 @@ public static class CredentialUsage
         if (!string.IsNullOrEmpty(username))
         {
             var token = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{username}:{secret}"));
-            return (string.IsNullOrEmpty(header) ? "Authorization" : header, $"Basic {token}");
+            return (HeaderName(header), $"Basic {token}");
         }
 
-        return (header ?? string.Empty, (prefix ?? string.Empty) + secret);
+        return (HeaderName(header), (prefix ?? string.Empty) + secret);
     }
 }
