@@ -196,6 +196,42 @@ service OAuthProviderConfigs {
   rpc Delete(DeleteByIdRequest) returns (DeleteResponse);
 }
 
+// ---------- access keys (scoped auth credentials for the CLI/agents + portal) ----------
+// An access key authenticates a caller to the vault (x-api-key metadata) and/or the portal
+// (Authorization: Bearer / X-Api-Key). It carries scopes (frontend:read|readwrite,
+// vault:read|readwrite) and can be enabled/disabled. The secret is shown ONCE on create;
+// only a sha256 hash + display prefix are stored.
+service AccessKeys {
+  rpc List(Empty) returns (ListAccessKeysResponse);
+  rpc Create(CreateAccessKeyRequest) returns (CreateAccessKeyResponse);   // secret returned ONCE
+  rpc SetEnabled(SetAccessKeyEnabledRequest) returns (AccessKeyItem);
+  rpc Delete(DeleteByIdRequest) returns (DeleteResponse);
+  rpc Authenticate(AuthenticateApiKeyRequest) returns (AuthenticateApiKeyResponse); // brokered by the portal
+}
+
+message AccessKeyItem {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  repeated string scopes = 4;
+  bool enabled = 5;
+  string prefix = 6;           // display-only, e.g. "dwv_AbC12"
+  string created_at = 7;
+  string last_used_at = 8;
+}
+message ListAccessKeysResponse { repeated AccessKeyItem items = 1; }
+message CreateAccessKeyRequest { string name = 1; string description = 2; repeated string scopes = 3; }
+message CreateAccessKeyResponse { AccessKeyItem item = 1; string secret = 2; } // secret shown once
+message SetAccessKeyEnabledRequest { string id = 1; bool enabled = 2; }
+message AuthenticateApiKeyRequest { string secret = 1; }
+message AuthenticateApiKeyResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string tenant_id = 3;
+  repeated string scopes = 4;
+  string name = 5;
+}
+
 // ---------- oauth connect flow (browser redirect) ----------
 message BeginAuthRequest { string provider = 1; repeated string scopes = 2; string public_base_url = 3; }
 message BeginAuthResponse { string authorize_url = 1; string state = 2; }

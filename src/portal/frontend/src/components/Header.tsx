@@ -7,8 +7,9 @@ import {
 import { logout } from '../auth'
 import { getTheme, toggleTheme } from '../theme'
 import type { Me } from '../api'
+import type { Tab } from './Sidebar'
 
-export function Header({ me }: { me: Me | null }) {
+export function Header({ me, onSelect }: { me: Me | null; onSelect: (t: Tab) => void }) {
   const [theme, setTheme] = useState(getTheme())
   return (
     <header className="flex h-14 items-center justify-between border-b border-border px-4">
@@ -30,6 +31,9 @@ export function Header({ me }: { me: Me | null }) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>{me?.name || me?.email || 'Signed in'}</DropdownMenuLabel>
             <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={() => onSelect('profile')}>
+              <User className="mr-2 size-4" /> Profile &amp; API keys
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => logout()}>
               <LogOut className="mr-2 size-4" /> Sign out
             </DropdownMenuItem>

@@ -22,6 +22,7 @@ public static class DependencyInjection
         services.AddSingleton<OAuthDiscoveryService>();
         services.AddScoped<ManifestResolver>();
         services.AddScoped<IApiKeyService, ApiKeyService>();
+        services.AddScoped<IAccessKeyService, AccessKeyService>();
         services.AddScoped<IOAuthTokenService, OAuthTokenService>();
         services.AddScoped<IOAuthProviderConfigService, OAuthProviderConfigService>();
         services.AddScoped<IOAuthFlowService, OAuthFlowService>();

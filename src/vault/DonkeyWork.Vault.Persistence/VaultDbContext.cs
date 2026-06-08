@@ -21,6 +21,7 @@ public sealed class VaultDbContext : DbContext, IDataProtectionKeyContext
     public Guid CurrentUserId => _caller?.UserId ?? Guid.Empty;
 
     public DbSet<ApiKeyEntity> ApiKeys => Set<ApiKeyEntity>();
+    public DbSet<AccessKeyEntity> AccessKeys => Set<AccessKeyEntity>();
     public DbSet<OAuthProviderConfigEntity> OAuthProviderConfigs => Set<OAuthProviderConfigEntity>();
     public DbSet<OAuthTokenEntity> OAuthTokens => Set<OAuthTokenEntity>();
     public DbSet<ProviderManifestEntity> ProviderManifests => Set<ProviderManifestEntity>();
