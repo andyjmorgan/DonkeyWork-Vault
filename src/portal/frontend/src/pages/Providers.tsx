@@ -5,6 +5,7 @@ import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
 import { ProviderIcon } from '../components/ProviderIcon'
 import { api, type OAuthProvider } from '../api'
 
@@ -102,29 +103,31 @@ function OAuthEditor({ value, onClose, onSaved }: { value: OAuthProvider; onClos
   }
 
   return (
-    <Card>
-      <CardHeader><CardTitle>{value.key ? `Edit ${value.key}` : 'New custom OAuth provider'}</CardTitle></CardHeader>
-      <CardContent className="space-y-3">
-        <div className="flex items-end gap-2">
-          <div className="flex-1"><Label className={lbl}>OIDC discovery URL (issuer)</Label><Input value={discoverUrl} onChange={(e) => setDiscoverUrl(e.target.value)} placeholder="https://issuer.example.com" /></div>
-          <Button variant="outline" onClick={discover} disabled={!discoverUrl}><Search className="size-4" /> Discover</Button>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div><Label className={lbl}>Key (id)</Label><Input value={m.key} onChange={(e) => set({ key: e.target.value })} /></div>
-          <div><Label className={lbl}>Name</Label><Input value={m.name} onChange={(e) => set({ name: e.target.value })} /></div>
-          <div className="sm:col-span-2"><Label className={lbl}>Icon URL (optional)</Label><Input value={m.iconUrl || ''} onChange={(e) => set({ iconUrl: e.target.value })} /></div>
-          <div className="sm:col-span-2"><Label className={lbl}>Authorization endpoint</Label><Input value={m.authorizationEndpoint} onChange={(e) => set({ authorizationEndpoint: e.target.value })} /></div>
-          <div className="sm:col-span-2"><Label className={lbl}>Token endpoint</Label><Input value={m.tokenEndpoint} onChange={(e) => set({ tokenEndpoint: e.target.value })} /></div>
-          <div className="sm:col-span-2"><Label className={lbl}>Userinfo endpoint</Label><Input value={m.userinfoEndpoint} onChange={(e) => set({ userinfoEndpoint: e.target.value })} /></div>
-          <div className="sm:col-span-2"><Label className={lbl}>Default scopes (space-separated)</Label><Input value={scopes} onChange={(e) => setScopes(e.target.value)} /></div>
-        </div>
-        {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
-        <div className="flex gap-2">
+    <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
+      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+        <DialogHeader>
+          <DialogTitle>{value.key ? `Edit ${value.key}` : 'New custom OAuth provider'}</DialogTitle>
+          <DialogDescription>Discover endpoints from an issuer URL, or fill them in manually. Set credentials on the Connect tab.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="flex items-end gap-2">
+            <div className="flex-1"><Label className={lbl}>OIDC discovery URL (issuer)</Label><Input value={discoverUrl} onChange={(e) => setDiscoverUrl(e.target.value)} placeholder="https://issuer.example.com" /></div>
+            <Button variant="outline" onClick={discover} disabled={!discoverUrl}><Search className="size-4" /> Discover</Button>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div><Label className={lbl}>Key (id)</Label><Input value={m.key} onChange={(e) => set({ key: e.target.value })} /></div>
+            <div><Label className={lbl}>Name</Label><Input value={m.name} onChange={(e) => set({ name: e.target.value })} /></div>
+            <div className="sm:col-span-2"><Label className={lbl}>Icon URL (optional)</Label><Input value={m.iconUrl || ''} onChange={(e) => set({ iconUrl: e.target.value })} /></div>
+            <div className="sm:col-span-2"><Label className={lbl}>Authorization endpoint</Label><Input value={m.authorizationEndpoint} onChange={(e) => set({ authorizationEndpoint: e.target.value })} /></div>
+            <div className="sm:col-span-2"><Label className={lbl}>Token endpoint</Label><Input value={m.tokenEndpoint} onChange={(e) => set({ tokenEndpoint: e.target.value })} /></div>
+            <div className="sm:col-span-2"><Label className={lbl}>Userinfo endpoint</Label><Input value={m.userinfoEndpoint} onChange={(e) => set({ userinfoEndpoint: e.target.value })} /></div>
+            <div className="sm:col-span-2"><Label className={lbl}>Default scopes (space-separated)</Label><Input value={scopes} onChange={(e) => setScopes(e.target.value)} /></div>
+          </div>
+          {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
           <Button onClick={save} disabled={!m.key}>Save provider</Button>
-          <Button variant="outline" onClick={onClose}>Cancel</Button>
         </div>
-      </CardContent>
-    </Card>
+      </DialogContent>
+    </Dialog>
   )
 }
 
