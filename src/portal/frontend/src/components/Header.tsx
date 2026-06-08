@@ -4,7 +4,7 @@ import { Button } from '../ui/components/button'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../ui/components/dropdown-menu'
-import { keycloak } from '../keycloak'
+import { logout } from '../auth'
 import { getTheme, toggleTheme } from '../theme'
 import type { Me } from '../api'
 import type { Tab } from './Sidebar'
@@ -34,7 +34,7 @@ export function Header({ me, onSelect }: { me: Me | null; onSelect: (t: Tab) => 
             <DropdownMenuItem onClick={() => onSelect('profile')}>
               <User className="mr-2 size-4" /> Profile &amp; API keys
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => keycloak.logout()}>
+            <DropdownMenuItem onClick={() => logout()}>
               <LogOut className="mr-2 size-4" /> Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
