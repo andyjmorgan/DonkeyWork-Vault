@@ -32,7 +32,7 @@ secret only at the moment of use — without it ever being printed.
 ```
                  ┌─────────────────┐
    browser ────▶ │  Portal (SPA +  │ ── gRPC ─┐
-  (Keycloak)     │  BFF, 1 image)  │          │
+  (OIDC SSO)     │  BFF, 1 image)  │          │
                  └─────────────────┘          ▼
                                        ┌───────────────┐     ┌────────────┐
    terminal ───── gRPC (h2c) ────────▶ │  Vault (gRPC) │ ──▶ │ PostgreSQL │
@@ -43,7 +43,7 @@ secret only at the moment of use — without it ever being printed.
 - **Vault** — gRPC service; the only thing that can decrypt. Envelope-encrypts every secret
   before it touches the database.
 - **Portal** — a React SPA + a thin backend-for-frontend in one container; authenticates
-  users with **your** Keycloak (JWT) and talks to the Vault over gRPC.
+  users with **your** OIDC IdP (JWT) and talks to the Vault over gRPC.
 - **dwvault** — a dependency-free Go CLI that retrieves credentials for shell/agent use.
 
 ## Components
@@ -65,7 +65,7 @@ secret only at the moment of use — without it ever being printed.
 - **Secret-to-stdout discipline.** The CLI prints a secret to **stdout only**, with no
   decoration, so it's safe for `$(...)` substitution and never needs to be echoed. Logs and
   errors go to stderr.
-- **Auth.** The Portal trusts JWTs from your Keycloak realm. OAuth connect uses the
+- **Auth.** The Portal trusts standard OIDC JWTs from your identity provider. OAuth connect uses the
   authorization-code flow with **PKCE (S256)**; one-time state + PKCE verifier are stored
   server-side and consumed on callback.
 
@@ -141,7 +141,7 @@ TOKEN=$(dwvault oauth token microsoft) && \
 
 ## The Portal
 
-A web console (served at your chosen host, authenticated via Keycloak) to:
+A web console (served at your chosen host, authenticated via your OIDC IdP) to:
 
 - **Credentials** — add/edit/delete self-describing API keys; reveal a stored secret or a
   live OAuth access token on demand; see connected OAuth accounts.
@@ -197,8 +197,9 @@ migrations on start. Provide via configuration:
 
 - `Vault:Persistence:ConnectionString` — Postgres.
 - `Vault:Crypto:ActiveKekId` + `Vault:Crypto:Keks:<id>` — the KEK(s).
-- Portal: `Vault:GrpcEndpoint`, `Keycloak:Authority` + `Keycloak:Audience`, and
-  `Portal:PublicBaseUrl` (used to build OAuth redirect URIs).
+- Portal: `Vault:GrpcEndpoint`, `Oidc:Authority` + `Oidc:ClientId`/`Oidc:Audience`, and
+  `Portal:PublicBaseUrl` (used to build OAuth redirect URIs). See
+  [bring your own identity provider](#bring-your-own-identity-provider-jwt--oidc) below.
 
 You bring your own public DNS and identity provider, and register
 `https://<your-host>/api/oauth/{provider}/callback` as an allowed redirect URI on each
@@ -206,28 +207,28 @@ OAuth app you connect.
 
 ### Bring your own identity provider (JWT / OIDC)
 
-The Portal authenticates users with **standard OIDC bearer JWTs** — it isn't tied to a
-specific vendor (the config section is just named `Keycloak` for historical reasons). Any
-OIDC-compliant IdP works on the **backend** (Keycloak, Microsoft Entra ID, Auth0, Okta,
-Cognito, Authentik, Zitadel, …):
+The Portal is **vendor-neutral**: it authenticates users with standard OIDC bearer JWTs and
+isn't tied to any provider. Any OIDC-compliant IdP works (Keycloak, Microsoft Entra ID,
+Auth0, Okta, Cognito, Authentik, Zitadel, …) with **config only — no rebuild**:
 
 | Setting | Meaning |
 |---|---|
-| `Keycloak:Authority` | Your issuer URL. The BFF fetches `<authority>/.well-known/openid-configuration` for keys; the issuer is validated against this. Leave **blank to disable auth** (local/dev only). |
-| `Keycloak:Audience`  | Your API/client audience. |
-| `Keycloak:InternalAuthority` | Optional — issuer URL reachable from inside the cluster, if it differs from the public one (metadata is fetched from here). |
-| `Keycloak:RequireHttpsMetadata` | Defaults to `true`. |
+| `Oidc:Authority` | Your issuer URL. The BFF fetches `<authority>/.well-known/openid-configuration` for keys (issuer validated against this) and the SPA logs in against it. Leave **blank to disable auth** (local/dev only). |
+| `Oidc:ClientId`  | Public client id the SPA logs in with. Defaults to `Oidc:Audience` if unset. |
+| `Oidc:Audience`  | Expected audience. |
+| `Oidc:Scopes`    | Space-separated scopes the SPA requests (default `openid profile email`). |
+| `Oidc:InternalAuthority` | Optional — issuer URL reachable from inside the cluster, if it differs from the public one (metadata is fetched from here). |
+| `Oidc:RequireHttpsMetadata` | Defaults to `true`. |
 
-Tokens are validated by **signature + issuer via JWKS** (audience validation is currently
-off — tighten if your IdP sets a stable `aud`). The BFF reads two claims and forwards them
-to the Vault: **`sub` → the user id**, and optional **`tenant_id` → the tenant**. So your
-IdP must issue a stable `sub`, and a `tenant_id` claim if you use tenancy.
+> The legacy `Keycloak:*` section is still honored as a **deprecated alias** for one release.
 
-> **Frontend caveat:** the SPA login is currently implemented with **`keycloak-js`** (and a
-> hardcoded realm/client). The *backend* is generic OIDC, but to log in against a non-Keycloak
-> IdP you must either (a) put a Keycloak in front that federates your IdP, or (b) swap the SPA's
-> `keycloak-js` for a generic OIDC client (e.g. `oidc-client-ts`) — a small, isolated change.
-> Making the SPA IdP-agnostic is a tracked follow-up.
+How it works: the **SPA** reads `GET /api/config` at boot (issuer / client id / scopes) and
+runs Authorization Code + PKCE via a generic OIDC client — so the same build points at any
+IdP. The **BFF** validates tokens by **signature + issuer via JWKS** (audience validation is
+currently off — tighten if your IdP sets a stable `aud`) and forwards two claims to the
+Vault: **`sub` → user id**, optional **`tenant_id` → tenant**. So your IdP must issue a stable
+`sub` (and `tenant_id` if you use tenancy), and allow `https://<your-host>/` as a redirect URI
+for the SPA client.
 
 A tagged release (`vX.Y.Z`) also cross-compiles and publishes the `dwvault` binaries via the
 `release-cli` GitHub Actions workflow.

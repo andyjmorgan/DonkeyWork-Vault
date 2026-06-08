@@ -13,21 +13,31 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHealthChecks();
 
-var keycloak = builder.Configuration.GetSection(KeycloakOptions.SectionName).Get<KeycloakOptions>() ?? new KeycloakOptions();
-var authConfigured = !string.IsNullOrWhiteSpace(keycloak.Authority);
+// OIDC config — `Oidc:` section, falling back to the legacy `Keycloak:` section (deprecated).
+var oidc = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
+if (string.IsNullOrWhiteSpace(oidc.Authority))
+{
+    var legacy = builder.Configuration.GetSection(OidcOptions.LegacySectionName).Get<OidcOptions>();
+    if (legacy is not null && !string.IsNullOrWhiteSpace(legacy.Authority))
+    {
+        oidc = legacy;
+    }
+}
+var spaClientId = string.IsNullOrWhiteSpace(oidc.ClientId) ? oidc.Audience : oidc.ClientId;
+var authConfigured = !string.IsNullOrWhiteSpace(oidc.Authority);
 
 if (authConfigured)
 {
     builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         .AddJwtBearer(options =>
         {
-            options.Authority = keycloak.Authority;
-            options.MetadataAddress = $"{(keycloak.InternalAuthority ?? keycloak.Authority).TrimEnd('/')}/.well-known/openid-configuration";
-            options.RequireHttpsMetadata = keycloak.RequireHttpsMetadata;
+            options.Authority = oidc.Authority;
+            options.MetadataAddress = $"{(oidc.InternalAuthority ?? oidc.Authority).TrimEnd('/')}/.well-known/openid-configuration";
+            options.RequireHttpsMetadata = oidc.RequireHttpsMetadata;
             options.TokenValidationParameters = new TokenValidationParameters
             {
-                ValidIssuer = keycloak.Authority,
-                ValidateAudience = false, // Keycloak puts client id in azp; audience varies
+                ValidIssuer = oidc.Authority,
+                ValidateAudience = false, // many IdPs put the client id in azp; audience varies
                 NameClaimType = "sub",
             };
         });
@@ -253,6 +263,15 @@ app.MapGet("/api/oauth/{provider}/callback", async (string provider, string? cod
     try { var r = await f.CompleteAsync(new CompleteAuthRequest { Provider = provider, Code = code, State = state }); return Results.Redirect($"/?connected={Uri.EscapeDataString(r.Provider)}"); }
     catch (Grpc.Core.RpcException ex) { return Results.Redirect($"/?oauth_error={Uri.EscapeDataString(ex.Status.Detail)}"); }
 });
+
+// Public runtime config for the SPA's OIDC login (anonymous — read before sign-in).
+app.MapGet("/api/config", () => Results.Ok(new
+{
+    authority = oidc.Authority,
+    clientId = spaClientId,
+    scopes = oidc.Scopes,
+    authEnabled = authConfigured,
+}));
 
 app.MapFallbackToFile("index.html");
 

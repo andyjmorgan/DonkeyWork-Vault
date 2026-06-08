@@ -1,9 +1,9 @@
-import { keycloak } from './keycloak'
+import { getToken } from './auth'
 
 async function authed(path: string, init: RequestInit = {}) {
-  await keycloak.updateToken(30).catch(() => keycloak.login())
+  const token = await getToken()
   const headers = new Headers(init.headers)
-  headers.set('Authorization', `Bearer ${keycloak.token}`)
+  if (token) headers.set('Authorization', `Bearer ${token}`)
   if (init.body) headers.set('Content-Type', 'application/json')
   const res = await fetch(`/api/v1${path}`, { ...init, headers })
   if (!res.ok) {

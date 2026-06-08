@@ -4,7 +4,7 @@ import { Button } from '../ui/components/button'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../ui/components/dropdown-menu'
-import { keycloak } from '../keycloak'
+import { logout } from '../auth'
 import { getTheme, toggleTheme } from '../theme'
 import type { Me } from '../api'
 
@@ -30,7 +30,7 @@ export function Header({ me }: { me: Me | null }) {
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>{me?.name || me?.email || 'Signed in'}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => keycloak.logout()}>
+            <DropdownMenuItem onClick={() => logout()}>
               <LogOut className="mr-2 size-4" /> Sign out
             </DropdownMenuItem>
           </DropdownMenuContent>
