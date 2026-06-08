@@ -46,7 +46,7 @@ export function CredentialsPage() {
                   <TableRow key={k.id}>
                     <TableCell className="font-medium">{k.name}</TableCell>
                     <TableCell className="text-muted-foreground">{k.description}</TableCell>
-                    <TableCell className="text-muted-foreground">{k.header}{k.prefix ? ` · ${k.prefix.trim()}` : ''}</TableCell>
+                    <TableCell className="text-muted-foreground">{k.username ? `Basic · ${k.username}` : `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}`}</TableCell>
                     <TableCell className="text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer">{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
                     <TableCell><RevealCell load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
                     <TableCell className="text-right">
@@ -122,10 +122,12 @@ function StoreKey({ initial, onStored }: { initial?: ApiKeyItem; onStored: () =>
   const [k, setK] = useState({
     name: initial?.name ?? '', secret: '', description: initial?.description ?? '',
     baseUrl: initial?.baseUrl ?? '', docsUrl: initial?.docsUrl ?? '', header: initial?.header ?? '', prefix: initial?.prefix ?? '',
+    username: initial?.username ?? '',
   })
   const [msg, setMsg] = useState<string>()
   const set = (patch: Partial<typeof k>) => setK({ ...k, ...patch })
   const editing = !!initial
+  const basic = k.username.trim() !== '' // username present ⇒ HTTP Basic auth
 
   const submit = async () => {
     setMsg(undefined)
@@ -135,12 +137,25 @@ function StoreKey({ initial, onStored }: { initial?: ApiKeyItem; onStored: () =>
   return (
     <div className="grid gap-3 sm:grid-cols-2">
       <div><Label className={lbl}>Name *</Label><Input value={k.name} readOnly={editing} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. grafana-prod" /></div>
-      <div><Label className={lbl}>Secret {editing ? '' : '*'}</Label><Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} /></div>
+      <div>
+        <Label className={lbl}>Username{basic ? ' *' : ' (optional → Basic auth)'}</Label>
+        <Input value={k.username} onChange={(e) => set({ username: e.target.value })} placeholder="set for user:password / Basic" />
+      </div>
+      <div className="sm:col-span-2">
+        <Label className={lbl}>{basic ? `Password ${editing ? '' : '*'}` : `Secret ${editing ? '' : '*'}`}</Label>
+        <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} />
+      </div>
       <div className="sm:col-span-2"><Label className={lbl}>Description</Label><Input value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="what this credential is for" /></div>
       <div><Label className={lbl}>Base URL / host</Label><Input value={k.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" /></div>
       <div><Label className={lbl}>API docs link</Label><Input value={k.docsUrl} onChange={(e) => set({ docsUrl: e.target.value })} placeholder="https://docs.example.com" /></div>
-      <div><Label className={lbl}>Header (optional)</Label><Input value={k.header} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
-      <div><Label className={lbl}>Prefix (optional)</Label><Input value={k.prefix} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " /></div>
+      {basic ? (
+        <p className="text-xs text-muted-foreground sm:col-span-2">Sent as <code>Authorization: Basic base64(username:password)</code> — header and prefix are handled for you.</p>
+      ) : (
+        <>
+          <div><Label className={lbl}>Header (optional)</Label><Input value={k.header} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
+          <div><Label className={lbl}>Prefix (optional)</Label><Input value={k.prefix} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " /></div>
+        </>
+      )}
       {msg && <p className="text-sm text-destructive sm:col-span-2">{msg}</p>}
       <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || (!editing && !k.secret)}>{editing ? 'Save changes' : 'Save key'}</Button></div>
     </div>

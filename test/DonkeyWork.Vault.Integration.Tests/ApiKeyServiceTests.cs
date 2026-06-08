@@ -47,7 +47,7 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
         await using var _ = db;
 
         await svc.CreateAsync("grafana", "secret-123", "Grafana prod", "https://grafana.donkeywork.dev",
-            "https://grafana.com/docs", "Authorization", "Bearer ", default);
+            "https://grafana.com/docs", "Authorization", "Bearer ", null, default);
 
         var raw = await db.ApiKeys.AsNoTracking().FirstAsync();
         Assert.DoesNotContain("secret-123", Encoding.UTF8.GetString(raw.FieldsCipher));
@@ -69,7 +69,49 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
             ;
         await using var _ = db;
         await Assert.ThrowsAsync<CredentialValidationException>(() =>
-            svc.CreateAsync("x", "", null, null, null, "Authorization", null, default));
+            svc.CreateAsync("x", "", null, null, null, "Authorization", null, null, default));
+    }
+
+    [Fact]
+    public async Task BasicAuth_RoundTrips_AndShapeDescribesUsage()
+    {
+        var (db, svc) = await BuildAsync(new FixedCaller(Guid.NewGuid()));
+        await using var _ = db;
+
+        // username present ⇒ Basic; header defaults to Authorization, prefix is ignored.
+        var stored = await svc.CreateAsync("nexus", "hunter2", "Nexus admin", "https://nexus.donkeywork.dev",
+            null, null, null, "admin", default);
+        Assert.Equal("admin", stored.Username);
+        Assert.Equal("Authorization", stored.Header);
+
+        var got = await svc.GetByNameAsync("nexus", default);
+        Assert.NotNull(got);
+        Assert.Equal("hunter2", got!.Secret);
+        Assert.Equal("admin", got.Username);
+
+        // The credential describes how to use it: Authorization: Basic base64(user:pass).
+        Assert.Equal(CredentialUsage.Basic, CredentialUsage.Scheme(got.Username));
+        var (name, value) = CredentialUsage.AssembleHeader(got.Header, got.Prefix, got.Username, got.Secret);
+        Assert.Equal("Authorization", name);
+        Assert.Equal("Basic " + Convert.ToBase64String(Encoding.UTF8.GetBytes("admin:hunter2")), value);
+    }
+
+    [Fact]
+    public async Task BasicAuth_UsernameWithColon_Throws()
+    {
+        var (db, svc) = await BuildAsync(new FixedCaller(Guid.NewGuid()));
+        await using var _ = db;
+        await Assert.ThrowsAsync<CredentialValidationException>(() =>
+            svc.CreateAsync("x", "pw", null, null, null, null, null, "ad:min", default));
+    }
+
+    [Fact]
+    public async Task BasicAuth_MissingPassword_Throws()
+    {
+        var (db, svc) = await BuildAsync(new FixedCaller(Guid.NewGuid()));
+        await using var _ = db;
+        await Assert.ThrowsAsync<CredentialValidationException>(() =>
+            svc.CreateAsync("x", "", null, null, null, null, null, "admin", default));
     }
 
     [Fact]
@@ -77,7 +119,7 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
     {
         var owner = new FixedCaller(Guid.NewGuid());
         var (db1, svc1) = await BuildAsync(owner);
-        await using (db1) { await svc1.CreateAsync("svc", "owned", null, null, null, "Authorization", "Bearer ", default); }
+        await using (db1) { await svc1.CreateAsync("svc", "owned", null, null, null, "Authorization", "Bearer ", null, default); }
 
         var (db2, svc2) = await BuildAsync(new FixedCaller(Guid.NewGuid()));
         await using (db2) { Assert.Null(await svc2.GetByNameAsync("svc", default)); }

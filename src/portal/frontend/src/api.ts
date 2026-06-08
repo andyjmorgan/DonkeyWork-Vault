@@ -25,8 +25,8 @@ export interface OAuthProvider {
   authorizationEndpoint: string; tokenEndpoint: string
   userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]; scopes?: OAuthScope[]
 }
-export interface ApiKeyItem { id: string; name: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string; createdAt: string; lastUsedAt: string }
-export interface NewApiKey { name: string; secret: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string }
+export interface ApiKeyItem { id: string; name: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string; username?: string; createdAt: string; lastUsedAt: string }
+export interface NewApiKey { name: string; secret: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string; username?: string }
 export interface OAuthTokenItem { id: string; provider: string; account: string; expiresAt: string; lastRefreshedAt: string; scopes: string[] }
 export interface OAuthConfigItem { id: string; provider: string; clientIdMasked: string; scopes: string[]; redirectUri: string; createdAt: string }
 export interface Me { userId: string; tenantId: string; email?: string; name?: string }

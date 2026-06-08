@@ -13,17 +13,17 @@ namespace DonkeyWork.Vault.Core.Services;
 /// </summary>
 public sealed record StoredApiKey(
     Guid Id, string Name, string? Description, string? BaseUrl, string? DocsUrl,
-    string? Header, string? Prefix, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
+    string? Header, string? Prefix, string? Username, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
 
 public sealed record ApiKeySecret(
-    string Secret, string? Header, string? Prefix, string? BaseUrl, string? DocsUrl, string? Description);
+    string Secret, string? Header, string? Prefix, string? Username, string? BaseUrl, string? DocsUrl, string? Description);
 
 /// <summary>Thrown when create input is invalid.</summary>
 public sealed class CredentialValidationException(string message) : Exception(message);
 
 public interface IApiKeyService
 {
-    Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, CancellationToken ct);
+    Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, string? username, CancellationToken ct);
     Task<IReadOnlyList<StoredApiKey>> ListAsync(CancellationToken ct);
     Task<ApiKeySecret?> GetByNameAsync(string name, CancellationToken ct);
     Task<bool> DeleteAsync(Guid id, CancellationToken ct);
@@ -32,13 +32,23 @@ public interface IApiKeyService
 public sealed class ApiKeyService(
     VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller) : IApiKeyService
 {
-    public async Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, CancellationToken ct)
+    public async Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, string? username, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
             throw new CredentialValidationException("name is required.");
         }
+
+        // username present ⇒ HTTP Basic. The username is the delimiter's left side, so it
+        // must not contain a colon. Empty/whitespace means "not Basic".
+        username = string.IsNullOrWhiteSpace(username) ? null : username;
+        if (username is not null && username.Contains(':'))
+        {
+            throw new CredentialValidationException("username must not contain ':' (it delimits Basic credentials).");
+        }
+
         var existing = await db.ApiKeys.FirstOrDefaultAsync(k => k.Name == name, ct);
+        var isNew = existing is null;
         if (existing is null)
         {
             if (string.IsNullOrEmpty(secret))
@@ -48,11 +58,24 @@ public sealed class ApiKeyService(
             existing = new ApiKeyEntity { UserId = caller.UserId, TenantId = caller.TenantId, ProviderKey = string.Empty, Name = name };
             db.ApiKeys.Add(existing);
         }
+
+        // Basic requires both halves; on edit a blank secret keeps the stored password, so
+        // only enforce "password present" when creating or when there's nothing stored yet.
+        if (username is not null && string.IsNullOrEmpty(secret) && (isNew || existing.FieldsCipher.Length == 0))
+        {
+            throw new CredentialValidationException("Basic auth requires a password (secret) alongside the username.");
+        }
+
         existing.Description = description;
         existing.BaseUrl = baseUrl;
         existing.DocsUrl = docsUrl;
-        existing.HeaderName = string.IsNullOrWhiteSpace(header) ? null : header;
-        existing.Prefix = prefix;
+        existing.Username = username;
+        // For Basic, default the header to Authorization so list/shape read sensibly; the
+        // prefix is irrelevant (the value is assembled as "Basic base64(user:pass)").
+        existing.HeaderName = username is not null
+            ? (string.IsNullOrWhiteSpace(header) ? "Authorization" : header)
+            : (string.IsNullOrWhiteSpace(header) ? null : header);
+        existing.Prefix = username is not null ? null : prefix;
         if (!string.IsNullOrEmpty(secret)) // blank on edit keeps the existing secret
         {
             existing.FieldsCipher = cipher.EncryptString(secret);
@@ -75,7 +98,7 @@ public sealed class ApiKeyService(
         var secret = cipher.DecryptToString(entity.FieldsCipher);
         entity.LastUsedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-        return new ApiKeySecret(secret, entity.HeaderName, entity.Prefix, entity.BaseUrl, entity.DocsUrl, entity.Description);
+        return new ApiKeySecret(secret, entity.HeaderName, entity.Prefix, entity.Username, entity.BaseUrl, entity.DocsUrl, entity.Description);
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct)
@@ -91,5 +114,5 @@ public sealed class ApiKeyService(
     }
 
     private static StoredApiKey ToStored(ApiKeyEntity k) =>
-        new(k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.HeaderName, k.Prefix, k.CreatedAt, k.LastUsedAt);
+        new(k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.HeaderName, k.Prefix, k.Username, k.CreatedAt, k.LastUsedAt);
 }

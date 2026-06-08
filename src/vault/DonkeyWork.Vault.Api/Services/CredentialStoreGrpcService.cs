@@ -13,15 +13,19 @@ public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTok
         {
             return new GetApiKeyResponse { Found = false };
         }
+        var (headerName, headerValue) = CredentialUsage.AssembleHeader(result.Header, result.Prefix, result.Username, result.Secret);
         return new GetApiKeyResponse
         {
             Found = true,
             Secret = result.Secret,
-            Header = result.Header ?? string.Empty,
+            Header = headerName,
             Prefix = result.Prefix ?? string.Empty,
             BaseUrl = result.BaseUrl ?? string.Empty,
             DocsUrl = result.DocsUrl ?? string.Empty,
             Description = result.Description ?? string.Empty,
+            Scheme = CredentialUsage.Scheme(result.Username),
+            Username = result.Username ?? string.Empty,
+            HeaderValue = headerValue,
         };
     }
 
@@ -40,6 +44,8 @@ public sealed class CredentialStoreGrpcService(IApiKeyService apiKeys, IOAuthTok
             BaseUrl = item.BaseUrl ?? string.Empty,
             DocsUrl = item.DocsUrl ?? string.Empty,
             Description = item.Description ?? string.Empty,
+            Scheme = CredentialUsage.Scheme(item.Username),
+            Username = item.Username ?? string.Empty,
         };
     }
 

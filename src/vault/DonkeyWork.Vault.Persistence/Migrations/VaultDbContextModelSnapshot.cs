@@ -171,6 +171,11 @@ namespace DonkeyWork.Vault.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("user_id");
 
+                    b.Property<string>("Username")
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("username");
+
                     b.HasKey("Id");
 
                     b.HasIndex("TenantId", "UserId");

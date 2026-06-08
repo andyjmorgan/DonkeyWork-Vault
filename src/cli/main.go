@@ -122,7 +122,7 @@ func main() {
 	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by a grpcs://host address)")
 
 	creds := &cobra.Command{Use: "creds", Short: "Manage and retrieve API-key credentials"}
-	creds.AddCommand(cmdList(), cmdGet(), cmdShape(), cmdCreate())
+	creds.AddCommand(cmdList(), cmdGet(), cmdHeader(), cmdShape(), cmdCreate())
 
 	oauth := &cobra.Command{Use: "oauth", Short: "Retrieve OAuth access tokens"}
 	oauth.AddCommand(cmdOAuthToken(), cmdOAuthList())
@@ -206,7 +206,7 @@ func cmdGet() *cobra.Command {
 func cmdShape() *cobra.Command {
 	return &cobra.Command{
 		Use:   "shape <name>",
-		Short: "Print how to use the credential (description, base url, header, prefix, docs)",
+		Short: "Print how to use the credential (scheme, username, header, prefix, base url, docs)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			conn, ctx, cancel := dial()
@@ -221,12 +221,37 @@ func cmdShape() *cobra.Command {
 			}
 			out, _ := json.MarshalIndent(map[string]any{
 				"description": resp.Description,
+				"scheme":      resp.Scheme,
+				"username":    resp.Username,
 				"base_url":    resp.BaseUrl,
 				"header":      resp.Header,
 				"prefix":      resp.Prefix,
 				"docs_url":    resp.DocsUrl,
 			}, "", "  ")
 			fmt.Println(string(out))
+			return nil
+		},
+	}
+}
+
+func cmdHeader() *cobra.Command {
+	return &cobra.Command{
+		Use:   "header <name>",
+		Short: "Print the ready Authorization header line (for curl -H), e.g. Basic base64(user:pass)",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			conn, ctx, cancel := dial()
+			defer conn.Close()
+			defer cancel()
+			resp, err := pb.NewCredentialStoreClient(conn).GetApiKey(ctx, &pb.GetApiKeyRequest{Name: args[0]})
+			if err != nil {
+				return err
+			}
+			if !resp.Found {
+				fail("no credential named %q", args[0])
+			}
+			// Full "Name: value" line so it drops into `curl -H "$(dwvault creds header foo)"`.
+			fmt.Printf("%s: %s\n", resp.Header, resp.HeaderValue)
 			return nil
 		},
 	}
@@ -282,10 +307,10 @@ func cmdOAuthList() *cobra.Command {
 }
 
 func cmdCreate() *cobra.Command {
-	var secret, description, baseURL, docs, header, prefix string
+	var secret, description, baseURL, docs, header, prefix, username string
 	c := &cobra.Command{
 		Use:   "create <name>",
-		Short: "Store a self-describing API key",
+		Short: "Store a self-describing API key (set --username for HTTP Basic auth)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			conn, ctx, cancel := dial()
@@ -293,7 +318,7 @@ func cmdCreate() *cobra.Command {
 			defer cancel()
 			item, err := pb.NewApiKeysClient(conn).Create(ctx, &pb.CreateApiKeyRequest{
 				Name: args[0], Secret: secret, Description: description,
-				BaseUrl: baseURL, DocsUrl: docs, Header: header, Prefix: prefix,
+				BaseUrl: baseURL, DocsUrl: docs, Header: header, Prefix: prefix, Username: username,
 			})
 			if err != nil {
 				return err
@@ -302,12 +327,13 @@ func cmdCreate() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&secret, "secret", "", "the API key value (required)")
+	c.Flags().StringVar(&secret, "secret", "", "the API key value, or password with --username (required)")
 	c.Flags().StringVar(&description, "description", "", "what this credential is for")
 	c.Flags().StringVar(&baseURL, "base-url", "", "host / base URL where it's used")
 	c.Flags().StringVar(&docs, "docs", "", "API documentation link")
 	c.Flags().StringVar(&header, "header", "Authorization", "header name to send")
 	c.Flags().StringVar(&prefix, "prefix", "", "optional value prefix, e.g. 'Bearer '")
+	c.Flags().StringVar(&username, "username", "", "username ⇒ HTTP Basic auth (secret is the password)")
 	return c
 }
 

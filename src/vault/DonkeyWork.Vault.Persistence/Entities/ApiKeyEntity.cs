@@ -2,8 +2,8 @@ namespace DonkeyWork.Vault.Persistence.Entities;
 
 /// <summary>
 /// A non-OAuth API key credential. ProviderKey is a manifest id (e.g. "grafana",
-/// "openai") — no enum. FieldsCipher is the envelope-encrypted JSON map of the
-/// manifest's declared fields (e.g. { "api_key": "..." }).
+/// "openai") — no enum. FieldsCipher is the envelope-encrypted secret: the API key,
+/// or the password when <see cref="Username"/> is set (HTTP Basic auth).
 /// </summary>
 public sealed class ApiKeyEntity : BaseEntity
 {
@@ -18,6 +18,11 @@ public sealed class ApiKeyEntity : BaseEntity
     public string? DocsUrl { get; set; }
     public string? HeaderName { get; set; }
     public string? Prefix { get; set; }
+
+    // HTTP Basic auth. When set, the credential is sent as
+    // Authorization: Basic base64(Username ":" secret) instead of HeaderName + Prefix.
+    // Non-secret (the password lives in FieldsCipher) so it's safe to surface in list/shape.
+    public string? Username { get; set; }
 
     public DateTimeOffset? LastUsedAt { get; set; }
 }
