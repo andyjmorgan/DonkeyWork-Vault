@@ -1,19 +1,33 @@
 import { useState } from 'react'
-import { Github, Moon, Sun, User, LogOut } from 'lucide-react'
+import { Github, Moon, Sun, User, LogOut, Menu } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../ui/components/dropdown-menu'
+import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '../ui/components/sheet'
+import { NavList, type Tab } from './Sidebar'
 import { logout } from '../auth'
 import { getTheme, toggleTheme } from '../theme'
 import type { Me } from '../api'
-import type { Tab } from './Sidebar'
 
-export function Header({ me, onSelect }: { me: Me | null; onSelect: (t: Tab) => void }) {
+export function Header({ me, active, onSelect }: { me: Me | null; active: Tab; onSelect: (t: Tab) => void }) {
   const [theme, setTheme] = useState(getTheme())
+  const [navOpen, setNavOpen] = useState(false)
   return (
     <header className="flex h-14 items-center justify-between border-b border-border px-4">
       <div className="flex items-center gap-2 font-semibold">
+        {/* Mobile nav: the sidebar is hidden below `sm`, so reveal it from a hamburger drawer. */}
+        <Sheet open={navOpen} onOpenChange={setNavOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="sm:hidden" aria-label="Open menu"><Menu /></Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-64 p-3">
+            <SheetHeader className="mb-2 px-1">
+              <SheetTitle className="text-sm">Menu</SheetTitle>
+            </SheetHeader>
+            <NavList active={active} onSelect={(t) => { onSelect(t); setNavOpen(false) }} />
+          </SheetContent>
+        </Sheet>
         <img src="/donkeywork.png" alt="DonkeyWork" className="h-8 w-8 shrink-0" />
         <span>DonkeyWork <span className="text-accent">Vault</span></span>
       </div>

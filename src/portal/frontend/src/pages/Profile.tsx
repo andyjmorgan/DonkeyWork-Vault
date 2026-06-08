@@ -10,6 +10,7 @@ import { Switch } from '../ui/components/switch'
 import { Checkbox } from '../ui/components/checkbox'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
 import { CopyButton } from '../components/CopyButton'
+import { Field } from '../components/Field'
 import { api, type AccessKey, type AccessScope, type Me } from '../api'
 
 const lbl = 'mb-1 block text-xs text-muted-foreground'
@@ -61,26 +62,53 @@ export function ProfilePage({ me }: { me: Me | null }) {
           {keys.length === 0 ? (
             <p className="text-sm text-muted-foreground">No API keys yet — add one with the + button.</p>
           ) : (
-            <Table>
-              <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Key</TableHead><TableHead>Scopes</TableHead><TableHead>Last used</TableHead><TableHead>Enabled</TableHead><TableHead /></TableRow></TableHeader>
-              <TableBody>
+            <>
+              {/* Desktop: table. */}
+              <div className="hidden sm:block">
+                <Table>
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Key</TableHead><TableHead>Scopes</TableHead><TableHead>Last used</TableHead><TableHead>Enabled</TableHead><TableHead /></TableRow></TableHeader>
+                  <TableBody>
+                    {keys.map((k) => (
+                      <TableRow key={k.id}>
+                        <TableCell>
+                          <div className="font-medium">{k.name}</div>
+                          {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
+                        </TableCell>
+                        <TableCell><code className="text-xs text-muted-foreground">{k.prefix}…</code></TableCell>
+                        <TableCell><div className="flex max-w-[18rem] flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}</div></TableCell>
+                        <TableCell className="text-muted-foreground">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : '—'}</TableCell>
+                        <TableCell><Switch checked={k.enabled} onCheckedChange={() => toggle(k)} aria-label="Enabled" /></TableCell>
+                        <TableCell className="text-right">
+                          <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteAccessKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </div>
+              {/* Mobile: a card per key with a two-column detail grid. */}
+              <div className="space-y-3 sm:hidden">
                 {keys.map((k) => (
-                  <TableRow key={k.id}>
-                    <TableCell>
-                      <div className="font-medium">{k.name}</div>
-                      {k.description && <div className="text-xs text-muted-foreground">{k.description}</div>}
-                    </TableCell>
-                    <TableCell><code className="text-xs text-muted-foreground">{k.prefix}…</code></TableCell>
-                    <TableCell><div className="flex max-w-[18rem] flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}</div></TableCell>
-                    <TableCell className="text-muted-foreground">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : '—'}</TableCell>
-                    <TableCell><Switch checked={k.enabled} onCheckedChange={() => toggle(k)} aria-label="Enabled" /></TableCell>
-                    <TableCell className="text-right">
-                      <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteAccessKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
-                    </TableCell>
-                  </TableRow>
+                  <div key={k.id} className="rounded-xl border border-border p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="font-medium">{k.name}</div>
+                        {k.description && <div className="truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
+                      </div>
+                      <div className="flex shrink-0 items-center gap-2">
+                        <Switch checked={k.enabled} onCheckedChange={() => toggle(k)} aria-label="Enabled" />
+                        <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteAccessKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
+                      </div>
+                    </div>
+                    <div className="mt-2 flex flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}</div>
+                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+                      <Field label="Key"><code className="text-xs">{k.prefix}…</code></Field>
+                      <Field label="Last used">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : '—'}</Field>
+                    </div>
+                  </div>
                 ))}
-              </TableBody>
-            </Table>
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
