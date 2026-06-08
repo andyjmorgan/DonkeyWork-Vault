@@ -612,6 +612,9 @@ type GetApiKeyResponse struct {
 	BaseUrl       string                 `protobuf:"bytes,5,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
 	DocsUrl       string                 `protobuf:"bytes,6,opt,name=docs_url,json=docsUrl,proto3" json:"docs_url,omitempty"`
 	Description   string                 `protobuf:"bytes,7,opt,name=description,proto3" json:"description,omitempty"`
+	Scheme        string                 `protobuf:"bytes,8,opt,name=scheme,proto3" json:"scheme,omitempty"`                               // "header" | "basic"
+	Username      string                 `protobuf:"bytes,9,opt,name=username,proto3" json:"username,omitempty"`                           // set for basic auth (non-secret)
+	HeaderValue   string                 `protobuf:"bytes,10,opt,name=header_value,json=headerValue,proto3" json:"header_value,omitempty"` // ready-to-send value: "{prefix}{secret}" or "Basic base64(user:secret)"
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -695,6 +698,27 @@ func (x *GetApiKeyResponse) GetDescription() string {
 	return ""
 }
 
+func (x *GetApiKeyResponse) GetScheme() string {
+	if x != nil {
+		return x.Scheme
+	}
+	return ""
+}
+
+func (x *GetApiKeyResponse) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *GetApiKeyResponse) GetHeaderValue() string {
+	if x != nil {
+		return x.HeaderValue
+	}
+	return ""
+}
+
 type DescribeCredentialRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -747,6 +771,8 @@ type DescribeCredentialResponse struct {
 	BaseUrl       string                 `protobuf:"bytes,4,opt,name=base_url,json=baseUrl,proto3" json:"base_url,omitempty"`
 	DocsUrl       string                 `protobuf:"bytes,5,opt,name=docs_url,json=docsUrl,proto3" json:"docs_url,omitempty"`
 	Description   string                 `protobuf:"bytes,6,opt,name=description,proto3" json:"description,omitempty"`
+	Scheme        string                 `protobuf:"bytes,7,opt,name=scheme,proto3" json:"scheme,omitempty"`     // "header" | "basic" — how to send it
+	Username      string                 `protobuf:"bytes,8,opt,name=username,proto3" json:"username,omitempty"` // set for basic auth (non-secret)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -823,6 +849,20 @@ func (x *DescribeCredentialResponse) GetDescription() string {
 	return ""
 }
 
+func (x *DescribeCredentialResponse) GetScheme() string {
+	if x != nil {
+		return x.Scheme
+	}
+	return ""
+}
+
+func (x *DescribeCredentialResponse) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
 type ApiKeyItem struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Id            string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
@@ -834,6 +874,7 @@ type ApiKeyItem struct {
 	Prefix        string                 `protobuf:"bytes,7,opt,name=prefix,proto3" json:"prefix,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,8,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
 	LastUsedAt    string                 `protobuf:"bytes,9,opt,name=last_used_at,json=lastUsedAt,proto3" json:"last_used_at,omitempty"`
+	Username      string                 `protobuf:"bytes,10,opt,name=username,proto3" json:"username,omitempty"` // set for basic auth (non-secret)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -931,6 +972,13 @@ func (x *ApiKeyItem) GetLastUsedAt() string {
 	return ""
 }
 
+func (x *ApiKeyItem) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
 type ListApiKeysRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	unknownFields protoimpl.UnknownFields
@@ -1020,6 +1068,7 @@ type CreateApiKeyRequest struct {
 	DocsUrl       string                 `protobuf:"bytes,5,opt,name=docs_url,json=docsUrl,proto3" json:"docs_url,omitempty"`
 	Header        string                 `protobuf:"bytes,6,opt,name=header,proto3" json:"header,omitempty"`
 	Prefix        string                 `protobuf:"bytes,7,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	Username      string                 `protobuf:"bytes,8,opt,name=username,proto3" json:"username,omitempty"` // set ⇒ HTTP Basic auth (secret is the password)
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1099,6 +1148,13 @@ func (x *CreateApiKeyRequest) GetHeader() string {
 func (x *CreateApiKeyRequest) GetPrefix() string {
 	if x != nil {
 		return x.Prefix
+	}
+	return ""
+}
+
+func (x *CreateApiKeyRequest) GetUsername() string {
+	if x != nil {
+		return x.Username
 	}
 	return ""
 }
@@ -2745,7 +2801,7 @@ const file_vault_proto_rawDesc = "" +
 	"\x17ListOAuthTokensResponse\x12<\n" +
 	"\x05items\x18\x01 \x03(\v2&.donkeywork.vault.v1.OAuthTokenSummaryR\x05items\"&\n" +
 	"\x10GetApiKeyRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xc9\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xa0\x02\n" +
 	"\x11GetApiKeyResponse\x12\x14\n" +
 	"\x05found\x18\x01 \x01(\bR\x05found\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\x12\x16\n" +
@@ -2753,16 +2809,22 @@ const file_vault_proto_rawDesc = "" +
 	"\x06prefix\x18\x04 \x01(\tR\x06prefix\x12\x19\n" +
 	"\bbase_url\x18\x05 \x01(\tR\abaseUrl\x12\x19\n" +
 	"\bdocs_url\x18\x06 \x01(\tR\adocsUrl\x12 \n" +
-	"\vdescription\x18\a \x01(\tR\vdescription\"/\n" +
+	"\vdescription\x18\a \x01(\tR\vdescription\x12\x16\n" +
+	"\x06scheme\x18\b \x01(\tR\x06scheme\x12\x1a\n" +
+	"\busername\x18\t \x01(\tR\busername\x12!\n" +
+	"\fheader_value\x18\n" +
+	" \x01(\tR\vheaderValue\"/\n" +
 	"\x19DescribeCredentialRequest\x12\x12\n" +
-	"\x04name\x18\x01 \x01(\tR\x04name\"\xba\x01\n" +
+	"\x04name\x18\x01 \x01(\tR\x04name\"\xee\x01\n" +
 	"\x1aDescribeCredentialResponse\x12\x14\n" +
 	"\x05found\x18\x01 \x01(\bR\x05found\x12\x16\n" +
 	"\x06header\x18\x02 \x01(\tR\x06header\x12\x16\n" +
 	"\x06prefix\x18\x03 \x01(\tR\x06prefix\x12\x19\n" +
 	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12\x19\n" +
 	"\bdocs_url\x18\x05 \x01(\tR\adocsUrl\x12 \n" +
-	"\vdescription\x18\x06 \x01(\tR\vdescription\"\xf9\x01\n" +
+	"\vdescription\x18\x06 \x01(\tR\vdescription\x12\x16\n" +
+	"\x06scheme\x18\a \x01(\tR\x06scheme\x12\x1a\n" +
+	"\busername\x18\b \x01(\tR\busername\"\x95\x02\n" +
 	"\n" +
 	"ApiKeyItem\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x12\n" +
@@ -2775,10 +2837,12 @@ const file_vault_proto_rawDesc = "" +
 	"\n" +
 	"created_at\x18\b \x01(\tR\tcreatedAt\x12 \n" +
 	"\flast_used_at\x18\t \x01(\tR\n" +
-	"lastUsedAt\"\x14\n" +
+	"lastUsedAt\x12\x1a\n" +
+	"\busername\x18\n" +
+	" \x01(\tR\busername\"\x14\n" +
 	"\x12ListApiKeysRequest\"L\n" +
 	"\x13ListApiKeysResponse\x125\n" +
-	"\x05items\x18\x01 \x03(\v2\x1f.donkeywork.vault.v1.ApiKeyItemR\x05items\"\xc9\x01\n" +
+	"\x05items\x18\x01 \x03(\v2\x1f.donkeywork.vault.v1.ApiKeyItemR\x05items\"\xe5\x01\n" +
 	"\x13CreateApiKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x16\n" +
 	"\x06secret\x18\x02 \x01(\tR\x06secret\x12 \n" +
@@ -2786,7 +2850,8 @@ const file_vault_proto_rawDesc = "" +
 	"\bbase_url\x18\x04 \x01(\tR\abaseUrl\x12\x19\n" +
 	"\bdocs_url\x18\x05 \x01(\tR\adocsUrl\x12\x16\n" +
 	"\x06header\x18\x06 \x01(\tR\x06header\x12\x16\n" +
-	"\x06prefix\x18\a \x01(\tR\x06prefix\"%\n" +
+	"\x06prefix\x18\a \x01(\tR\x06prefix\x12\x1a\n" +
+	"\busername\x18\b \x01(\tR\busername\"%\n" +
 	"\x13DeleteApiKeyRequest\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\"0\n" +
 	"\x14DeleteApiKeyResponse\x12\x18\n" +

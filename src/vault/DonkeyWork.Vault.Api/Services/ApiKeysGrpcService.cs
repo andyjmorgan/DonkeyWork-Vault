@@ -20,7 +20,7 @@ public sealed class ApiKeysGrpcService(IApiKeyService apiKeys) : ApiKeys.ApiKeys
         {
             var stored = await apiKeys.CreateAsync(
                 request.Name, request.Secret, request.Description, request.BaseUrl, request.DocsUrl,
-                request.Header, request.Prefix, context.CancellationToken);
+                request.Header, request.Prefix, request.Username, context.CancellationToken);
             return ToItem(stored);
         }
         catch (CredentialValidationException ex)
@@ -46,8 +46,9 @@ public sealed class ApiKeysGrpcService(IApiKeyService apiKeys) : ApiKeys.ApiKeys
         Description = k.Description ?? string.Empty,
         BaseUrl = k.BaseUrl ?? string.Empty,
         DocsUrl = k.DocsUrl ?? string.Empty,
-        Header = k.Header ?? string.Empty,
+        Header = CredentialUsage.HeaderName(k.Header),
         Prefix = k.Prefix ?? string.Empty,
+        Username = k.Username ?? string.Empty,
         CreatedAt = k.CreatedAt.ToString("o"),
         LastUsedAt = k.LastUsedAt?.ToString("o") ?? string.Empty,
     };

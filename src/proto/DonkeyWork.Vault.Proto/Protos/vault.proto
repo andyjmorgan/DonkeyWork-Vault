@@ -78,6 +78,9 @@ message GetApiKeyResponse {
   string base_url = 5;
   string docs_url = 6;
   string description = 7;
+  string scheme = 8;        // "header" | "basic"
+  string username = 9;      // set for basic auth (non-secret)
+  string header_value = 10; // ready-to-send value: "{prefix}{secret}" or "Basic base64(user:secret)"
 }
 
 message DescribeCredentialRequest { string name = 1; }
@@ -88,6 +91,8 @@ message DescribeCredentialResponse {
   string base_url = 4;
   string docs_url = 5;
   string description = 6;
+  string scheme = 7;        // "header" | "basic" — how to send it
+  string username = 8;      // set for basic auth (non-secret)
 }
 
 // ---------- api key management (brokered by the Portal) ----------
@@ -107,6 +112,7 @@ message ApiKeyItem {
   string prefix = 7;
   string created_at = 8;
   string last_used_at = 9;
+  string username = 10;      // set for basic auth (non-secret)
 }
 message ListApiKeysRequest {}
 message ListApiKeysResponse { repeated ApiKeyItem items = 1; }
@@ -119,6 +125,7 @@ message CreateApiKeyRequest {
   string docs_url = 5;
   string header = 6;
   string prefix = 7;
+  string username = 8;       // set ⇒ HTTP Basic auth (secret is the password)
 }
 
 message DeleteApiKeyRequest { string id = 1; }

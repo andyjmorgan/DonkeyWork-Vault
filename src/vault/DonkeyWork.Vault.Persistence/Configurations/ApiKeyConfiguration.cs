@@ -19,6 +19,7 @@ public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKeyEntity>
         b.Property(x => x.DocsUrl).HasMaxLength(512);
         b.Property(x => x.HeaderName).HasMaxLength(100);
         b.Property(x => x.Prefix).HasMaxLength(100);
+        b.Property(x => x.Username).HasMaxLength(255);
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
 
         b.HasIndex(x => new { x.UserId, x.Name }).IsUnique();

@@ -147,7 +147,7 @@ api.MapGet("/providers/{key}", async (string key, ApiKeyCatalog.ApiKeyCatalogCli
 api.MapGet("/api-keys", async (ApiKeys.ApiKeysClient client) =>
 {
     var resp = await client.ListAsync(new ListApiKeysRequest());
-    return Results.Ok(resp.Items.Select(k => new { k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.Header, k.Prefix, k.CreatedAt, k.LastUsedAt }));
+    return Results.Ok(resp.Items.Select(k => new { k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.Header, k.Prefix, k.Username, k.CreatedAt, k.LastUsedAt }));
 });
 
 api.MapPost("/api-keys", async (CreateApiKeyDto dto, ApiKeys.ApiKeysClient client) =>
@@ -158,6 +158,7 @@ api.MapPost("/api-keys", async (CreateApiKeyDto dto, ApiKeys.ApiKeysClient clien
         {
             Name = dto.Name, Secret = dto.Secret ?? "", Description = dto.Description ?? "",
             BaseUrl = dto.BaseUrl ?? "", DocsUrl = dto.DocsUrl ?? "", Header = dto.Header ?? "", Prefix = dto.Prefix ?? "",
+            Username = dto.Username ?? "",
         });
         return Results.Ok(new { item.Id, item.Name });
     }
@@ -375,7 +376,7 @@ static object MapProvider(ApiKeyProvider p) => new
     fields = p.Fields.Select(f => new { f.Name, f.Label, f.Secret, f.Required }),
 };
 
-internal sealed record CreateApiKeyDto(string Name, string? Secret, string? Description, string? BaseUrl, string? DocsUrl, string? Header, string? Prefix);
+internal sealed record CreateApiKeyDto(string Name, string? Secret, string? Description, string? BaseUrl, string? DocsUrl, string? Header, string? Prefix, string? Username);
 internal sealed record CreateAccessKeyDto(string Name, string? Description, List<string>? Scopes);
 internal sealed record SetEnabledDto(bool Enabled);
 internal sealed record ApiKeyFieldDto(string Name, string? Label, bool Secret, bool Required);
