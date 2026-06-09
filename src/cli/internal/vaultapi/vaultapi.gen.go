@@ -2183,6 +2183,7 @@ type PostApiV1ManifestsOauthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *KeyResponse
+	JSON409      *ErrorResponse
 }
 
 // Status returns HTTPResponse.Status
@@ -2997,6 +2998,13 @@ func ParsePostApiV1ManifestsOauthResponse(rsp *http.Response) (*PostApiV1Manifes
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
 
 	}
 

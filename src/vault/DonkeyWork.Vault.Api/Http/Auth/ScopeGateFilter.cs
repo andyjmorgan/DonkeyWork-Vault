@@ -4,11 +4,12 @@ using DonkeyWork.Vault.Contracts.Audit;
 namespace DonkeyWork.Vault.Api.Http.Auth;
 
 /// <summary>
-/// Scope gate for API-key callers. GET/HEAD/OPTIONS need <c>vault:read</c>, mutations need
-/// <c>vault:readwrite</c> (which implies read); endpoints can pin a <see cref="_fixedScope"/> such as
-/// <c>vault:audit</c>. Interactive JWT users are not scope-limited. A denial is audited as
-/// <see cref="AuditEventType.AuthFailed"/> and returns 403. This is the HTTP equivalent of the gRPC
-/// interceptor's per-method scope enforcement.
+/// Scope gate for every authenticated caller. GET/HEAD/OPTIONS need <c>vault:read</c>, mutations need
+/// <c>vault:readwrite</c> (which implies read); an endpoint can pin a fixed scope such as
+/// <c>vault:audit</c>. API-key principals carry the scopes their key was minted with; interactive JWT
+/// users carry the full scope set materialised at token validation — so both schemes are gated
+/// uniformly here. A denial is audited as <see cref="AuditEventType.AuthFailed"/> and returns 403.
+/// This is the HTTP equivalent of the gRPC interceptor's per-method scope enforcement.
 /// </summary>
 public sealed class ScopeGateFilter(string? fixedScope = null) : IEndpointFilter
 {
@@ -16,21 +17,21 @@ public sealed class ScopeGateFilter(string? fixedScope = null) : IEndpointFilter
     {
         var http = context.HttpContext;
         var user = http.User;
-        if (user.Identity?.AuthenticationType == VaultApiKeyAuthenticationHandler.SchemeName)
-        {
-            var method = http.Request.Method;
-            var required = fixedScope
-                ?? (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method)
-                    ? "vault:read"
-                    : "vault:readwrite");
 
-            var scopes = user.FindAll("scope").Select(c => c.Value).ToHashSet(StringComparer.Ordinal);
-            if (!HasScope(scopes, required))
-            {
-                EmitScopeDenied(http, required);
-                return Results.Json(new ErrorResponse($"API key missing required scope '{required}'."),
-                    statusCode: StatusCodes.Status403Forbidden);
-            }
+        // Enforce for every authenticated caller, regardless of scheme. Unauthenticated requests never
+        // reach here — the endpoints sit behind RequireAuthorization, which rejects them first.
+        var method = http.Request.Method;
+        var required = fixedScope
+            ?? (HttpMethods.IsGet(method) || HttpMethods.IsHead(method) || HttpMethods.IsOptions(method)
+                ? "vault:read"
+                : "vault:readwrite");
+
+        var scopes = user.FindAll("scope").Select(c => c.Value).ToHashSet(StringComparer.Ordinal);
+        if (!HasScope(scopes, required))
+        {
+            EmitScopeDenied(http, required);
+            return Results.Json(new ErrorResponse($"caller missing required scope '{required}'."),
+                statusCode: StatusCodes.Status403Forbidden);
         }
 
         return await next(context);

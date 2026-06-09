@@ -18,7 +18,8 @@ public static class VaultApiEndpoints
 {
     public static void MapVaultApi(this WebApplication app, bool authConfigured, string publicBaseUrl, AppConfigResponse appConfig)
     {
-        // Main surface: JWT users (unrestricted) + API-key callers (vault:read / vault:readwrite by method).
+        // Main surface: every authenticated caller is scope-gated (vault:read / vault:readwrite by
+        // method). JWT users carry the full scope set; API keys carry their minted scopes.
         // Authorization is ALWAYS required — the default authentication scheme is the ApiKey handler
         // when OIDC is absent, so a missing OIDC authority can never leave the API anonymously open.
         var api = app.MapGroup("/api/v1");
@@ -146,10 +147,18 @@ public static class VaultApiEndpoints
             return TypedResults.Ok(items.Select(x => ToOAuthManifestDto(x, m.IsOAuthBuiltin(x.Key))).ToList());
         });
 
-        api.MapPost("/manifests/oauth", async (UpsertOAuthManifestRequest dto, ManifestResolver m, CancellationToken ct) =>
+        api.MapPost("/manifests/oauth", async Task<Results<Ok<KeyResponse>, Conflict<ErrorResponse>>> (
+            UpsertOAuthManifestRequest dto, ManifestResolver m, CancellationToken ct) =>
         {
-            await m.UpsertOAuthAsync(FromOAuthManifestDto(dto), ct);
-            return TypedResults.Ok(new KeyResponse(dto.Key));
+            try
+            {
+                await m.UpsertOAuthAsync(FromOAuthManifestDto(dto), ct);
+                return TypedResults.Ok(new KeyResponse(dto.Key));
+            }
+            catch (BuiltinManifestException ex)
+            {
+                return TypedResults.Conflict(new ErrorResponse(ex.Message));
+            }
         });
 
         api.MapPost("/manifests/oauth/discover", async Task<Results<Ok<OAuthManifestDto>, BadRequest<ErrorResponse>>> (

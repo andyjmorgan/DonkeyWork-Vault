@@ -10,6 +10,7 @@ using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using System.Security.Claims;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
@@ -37,6 +38,11 @@ if (string.IsNullOrWhiteSpace(oidc.Authority))
 var spaClientId = string.IsNullOrWhiteSpace(oidc.ClientId) ? oidc.Audience : oidc.ClientId;
 var authConfigured = !string.IsNullOrWhiteSpace(oidc.Authority);
 
+// Scopes granted to an interactive JWT (portal) login. A portal user is the trusted human/admin, so
+// they carry the full set — including vault:audit — and are then subject to the same scope gate as an
+// API key. API keys, by contrast, carry only the scopes they were explicitly minted with.
+string[] jwtUserScopes = ["vault:read", "vault:readwrite", "vault:audit"];
+
 // Two ways in: interactive users via an OIDC JWT, and scripts/agents via a dwv_ access key. A policy
 // scheme routes each request to the right handler so HttpContext.User is set from whichever credential
 // was presented. The ApiKey scheme is always available (so keys + their scopes work in every config).
@@ -54,6 +60,23 @@ if (authConfigured)
             ValidIssuer = oidc.Authority,
             ValidateAudience = false, // many IdPs put the client id in azp; audience varies
             NameClaimType = "sub",
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = ctx =>
+            {
+                // Materialise the portal user's scopes onto the principal so the unified scope gate
+                // (which now enforces for JWT and API-key callers alike) authorises them. Without this
+                // a JWT caller would carry no "scope" claims and be denied every gated endpoint.
+                if (ctx.Principal?.Identity is ClaimsIdentity id)
+                {
+                    foreach (var scope in jwtUserScopes)
+                    {
+                        id.AddClaim(new Claim("scope", scope));
+                    }
+                }
+                return Task.CompletedTask;
+            },
         };
     });
     authBuilder.AddPolicyScheme("Multi", "JWT or API key", o =>
