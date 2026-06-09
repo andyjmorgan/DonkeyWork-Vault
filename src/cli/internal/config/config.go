@@ -82,8 +82,19 @@ func Save(c *Config) error {
 	if err != nil {
 		return err
 	}
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	// Unique temp file (0600) in the same dir, renamed over the target — avoids a
+	// fixed-suffix race between concurrent invocations.
+	f, err := os.CreateTemp(filepath.Dir(p), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp) // no-op once the rename succeeds
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp, p)

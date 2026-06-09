@@ -64,6 +64,9 @@ func Store(host, key string) (config.StoreKind, error) {
 	if err := keyring.Set(service, host, key); err == nil {
 		_ = fileDelete(host) // drop any stale file copy once the keyring holds it
 		return config.StoreKeyring, nil
+	} else {
+		// Surface the fallback rather than silently writing the secret to disk.
+		fmt.Fprintf(os.Stderr, "dwvault: OS keyring unavailable (%v); storing secret in 0600 file fallback\n", err)
 	}
 	if err := fileSet(host, key); err != nil {
 		return "", fmt.Errorf("no OS keyring available and file fallback failed: %w", err)
@@ -92,6 +95,10 @@ func fileLoad() (map[string]string, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	// Refuse a group/other-readable secrets file before reading, writing, or deleting.
+	if err := checkPerms(p); err != nil {
+		return nil, p, err
+	}
 	b, err := os.ReadFile(p)
 	if os.IsNotExist(err) {
 		return map[string]string{}, p, nil
@@ -107,11 +114,8 @@ func fileLoad() (map[string]string, string, error) {
 }
 
 func fileGet(host string) (string, bool, error) {
-	m, p, err := fileLoad()
+	m, _, err := fileLoad() // fileLoad already enforces file permissions
 	if err != nil {
-		return "", false, err
-	}
-	if err := checkPerms(p); err != nil {
 		return "", false, err
 	}
 	v, ok := m[host]
@@ -128,8 +132,23 @@ func fileSet(host, key string) error {
 		return err
 	}
 	b, _ := json.MarshalIndent(m, "", "  ")
-	tmp := p + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	return writeFileAtomic(p, b)
+}
+
+// writeFileAtomic writes b to a unique 0600 temp file in p's directory, then renames it
+// over p. The unique temp name avoids a fixed-suffix race between concurrent invocations.
+func writeFileAtomic(p string, b []byte) error {
+	f, err := os.CreateTemp(filepath.Dir(p), ".tmp-*") // CreateTemp makes the file 0600
+	if err != nil {
+		return err
+	}
+	tmp := f.Name()
+	defer os.Remove(tmp) // no-op once the rename succeeds
+	if _, err := f.Write(b); err != nil {
+		f.Close()
+		return err
+	}
+	if err := f.Close(); err != nil {
 		return err
 	}
 	return os.Rename(tmp, p)

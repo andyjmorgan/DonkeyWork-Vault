@@ -27,7 +27,12 @@ func httpBaseURL() string {
 	case strings.HasPrefix(a, "grpc://"):
 		return "http://" + a[len("grpc://"):]
 	default:
-		return "https://" + a
+		// Bare host[:port] mirrors the gRPC transport default: plaintext unless
+		// --tls / VAULT_TLS is set (a remote vault is reached via https:// or --tls).
+		if useTLS {
+			return "https://" + a
+		}
+		return "http://" + a
 	}
 }
 
