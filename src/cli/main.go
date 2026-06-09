@@ -29,7 +29,6 @@ var version = "dev" // set via -ldflags -X main.version on release builds
 var (
 	addr     string
 	apiKey   string
-	useTLS   bool
 	doUpdate bool
 )
 
@@ -88,7 +87,6 @@ func main() {
 	}
 	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "https://vault.donkeywork.dev"), "vault address (https://host[:port] or host:port); default https://vault.donkeywork.dev")
 	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (X-Api-Key)")
-	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by an https://host address)")
 	root.Flags().BoolVar(&doUpdate, "update", false, "upgrade dwvault to the latest release in place (see `dwvault update`)")
 	// Output discipline: STDOUT is reserved for the requested secret/token. Send all
 	// Cobra-generated text (help, usage, --version) to STDERR; the secret commands write
