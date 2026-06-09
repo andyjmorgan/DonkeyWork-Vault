@@ -50,10 +50,12 @@ public class AuditHeaderRedactorTests
     }
 
     [Fact]
-    public void Redact_GrpcFramingHeaders_AreVerbatim()
+    public void Redact_GrpcFramingHeaders_AreMaskedByDefault()
     {
-        Assert.Equal("gzip", AuditHeaderRedactor.Redact("grpc-encoding", "gzip"));
-        Assert.Equal("100m", AuditHeaderRedactor.Redact("grpc-timeout", "100m"));
+        // grpc-* framing headers aren't useful in an audit row; deny-by-default masks them,
+        // and there is no grpc-aware allowlisting (gRPC is being removed).
+        Assert.Equal(AuditHeaderRedactor.Redacted, AuditHeaderRedactor.Redact("grpc-encoding", "gzip"));
+        Assert.Equal(AuditHeaderRedactor.Redacted, AuditHeaderRedactor.Redact("grpc-timeout", "100m"));
     }
 
     [Fact]

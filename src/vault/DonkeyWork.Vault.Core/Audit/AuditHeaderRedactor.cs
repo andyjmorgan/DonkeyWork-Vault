@@ -24,13 +24,6 @@ public static class AuditHeaderRedactor
         "x-real-ip",
         "x-forwarded-proto",
         "host",
-        // gRPC framing headers — non-secret. Listed explicitly (not a `grpc-*` wildcard) so a
-        // secret-bearing name like `grpc-token` still trips the deny patterns below.
-        "grpc-encoding",
-        "grpc-accept-encoding",
-        "grpc-timeout",
-        "grpc-status",
-        "grpc-message",
     };
 
     /// <summary>Always redacted, even though they might otherwise look innocuous.</summary>
@@ -67,8 +60,6 @@ public static class AuditHeaderRedactor
 
     /// <summary>
     /// Project a header collection into the redacted dictionary stored on the audit event.
-    /// gRPC framing headers (<c>grpc-*</c>) that are non-secret are allowlisted; the
-    /// <c>grpc-*</c> auth-ish ones still fall through the deny patterns.
     /// Keys are lower-cased for stable, case-insensitive storage; duplicate keys keep the first.
     /// </summary>
     public static IReadOnlyDictionary<string, string> Redact(IEnumerable<KeyValuePair<string, string>> headers)
