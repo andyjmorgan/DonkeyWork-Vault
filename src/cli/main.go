@@ -95,38 +95,10 @@ func main() {
 	keys := &cobra.Command{Use: "keys", Short: "Manage access keys (scoped auth credentials)"}
 	keys.AddCommand(cmdKeysList(), cmdKeysCreate(), cmdKeysSetEnabled(true), cmdKeysSetEnabled(false), cmdKeysDelete())
 
-	root.AddCommand(creds, oauth, keys, cmdProviders(), authCmd())
+	root.AddCommand(creds, oauth, keys, authCmd())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
-	}
-}
-
-func cmdProviders() *cobra.Command {
-	return &cobra.Command{
-		Use:   "providers",
-		Short: "List the API-key provider catalog",
-		RunE: func(_ *cobra.Command, _ []string) error {
-			client, err := newClient()
-			if err != nil {
-				return err
-			}
-			ctx, cancel := reqCtx()
-			defer cancel()
-			resp, err := client.GetApiV1ProvidersWithResponse(ctx)
-			if err != nil {
-				return err
-			}
-			if resp.JSON200 == nil {
-				return apiError("list providers", resp.Status(), resp.Body)
-			}
-			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "KEY\tNAME\tHEADER\tPREFIX")
-			for _, p := range *resp.JSON200 {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%q\n", p.Key, p.Name, p.Header, p.Prefix)
-			}
-			return w.Flush()
-		},
 	}
 }
 

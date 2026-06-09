@@ -6,35 +6,18 @@ using Microsoft.EntityFrameworkCore;
 namespace DonkeyWork.Vault.Core.Manifests;
 
 /// <summary>
-/// Resolves provider manifests by merging the embedded built-ins with DB overrides
-/// (a DB row with the same key wins). Also performs manifest CRUD against the DB layer.
-/// Scoped — uses the request DbContext.
+/// Resolves OAuth provider manifests by merging the embedded built-ins with DB overrides
+/// (a DB row with the same key wins), and performs OAuth manifest CRUD. There is no API-key
+/// provider catalog — API-key/header credentials are provided generically — so only OAuth
+/// providers are listed. Scoped — uses the request DbContext.
 /// </summary>
 public sealed class ManifestResolver(
     VaultDbContext db,
-    ApiKeyManifestLoader apiKeyBuiltins,
     OAuthManifestLoader oauthBuiltins)
 {
-    public const string ApiKeyKind = "apikey";
     public const string OAuthKind = "oauth";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
-
-    public async Task<IReadOnlyList<ApiKeyManifest>> ListApiKeyAsync(CancellationToken ct)
-    {
-        var map = apiKeyBuiltins.All.ToDictionary(m => m.Key, m => m, StringComparer.OrdinalIgnoreCase);
-        foreach (var row in await db.ProviderManifests.Where(r => r.Kind == ApiKeyKind).ToListAsync(ct))
-        {
-            map[row.Key] = JsonSerializer.Deserialize<ApiKeyManifest>(row.DocumentJson, Json)!;
-        }
-        return map.Values.OrderBy(m => m.Key, StringComparer.Ordinal).ToList();
-    }
-
-    public async Task<ApiKeyManifest?> GetApiKeyAsync(string key, CancellationToken ct)
-    {
-        var row = await db.ProviderManifests.FirstOrDefaultAsync(r => r.Kind == ApiKeyKind && r.Key == key, ct);
-        return row is not null ? JsonSerializer.Deserialize<ApiKeyManifest>(row.DocumentJson, Json) : apiKeyBuiltins.Get(key);
-    }
 
     public async Task<IReadOnlyList<OAuthManifest>> ListOAuthAsync(CancellationToken ct)
     {
@@ -53,10 +36,6 @@ public sealed class ManifestResolver(
     }
 
     public bool IsOAuthBuiltin(string key) => oauthBuiltins.Get(key) is not null;
-    public bool IsApiKeyBuiltin(string key) => apiKeyBuiltins.Get(key) is not null;
-
-    public Task UpsertApiKeyAsync(ApiKeyManifest m, CancellationToken ct) =>
-        UpsertAsync(ApiKeyKind, m.Key, JsonSerializer.Serialize(m, Json), ct);
 
     public Task UpsertOAuthAsync(OAuthManifest m, CancellationToken ct) =>
         UpsertAsync(OAuthKind, m.Key, JsonSerializer.Serialize(m, Json), ct);

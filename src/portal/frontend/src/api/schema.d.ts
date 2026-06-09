@@ -468,9 +468,7 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: {
-                    kind?: string;
-                };
+                query?: never;
                 header?: never;
                 path?: never;
                 cookie?: never;
@@ -482,51 +480,14 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": components["schemas"]["OAuthManifestDto"][];
+                    };
                 };
             };
         };
         put?: never;
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/manifests/apikey": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["UpsertApiKeyManifestRequest"];
-                };
-            };
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ApiKeyProviderDto"];
-                    };
-                };
-            };
-        };
         delete?: never;
         options?: never;
         head?: never;
@@ -934,85 +895,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/providers": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ApiKeyProviderDto"][];
-                    };
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/providers/{key}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path: {
-                    key: string;
-                };
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description OK */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ApiKeyProviderDto"];
-                    };
-                };
-                /** @description Not Found */
-                404: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1049,26 +931,6 @@ export interface components {
             name: string;
             prefix: string | null;
             username: string | null;
-        };
-        ApiKeyFieldDto: {
-            label: string;
-            name: string;
-            required: boolean;
-            secret: boolean;
-        };
-        ApiKeyProviderDto: {
-            authScheme: string;
-            baseUrl: string;
-            docsUrl: string;
-            fields: components["schemas"]["ApiKeyFieldDto"][];
-            header: string;
-            iconUrl: string;
-            key: string;
-            name: string;
-            prefix: string;
-            staticHeaders: {
-                [key: string]: string;
-            };
         };
         AppConfigResponse: {
             authEnabled: boolean;
@@ -1225,20 +1087,6 @@ export interface components {
         };
         SetEnabledRequest: {
             enabled: boolean;
-        };
-        UpsertApiKeyManifestRequest: {
-            authScheme: string | null;
-            baseUrl: string | null;
-            docsUrl: string | null;
-            fields: components["schemas"]["ApiKeyFieldDto"][] | null;
-            header: string | null;
-            iconUrl: string | null;
-            key: string;
-            name: string;
-            prefix: string | null;
-            staticHeaders: {
-                [key: string]: string;
-            } | null;
         };
         UpsertOAuthConfigRequest: {
             clientId: string;

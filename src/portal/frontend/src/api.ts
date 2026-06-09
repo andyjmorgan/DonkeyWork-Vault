@@ -19,12 +19,6 @@ async function authed(path: string, init: RequestInit = {}) {
   return res.status === 204 ? null : res.json()
 }
 
-export interface ProviderField { name: string; label: string; secret: boolean; required: boolean }
-export interface ApiKeyProvider {
-  key: string; name: string; iconUrl?: string; docsUrl?: string
-  authScheme: string; header: string; prefix: string; baseUrl: string
-  staticHeaders: Record<string, string>; fields: ProviderField[]
-}
 export interface OAuthScope { value: string; description?: string; category?: string; sensitive?: boolean }
 export interface OAuthProvider {
   key: string; name: string; iconUrl?: string; docsUrl?: string; builtin?: boolean
@@ -63,11 +57,8 @@ export const api = {
     authed(`/access-keys/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
   deleteAccessKey: (id: string) => authed(`/access-keys/${id}`, { method: 'DELETE' }),
 
-  // provider manifests (catalog CRUD)
-  apiKeyProviders: () => authed('/manifests?kind=apikey') as Promise<ApiKeyProvider[]>,
-  oauthProviders: () => authed('/manifests?kind=oauth') as Promise<OAuthProvider[]>,
-  upsertApiKeyProvider: (m: Partial<ApiKeyProvider>) =>
-    authed('/manifests/apikey', { method: 'POST', body: JSON.stringify(m) }),
+  // OAuth provider manifests (catalog CRUD)
+  oauthProviders: () => authed('/manifests') as Promise<OAuthProvider[]>,
   upsertOAuthProvider: (m: Partial<OAuthProvider>) =>
     authed('/manifests/oauth', { method: 'POST', body: JSON.stringify(m) }),
   discoverOidc: (url: string) =>
