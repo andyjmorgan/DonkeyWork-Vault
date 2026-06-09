@@ -1,7 +1,8 @@
 // dwvault — DonkeyWork Vault credential CLI.
 //
-// Talks directly to the Vault gRPC service. Identity is supplied via env/flags
-// (VAULT_USER_ID / VAULT_TENANT_ID) and sent as x-user-id / x-tenant-id metadata.
+// Talks to the Vault HTTP API. Machine auth is a dwvault API key (dwv_…) sent as
+// the X-Api-Key header; the key is resolved from --api-key / VAULT_API_KEY, the OS
+// keyring, or the 0600 file written by `dwvault auth login`.
 //
 // Output discipline: the requested secret/token goes to STDOUT only (no decoration,
 // safe for shell substitution). All logs, prompts and errors go to STDERR. A miss or
@@ -10,7 +11,6 @@ package main
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -18,15 +18,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/metadata"
-
-	"donkeywork.dev/vault-cli/internal/credstore"
-	pb "donkeywork.dev/vault-cli/internal/vaultpb"
-
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
+
+	"donkeywork.dev/vault-cli/internal/vaultapi"
 )
 
 var version = "dev" // set via -ldflags -X main.version on release builds
@@ -51,69 +46,28 @@ func fail(format string, a ...any) {
 	os.Exit(1)
 }
 
-// dial opens a connection and returns a context carrying the caller's auth metadata.
-//
-// Transport: TLS when --tls / VAULT_TLS is set or the address uses a grpcs://|https:// scheme
-// (for an internet-facing vault behind a TLS edge); plaintext h2c otherwise (local/in-cluster).
-//
-// Identity: an API key (x-api-key) is preferred; falling back to a bare user id (x-user-id) which
-// the vault only honours when its on-prem AllowUnauthenticatedUserId flag is set.
-func dial() (*grpc.ClientConn, context.Context, context.CancelFunc) {
-	target, secure := parseTarget(addr, useTLS)
-
-	var creds credentials.TransportCredentials
-	if secure {
-		creds = credentials.NewTLS(&tls.Config{})
-	} else {
-		creds = insecure.NewCredentials()
-	}
-	conn, err := grpc.NewClient(target, grpc.WithTransportCredentials(creds))
-	if err != nil {
-		fail("connect %s: %v", target, err)
-	}
-
-	// API-key precedence: --api-key / VAULT_API_KEY, else a key stored by
-	// `dwvault auth login` (keyring → 0600 file). User-id is the legacy on-prem fallback.
-	effKey := apiKey
-	if effKey == "" {
-		if k, _, rerr := credstore.Resolve(httpBaseURL()); rerr == nil {
-			effKey = k
-		}
-	}
-	var pairs []string
-	switch {
-	case effKey != "":
-		pairs = []string{"x-api-key", effKey}
-	case userID != "":
-		pairs = []string{"x-user-id", userID}
-		if tenantID != "" {
-			pairs = append(pairs, "x-tenant-id", tenantID)
-		}
-	default:
-		fail("no credentials; run `dwvault auth login`, set VAULT_API_KEY, or set VAULT_USER_ID for on-prem")
-	}
-	ctx, cancel := context.WithTimeout(
-		metadata.NewOutgoingContext(context.Background(), metadata.Pairs(pairs...)),
-		20*time.Second,
-	)
-	return conn, ctx, cancel
+// reqCtx returns a context with the standard request timeout.
+func reqCtx() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), 20*time.Second)
 }
 
-// parseTarget strips a scheme from addr and decides the transport. An explicit grpcs://|https://
-// (or --tls) selects TLS; grpc://|http:// or a bare host:port stays plaintext.
-func parseTarget(addr string, tlsFlag bool) (target string, secure bool) {
-	secure = tlsFlag
-	switch {
-	case strings.HasPrefix(addr, "grpcs://"):
-		return addr[len("grpcs://"):], true
-	case strings.HasPrefix(addr, "https://"):
-		return addr[len("https://"):], true
-	case strings.HasPrefix(addr, "grpc://"):
-		return addr[len("grpc://"):], false
-	case strings.HasPrefix(addr, "http://"):
-		return addr[len("http://"):], false
+// apiError formats a non-2xx HTTP response for stderr (never includes secrets).
+func apiError(op string, status string, body []byte) error {
+	if msg := errorMessage(body); msg != "" {
+		return fmt.Errorf("%s: %s (%s)", op, msg, status)
 	}
-	return addr, secure
+	return fmt.Errorf("%s: %s", op, status)
+}
+
+// errorMessage pulls the `error` field out of an ErrorResponse body, if present.
+func errorMessage(body []byte) string {
+	var e struct {
+		Error string `json:"error"`
+	}
+	if json.Unmarshal(body, &e) == nil {
+		return e.Error
+	}
+	return ""
 }
 
 func main() {
@@ -124,11 +78,11 @@ func main() {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "localhost:8080"), "vault gRPC address (host:port or grpcs://host:port)")
-	root.PersistentFlags().StringVar(&userID, "user", env("VAULT_USER_ID", ""), "caller user id (x-user-id; on-prem only)")
-	root.PersistentFlags().StringVar(&tenantID, "tenant", env("VAULT_TENANT_ID", ""), "caller tenant id (x-tenant-id)")
-	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (x-api-key)")
-	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by a grpcs://host address)")
+	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "localhost:8080"), "vault address (host:port or https://host:port)")
+	root.PersistentFlags().StringVar(&userID, "user", env("VAULT_USER_ID", ""), "caller user id (on-prem only)")
+	root.PersistentFlags().StringVar(&tenantID, "tenant", env("VAULT_TENANT_ID", ""), "caller tenant id")
+	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (X-Api-Key)")
+	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by an https://host address)")
 
 	creds := &cobra.Command{Use: "creds", Short: "Manage and retrieve API-key credentials"}
 	creds.AddCommand(cmdList(), cmdGet(), cmdHeader(), cmdShape(), cmdCreate())
@@ -151,16 +105,22 @@ func cmdProviders() *cobra.Command {
 		Use:   "providers",
 		Short: "List the API-key provider catalog",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewApiKeyCatalogClient(conn).ListProviders(ctx, &pb.ListProvidersRequest{})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.GetApiV1ProvidersWithResponse(ctx)
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError("list providers", resp.Status(), resp.Body)
+			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "KEY\tNAME\tHEADER\tPREFIX")
-			for _, p := range resp.Providers {
+			for _, p := range *resp.JSON200 {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%q\n", p.Key, p.Name, p.Header, p.Prefix)
 			}
 			return w.Flush()
@@ -173,17 +133,24 @@ func cmdList() *cobra.Command {
 		Use:   "list",
 		Short: "List your API keys with how to use each (header/prefix/base-url/docs)",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewApiKeysClient(conn).List(ctx, &pb.ListApiKeysRequest{})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.GetApiV1ApiKeysWithResponse(ctx)
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError("list api keys", resp.Status(), resp.Body)
+			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "NAME\tDESCRIPTION\tHEADER\tPREFIX\tBASE URL\tDOCS")
-			for _, k := range resp.Items {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%q\t%s\t%s\n", k.Name, k.Description, k.Header, k.Prefix, k.BaseUrl, k.DocsUrl)
+			for _, k := range *resp.JSON200 {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%q\t%s\t%s\n",
+					k.Name, deref(k.Description), deref(k.Header), deref(k.Prefix), deref(k.BaseUrl), deref(k.DocsUrl))
 			}
 			return w.Flush()
 		},
@@ -196,17 +163,20 @@ func cmdGet() *cobra.Command {
 		Short: "Print a stored secret to stdout (for shell substitution)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewCredentialStoreClient(conn).GetApiKey(ctx, &pb.GetApiKeyRequest{Name: args[0]})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			if !resp.Found {
-				fail("no credential named %q", args[0])
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.GetApiV1ApiKeysNameRevealWithResponse(ctx, args[0])
+			if err != nil {
+				return err
 			}
-			fmt.Println(resp.Secret) // ONLY the secret to stdout
+			if resp.JSON200 == nil {
+				return apiError(fmt.Sprintf("reveal credential %q", args[0]), resp.Status(), resp.Body)
+			}
+			fmt.Println(resp.JSON200.Secret) // ONLY the secret to stdout
 			return nil
 		},
 	}
@@ -218,24 +188,28 @@ func cmdShape() *cobra.Command {
 		Short: "Print how to use the credential (scheme, username, header, prefix, base url, docs)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewCredentialStoreClient(conn).DescribeCredential(ctx, &pb.DescribeCredentialRequest{Name: args[0]})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			if !resp.Found {
-				fail("no credential named %q", args[0])
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.GetApiV1CredentialsNameWithResponse(ctx, args[0])
+			if err != nil {
+				return err
 			}
+			if resp.JSON200 == nil {
+				return apiError(fmt.Sprintf("describe credential %q", args[0]), resp.Status(), resp.Body)
+			}
+			s := resp.JSON200
 			out, _ := json.MarshalIndent(map[string]any{
-				"description": resp.Description,
-				"scheme":      resp.Scheme,
-				"username":    resp.Username,
-				"base_url":    resp.BaseUrl,
-				"header":      resp.Header,
-				"prefix":      resp.Prefix,
-				"docs_url":    resp.DocsUrl,
+				"description": s.Description,
+				"scheme":      s.Scheme,
+				"username":    s.Username,
+				"base_url":    s.BaseUrl,
+				"header":      s.Header,
+				"prefix":      s.Prefix,
+				"docs_url":    s.DocsUrl,
 			}, "", "  ")
 			fmt.Println(string(out))
 			return nil
@@ -249,18 +223,21 @@ func cmdHeader() *cobra.Command {
 		Short: "Print the ready Authorization header line (for curl -H), e.g. Basic base64(user:pass)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewCredentialStoreClient(conn).GetApiKey(ctx, &pb.GetApiKeyRequest{Name: args[0]})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			if !resp.Found {
-				fail("no credential named %q", args[0])
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.GetApiV1ApiKeysNameRevealWithResponse(ctx, args[0])
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError(fmt.Sprintf("reveal credential %q", args[0]), resp.Status(), resp.Body)
 			}
 			// Full "Name: value" line so it drops into `curl -H "$(dwvault creds header foo)"`.
-			fmt.Printf("%s: %s\n", resp.Header, resp.HeaderValue)
+			fmt.Printf("%s: %s\n", resp.JSON200.Header, resp.JSON200.HeaderValue)
 			return nil
 		},
 	}
@@ -273,19 +250,26 @@ func cmdOAuthToken() *cobra.Command {
 		Short: "Print a valid OAuth access token to stdout (auto-refreshed)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewCredentialStoreClient(conn).GetOAuthAccessToken(ctx, &pb.GetOAuthAccessTokenRequest{Provider: args[0], Account: account})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			if !resp.Found {
+			ctx, cancel := reqCtx()
+			defer cancel()
+			params := &vaultapi.GetApiV1OauthProviderTokenParams{}
+			if account != "" {
+				params.Account = &account
+			}
+			resp, err := client.GetApiV1OauthProviderTokenWithResponse(ctx, args[0], params)
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
 				// Not connected. A browser/device connect flow would start here.
-				fmt.Fprintf(os.Stderr, "not connected to %s — no stored token\n", args[0])
+				fmt.Fprintf(os.Stderr, "not connected to %s — no stored token (%s)\n", args[0], resp.Status())
 				os.Exit(2)
 			}
-			fmt.Println(resp.AccessToken) // ONLY the token to stdout
+			fmt.Println(resp.JSON200.AccessToken) // ONLY the token to stdout
 			return nil
 		},
 	}
@@ -298,17 +282,23 @@ func cmdOAuthList() *cobra.Command {
 		Use:   "list",
 		Short: "List connected OAuth providers",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewOAuthTokensClient(conn).List(ctx, &pb.ListOAuthTokensRequest{})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.GetApiV1OauthTokensWithResponse(ctx)
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError("list oauth tokens", resp.Status(), resp.Body)
+			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "PROVIDER\tACCOUNT\tEXPIRES\tSCOPES")
-			for _, t := range resp.Items {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Provider, t.Account, t.ExpiresAt, strings.Join(t.Scopes, " "))
+			for _, t := range *resp.JSON200 {
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Provider, t.Account, fmtTime(t.ExpiresAt), strings.Join(t.Scopes, " "))
 			}
 			return w.Flush()
 		},
@@ -322,17 +312,30 @@ func cmdCreate() *cobra.Command {
 		Short: "Store a self-describing API key (set --username for HTTP Basic auth)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			item, err := pb.NewApiKeysClient(conn).Create(ctx, &pb.CreateApiKeyRequest{
-				Name: args[0], Secret: secret, Description: description,
-				BaseUrl: baseURL, DocsUrl: docs, Header: header, Prefix: prefix, Username: username,
-			})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "stored %s (%s)\n", item.Name, item.Id)
+			ctx, cancel := reqCtx()
+			defer cancel()
+			body := vaultapi.PostApiV1ApiKeysJSONRequestBody{
+				Name:        args[0],
+				Secret:      strPtr(secret),
+				Description: strPtr(description),
+				BaseUrl:     strPtr(baseURL),
+				DocsUrl:     strPtr(docs),
+				Header:      strPtr(header),
+				Prefix:      strPtr(prefix),
+				Username:    strPtr(username),
+			}
+			resp, err := client.PostApiV1ApiKeysWithResponse(ctx, body)
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError(fmt.Sprintf("create credential %q", args[0]), resp.Status(), resp.Body)
+			}
+			fmt.Fprintf(os.Stderr, "stored %s (%s)\n", resp.JSON200.Name, resp.JSON200.Id)
 			return nil
 		},
 	}
@@ -351,19 +354,25 @@ func cmdKeysList() *cobra.Command {
 		Use:   "list",
 		Short: "List your access keys (id, scopes, enabled state)",
 		RunE: func(_ *cobra.Command, _ []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewAccessKeysClient(conn).List(ctx, &pb.Empty{})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.GetApiV1AccessKeysWithResponse(ctx)
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError("list access keys", resp.Status(), resp.Body)
+			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
 			fmt.Fprintln(w, "ID\tNAME\tSCOPES\tENABLED\tPREFIX\tLAST USED")
-			for _, k := range resp.Items {
-				last := k.LastUsedAt
-				if last == "" {
-					last = "-"
+			for _, k := range *resp.JSON200 {
+				last := "-"
+				if k.LastUsedAt != nil {
+					last = k.LastUsedAt.Format(time.RFC3339)
 				}
 				fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s…\t%s\n", k.Id, k.Name, strings.Join(k.Scopes, ","), k.Enabled, k.Prefix, last)
 			}
@@ -380,18 +389,30 @@ func cmdKeysCreate() *cobra.Command {
 		Short: "Mint an access key; the secret is printed once to stdout",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewAccessKeysClient(conn).Create(ctx, &pb.CreateAccessKeyRequest{
-				Name: args[0], Description: description, Scopes: scopes,
-			})
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
+			ctx, cancel := reqCtx()
+			defer cancel()
+			body := vaultapi.PostApiV1AccessKeysJSONRequestBody{
+				Name:        args[0],
+				Description: strPtr(description),
+			}
+			if len(scopes) > 0 {
+				body.Scopes = &scopes
+			}
+			resp, err := client.PostApiV1AccessKeysWithResponse(ctx, body)
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError(fmt.Sprintf("create access key %q", args[0]), resp.Status(), resp.Body)
+			}
 			// Metadata to stderr; ONLY the secret to stdout (safe for capture, shown once).
-			fmt.Fprintf(os.Stderr, "created %s (%s) scopes=[%s]\n", resp.Item.Name, resp.Item.Id, strings.Join(resp.Item.Scopes, " "))
-			fmt.Println(resp.Secret)
+			fmt.Fprintf(os.Stderr, "created %s (%s) scopes=[%s]\n",
+				resp.JSON200.Name, resp.JSON200.Id, strings.Join(resp.JSON200.Scopes, " "))
+			fmt.Println(resp.JSON200.Secret)
 			return nil
 		},
 	}
@@ -410,14 +431,25 @@ func cmdKeysSetEnabled(enabled bool) *cobra.Command {
 		Short: short,
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			item, err := pb.NewAccessKeysClient(conn).SetEnabled(ctx, &pb.SetAccessKeyEnabledRequest{Id: args[0], Enabled: enabled})
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid access key id %q: %w", args[0], err)
+			}
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(os.Stderr, "%s is now enabled=%t\n", item.Name, item.Enabled)
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.PatchApiV1AccessKeysIdWithResponse(ctx, id,
+				vaultapi.PatchApiV1AccessKeysIdJSONRequestBody{Enabled: enabled})
+			if err != nil {
+				return err
+			}
+			if resp.JSON200 == nil {
+				return apiError(fmt.Sprintf("update access key %q", args[0]), resp.Status(), resp.Body)
+			}
+			fmt.Fprintf(os.Stderr, "%s is now enabled=%t\n", resp.JSON200.Id, resp.JSON200.Enabled)
 			return nil
 		},
 	}
@@ -429,18 +461,41 @@ func cmdKeysDelete() *cobra.Command {
 		Short: "Delete an access key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
-			conn, ctx, cancel := dial()
-			defer conn.Close()
-			defer cancel()
-			resp, err := pb.NewAccessKeysClient(conn).Delete(ctx, &pb.DeleteByIdRequest{Id: args[0]})
+			id, err := uuid.Parse(args[0])
+			if err != nil {
+				return fmt.Errorf("invalid access key id %q: %w", args[0], err)
+			}
+			client, err := newClient()
 			if err != nil {
 				return err
 			}
-			if !resp.Deleted {
-				fail("no access key with id %q", args[0])
+			ctx, cancel := reqCtx()
+			defer cancel()
+			resp, err := client.DeleteApiV1AccessKeysIdWithResponse(ctx, id)
+			if err != nil {
+				return err
+			}
+			if resp.StatusCode()/100 != 2 {
+				return apiError(fmt.Sprintf("delete access key %q", args[0]), resp.Status(), resp.Body)
 			}
 			fmt.Fprintf(os.Stderr, "deleted %s\n", args[0])
 			return nil
 		},
 	}
+}
+
+// strPtr returns a pointer to s, or nil when s is empty (so omitted flags stay unset).
+func strPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
+
+// fmtTime formats an optional timestamp for table output.
+func fmtTime(t *time.Time) string {
+	if t == nil {
+		return "-"
+	}
+	return t.Format(time.RFC3339)
 }
