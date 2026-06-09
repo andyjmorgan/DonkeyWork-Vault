@@ -32,7 +32,7 @@ public sealed class OAuthFlowService(
 {
     public async Task<BeginAuthResult> BeginAsync(string provider, IReadOnlyList<string>? scopes, string publicBaseUrl, CancellationToken ct)
     {
-        var manifest = await manifests.GetOAuthAsync(provider, ct)
+        var manifest = await manifests.GetOAuthAsync(provider, caller.UserId, ct)
             ?? throw new OAuthAuthorizationException($"unknown OAuth provider '{provider}'.");
         var config = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderKey == provider, ct)
             ?? throw new OAuthAuthorizationException($"no OAuth app config for '{provider}'. Add client_id/secret first.");
@@ -106,7 +106,7 @@ public sealed class OAuthFlowService(
             throw new OAuthAuthorizationException("invalid or expired state.");
         }
 
-        var manifest = await manifests.GetOAuthAsync(provider, ct)
+        var manifest = await manifests.GetOAuthAsync(provider, stateRow.OwnerUserId, ct)
             ?? throw new OAuthAuthorizationException($"unknown OAuth provider '{provider}'.");
         var config = await db.OAuthProviderConfigs.IgnoreQueryFilters()
             .FirstOrDefaultAsync(c => c.UserId == stateRow.OwnerUserId && c.ProviderKey == provider, ct)
