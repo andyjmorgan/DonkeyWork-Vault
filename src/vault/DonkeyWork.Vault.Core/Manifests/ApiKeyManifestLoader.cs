@@ -5,8 +5,10 @@ using YamlDotNet.Serialization.NamingConventions;
 namespace DonkeyWork.Vault.Core.Manifests;
 
 /// <summary>
-/// Loads + validates the embedded API-key provider catalog at construction (singleton).
-/// A malformed manifest fails fast at startup. DB-override resolution is a later addition.
+/// Loads + validates any embedded API-key provider catalog at construction (singleton). The catalog
+/// is normally empty — API-key/header credentials are provided generically (arbitrary header/prefix),
+/// so there are no built-in API-key providers (built-in providers are OAuth-only). A malformed
+/// manifest still fails fast. DB-stored manifests can add entries at runtime.
 /// </summary>
 public sealed class ApiKeyManifestLoader
 {
@@ -34,11 +36,7 @@ public sealed class ApiKeyManifestLoader
             dict[manifest.Key] = manifest;
         }
 
-        if (dict.Count == 0)
-        {
-            throw new InvalidOperationException("No embedded API-key manifests were found.");
-        }
-
+        // An empty catalog is valid: there are no built-in API-key providers by default.
         _manifests = dict;
     }
 
