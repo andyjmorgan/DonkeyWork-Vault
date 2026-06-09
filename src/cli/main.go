@@ -32,6 +32,7 @@ var (
 	tenantID string
 	apiKey   string
 	useTLS   bool
+	doUpdate bool
 )
 
 func env(k, def string) string {
@@ -77,12 +78,26 @@ func main() {
 		Version:       version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		// Best-effort passive update notice; never blocks or fails the real command.
+		PersistentPreRun: func(cmd *cobra.Command, _ []string) { maybeNotifyUpdate(cmd) },
+		// With --update, upgrade in place; otherwise (no subcommand) show help.
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			if doUpdate {
+				return runUpdate(false, false)
+			}
+			return cmd.Help()
+		},
 	}
 	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "https://vault.donkeywork.dev"), "vault address (https://host[:port] or host:port); default https://vault.donkeywork.dev")
 	root.PersistentFlags().StringVar(&userID, "user", env("VAULT_USER_ID", ""), "caller user id (on-prem only)")
 	root.PersistentFlags().StringVar(&tenantID, "tenant", env("VAULT_TENANT_ID", ""), "caller tenant id")
 	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (X-Api-Key)")
 	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by an https://host address)")
+	root.Flags().BoolVar(&doUpdate, "update", false, "upgrade dwvault to the latest release in place (see `dwvault update`)")
+	// Output discipline: STDOUT is reserved for the requested secret/token. Send all
+	// Cobra-generated text (help, usage, --version) to STDERR; the secret commands write
+	// to os.Stdout directly and are unaffected.
+	root.SetOut(os.Stderr)
 
 	// `credentials` is the canonical group; `creds` stays as a hidden alias so existing scripts and
 	// agents that shell out keep working without surfacing the shorthand in help.
@@ -95,7 +110,7 @@ func main() {
 	keys := &cobra.Command{Use: "keys", Short: "Manage access keys (scoped auth credentials)"}
 	keys.AddCommand(cmdKeysList(), cmdKeysCreate(), cmdKeysSetEnabled(true), cmdKeysSetEnabled(false), cmdKeysDelete())
 
-	root.AddCommand(creds, oauth, keys, authCmd())
+	root.AddCommand(creds, oauth, keys, authCmd(), cmdUpdate(), cmdUpdateCheckHidden())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
