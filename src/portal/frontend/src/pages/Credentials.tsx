@@ -14,6 +14,21 @@ import { api, type ApiKeyItem, type OAuthTokenItem } from '../api'
 
 const lbl = 'mb-1 block text-xs text-muted-foreground'
 
+// Google-style OAuth scopes are full URLs (https://www.googleapis.com/auth/calendar) that overflow
+// the pill; show the meaningful tail. Short scopes (gist, Calendars.Read) are shown as-is.
+const shortScope = (s: string) => (s.includes('://') ? (s.replace(/\/+$/, '').split('/').pop() || s) : s)
+
+function ScopeBadges({ scopes, className = '' }: { scopes: string[]; className?: string }) {
+  return (
+    <div className={`flex flex-wrap gap-1 ${className}`}>
+      {scopes.slice(0, 3).map((s) => (
+        <Badge key={s} variant="secondary" title={s} className="max-w-[10rem] truncate">{shortScope(s)}</Badge>
+      ))}
+      {scopes.length > 3 && <Badge variant="secondary">+{scopes.length - 3}</Badge>}
+    </div>
+  )
+}
+
 export function CredentialsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
@@ -138,7 +153,7 @@ export function CredentialsPage() {
                         <TableCell className="font-medium">{t.provider}</TableCell>
                         <TableCell>{t.account}</TableCell>
                         <TableCell className="text-muted-foreground">{t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '—'}</TableCell>
-                        <TableCell><div className="flex max-w-[16rem] flex-wrap gap-1">{t.scopes.slice(0, 3).map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}{t.scopes.length > 3 && <Badge variant="secondary">+{t.scopes.length - 3}</Badge>}</div></TableCell>
+                        <TableCell><ScopeBadges scopes={t.scopes} className="max-w-[16rem]" /></TableCell>
                         <TableCell><RevealButton title={`${t.provider}${t.account ? ` · ${t.account}` : ''}`} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} /></TableCell>
                       </TableRow>
                     ))}
@@ -159,7 +174,7 @@ export function CredentialsPage() {
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
                       <Field label="Expires">{t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '—'}</Field>
                       <Field label="Scopes" truncate={false}>
-                        <div className="flex flex-wrap gap-1">{t.scopes.slice(0, 3).map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}{t.scopes.length > 3 && <Badge variant="secondary">+{t.scopes.length - 3}</Badge>}</div>
+                        <ScopeBadges scopes={t.scopes} />
                       </Field>
                     </div>
                   </div>
