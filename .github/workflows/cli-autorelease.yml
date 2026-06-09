@@ -1,0 +1,67 @@
+name: cli-autorelease
+
+# Mint a new dwvault CLI version on every change under src/cli/. Computes the next
+# patch from the latest vX.Y.Z tag, cross-compiles, and publishes a GitHub release
+# with the per-arch binaries. For an explicit minor/major bump, push a vX.Y.Z tag
+# manually (handled by release-cli.yml); this job patch-bumps from whatever exists.
+on:
+  push:
+    branches: [main]
+    paths: ['src/cli/**']
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cli-autorelease
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # need the full tag history to compute the next version
+
+      - name: Compute next patch version
+        id: ver
+        run: |
+          git fetch --tags --force
+          latest=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+          if [ -z "$latest" ]; then
+            next="v0.1.0"
+          else
+            v=${latest#v}; IFS=. read -r MA MI PA <<<"$v"
+            next="v${MA}.${MI}.$((PA + 1))"
+          fi
+          echo "next=$next" >> "$GITHUB_OUTPUT"
+          echo "Next dwvault version: $next (from ${latest:-<none>})"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: src/cli/go.mod
+          cache-dependency-path: src/cli/go.sum
+
+      - name: Build dwvault (multi-arch)
+        working-directory: src/cli
+        run: |
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          for t in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
+            os="${t%/*}"; arch="${t#*/}"
+            GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
+              go build -ldflags "-s -w -X main.version=${{ steps.ver.outputs.next }}" \
+              -o "$GITHUB_WORKSPACE/dist/dwvault-$os-$arch" .
+          done
+          ( cd "$GITHUB_WORKSPACE/dist" && sha256sum dwvault-* > SHA256SUMS )
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.ver.outputs.next }}
+          name: ${{ steps.ver.outputs.next }}
+          files: |
+            dist/dwvault-*
+            dist/SHA256SUMS
+          generate_release_notes: true
