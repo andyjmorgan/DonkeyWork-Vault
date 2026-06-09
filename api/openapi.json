@@ -121,82 +121,6 @@
         ],
         "type": "object"
       },
-      "ApiKeyFieldDto": {
-        "properties": {
-          "label": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "required": {
-            "type": "boolean"
-          },
-          "secret": {
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "name",
-          "label",
-          "secret",
-          "required"
-        ],
-        "type": "object"
-      },
-      "ApiKeyProviderDto": {
-        "properties": {
-          "authScheme": {
-            "type": "string"
-          },
-          "baseUrl": {
-            "type": "string"
-          },
-          "docsUrl": {
-            "type": "string"
-          },
-          "fields": {
-            "items": {
-              "$ref": "#/components/schemas/ApiKeyFieldDto"
-            },
-            "type": "array"
-          },
-          "header": {
-            "type": "string"
-          },
-          "iconUrl": {
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "prefix": {
-            "type": "string"
-          },
-          "staticHeaders": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          }
-        },
-        "required": [
-          "key",
-          "name",
-          "iconUrl",
-          "docsUrl",
-          "authScheme",
-          "header",
-          "prefix",
-          "baseUrl",
-          "staticHeaders",
-          "fields"
-        ],
-        "type": "object"
-      },
       "AppConfigResponse": {
         "properties": {
           "authEnabled": {
@@ -802,67 +726,6 @@
         ],
         "type": "object"
       },
-      "UpsertApiKeyManifestRequest": {
-        "properties": {
-          "authScheme": {
-            "nullable": true,
-            "type": "string"
-          },
-          "baseUrl": {
-            "nullable": true,
-            "type": "string"
-          },
-          "docsUrl": {
-            "nullable": true,
-            "type": "string"
-          },
-          "fields": {
-            "items": {
-              "$ref": "#/components/schemas/ApiKeyFieldDto"
-            },
-            "nullable": true,
-            "type": "array"
-          },
-          "header": {
-            "nullable": true,
-            "type": "string"
-          },
-          "iconUrl": {
-            "nullable": true,
-            "type": "string"
-          },
-          "key": {
-            "type": "string"
-          },
-          "name": {
-            "type": "string"
-          },
-          "prefix": {
-            "nullable": true,
-            "type": "string"
-          },
-          "staticHeaders": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "nullable": true,
-            "type": "object"
-          }
-        },
-        "required": [
-          "key",
-          "name",
-          "iconUrl",
-          "docsUrl",
-          "authScheme",
-          "header",
-          "prefix",
-          "baseUrl",
-          "staticHeaders",
-          "fields"
-        ],
-        "type": "object"
-      },
       "UpsertOAuthConfigRequest": {
         "properties": {
           "clientId": {
@@ -1380,43 +1243,15 @@
     },
     "/api/v1/manifests": {
       "get": {
-        "parameters": [
-          {
-            "in": "query",
-            "name": "kind",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        },
-        "tags": [
-          "DonkeyWork.Vault.Api"
-        ]
-      }
-    },
-    "/api/v1/manifests/apikey": {
-      "post": {
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertApiKeyManifestRequest"
-              }
-            }
-          },
-          "required": true
-        },
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiKeyProviderDto"
+                  "items": {
+                    "$ref": "#/components/schemas/OAuthManifestDto"
+                  },
+                  "type": "array"
                 }
               }
             },
@@ -1719,60 +1554,6 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/OAuthAccessTokenResponse"
-                }
-              }
-            },
-            "description": "OK"
-          },
-          "404": {
-            "description": "Not Found"
-          }
-        },
-        "tags": [
-          "DonkeyWork.Vault.Api"
-        ]
-      }
-    },
-    "/api/v1/providers": {
-      "get": {
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/ApiKeyProviderDto"
-                  },
-                  "type": "array"
-                }
-              }
-            },
-            "description": "OK"
-          }
-        },
-        "tags": [
-          "DonkeyWork.Vault.Api"
-        ]
-      }
-    },
-    "/api/v1/providers/{key}": {
-      "get": {
-        "parameters": [
-          {
-            "in": "path",
-            "name": "key",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiKeyProviderDto"
                 }
               }
             },

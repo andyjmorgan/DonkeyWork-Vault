@@ -50,28 +50,6 @@ type ApiKeyDto struct {
 	Username    *string            `json:"username"`
 }
 
-// ApiKeyFieldDto defines model for ApiKeyFieldDto.
-type ApiKeyFieldDto struct {
-	Label    string `json:"label"`
-	Name     string `json:"name"`
-	Required bool   `json:"required"`
-	Secret   bool   `json:"secret"`
-}
-
-// ApiKeyProviderDto defines model for ApiKeyProviderDto.
-type ApiKeyProviderDto struct {
-	AuthScheme    string            `json:"authScheme"`
-	BaseUrl       string            `json:"baseUrl"`
-	DocsUrl       string            `json:"docsUrl"`
-	Fields        []ApiKeyFieldDto  `json:"fields"`
-	Header        string            `json:"header"`
-	IconUrl       string            `json:"iconUrl"`
-	Key           string            `json:"key"`
-	Name          string            `json:"name"`
-	Prefix        string            `json:"prefix"`
-	StaticHeaders map[string]string `json:"staticHeaders"`
-}
-
 // AppConfigResponse defines model for AppConfigResponse.
 type AppConfigResponse struct {
 	AuthEnabled bool   `json:"authEnabled"`
@@ -254,20 +232,6 @@ type SetEnabledRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
-// UpsertApiKeyManifestRequest defines model for UpsertApiKeyManifestRequest.
-type UpsertApiKeyManifestRequest struct {
-	AuthScheme    *string            `json:"authScheme"`
-	BaseUrl       *string            `json:"baseUrl"`
-	DocsUrl       *string            `json:"docsUrl"`
-	Fields        *[]ApiKeyFieldDto  `json:"fields"`
-	Header        *string            `json:"header"`
-	IconUrl       *string            `json:"iconUrl"`
-	Key           string             `json:"key"`
-	Name          string             `json:"name"`
-	Prefix        *string            `json:"prefix"`
-	StaticHeaders *map[string]string `json:"staticHeaders"`
-}
-
 // UpsertOAuthConfigRequest defines model for UpsertOAuthConfigRequest.
 type UpsertOAuthConfigRequest struct {
 	ClientId     string    `json:"clientId"`
@@ -309,11 +273,6 @@ type GetApiV1AuditParams struct {
 	Until   *time.Time          `form:"until,omitempty" json:"until,omitempty"`
 }
 
-// GetApiV1ManifestsParams defines parameters for GetApiV1Manifests.
-type GetApiV1ManifestsParams struct {
-	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
-}
-
 // GetApiV1OauthProviderTokenParams defines parameters for GetApiV1OauthProviderToken.
 type GetApiV1OauthProviderTokenParams struct {
 	Account *string `form:"account,omitempty" json:"account,omitempty"`
@@ -327,9 +286,6 @@ type PatchApiV1AccessKeysIdJSONRequestBody = SetEnabledRequest
 
 // PostApiV1ApiKeysJSONRequestBody defines body for PostApiV1ApiKeys for application/json ContentType.
 type PostApiV1ApiKeysJSONRequestBody = CreateApiKeyRequest
-
-// PostApiV1ManifestsApikeyJSONRequestBody defines body for PostApiV1ManifestsApikey for application/json ContentType.
-type PostApiV1ManifestsApikeyJSONRequestBody = UpsertApiKeyManifestRequest
 
 // PostApiV1ManifestsOauthJSONRequestBody defines body for PostApiV1ManifestsOauth for application/json ContentType.
 type PostApiV1ManifestsOauthJSONRequestBody = UpsertOAuthManifestRequest
@@ -456,12 +412,7 @@ type ClientInterface interface {
 	GetApiV1CredentialsName(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiV1Manifests request
-	GetApiV1Manifests(ctx context.Context, params *GetApiV1ManifestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// PostApiV1ManifestsApikeyWithBody request with any body
-	PostApiV1ManifestsApikeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	PostApiV1ManifestsApikey(ctx context.Context, body PostApiV1ManifestsApikeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetApiV1Manifests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PostApiV1ManifestsOauthWithBody request with any body
 	PostApiV1ManifestsOauthWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -498,12 +449,6 @@ type ClientInterface interface {
 
 	// GetApiV1OauthProviderToken request
 	GetApiV1OauthProviderToken(ctx context.Context, provider string, params *GetApiV1OauthProviderTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetApiV1Providers request
-	GetApiV1Providers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
-
-	// GetApiV1ProvidersKey request
-	GetApiV1ProvidersKey(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
 }
 
 func (c *Client) GetApiConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
@@ -686,32 +631,8 @@ func (c *Client) GetApiV1CredentialsName(ctx context.Context, name string, reqEd
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetApiV1Manifests(ctx context.Context, params *GetApiV1ManifestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiV1ManifestsRequest(c.Server, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostApiV1ManifestsApikeyWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiV1ManifestsApikeyRequestWithBody(c.Server, contentType, body)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) PostApiV1ManifestsApikey(ctx context.Context, body PostApiV1ManifestsApikeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewPostApiV1ManifestsApikeyRequest(c.Server, body)
+func (c *Client) GetApiV1Manifests(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiV1ManifestsRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -868,30 +789,6 @@ func (c *Client) GetApiV1OauthProviderConnect(ctx context.Context, provider stri
 
 func (c *Client) GetApiV1OauthProviderToken(ctx context.Context, provider string, params *GetApiV1OauthProviderTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetApiV1OauthProviderTokenRequest(c.Server, provider, params)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetApiV1Providers(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiV1ProvidersRequest(c.Server)
-	if err != nil {
-		return nil, err
-	}
-	req = req.WithContext(ctx)
-	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
-		return nil, err
-	}
-	return c.Client.Do(req)
-}
-
-func (c *Client) GetApiV1ProvidersKey(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiV1ProvidersKeyRequest(c.Server, key)
 	if err != nil {
 		return nil, err
 	}
@@ -1480,7 +1377,7 @@ func NewGetApiV1CredentialsNameRequest(server string, name string) (*http.Reques
 }
 
 // NewGetApiV1ManifestsRequest generates requests for GetApiV1Manifests
-func NewGetApiV1ManifestsRequest(server string, params *GetApiV1ManifestsParams) (*http.Request, error) {
+func NewGetApiV1ManifestsRequest(server string) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -1498,72 +1395,10 @@ func NewGetApiV1ManifestsRequest(server string, params *GetApiV1ManifestsParams)
 		return nil, err
 	}
 
-	if params != nil {
-		queryValues := queryURL.Query()
-
-		if params.Kind != nil {
-
-			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "kind", runtime.ParamLocationQuery, *params.Kind); err != nil {
-				return nil, err
-			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-				return nil, err
-			} else {
-				for k, v := range parsed {
-					for _, v2 := range v {
-						queryValues.Add(k, v2)
-					}
-				}
-			}
-
-		}
-
-		queryURL.RawQuery = queryValues.Encode()
-	}
-
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
-
-	return req, nil
-}
-
-// NewPostApiV1ManifestsApikeyRequest calls the generic PostApiV1ManifestsApikey builder with application/json body
-func NewPostApiV1ManifestsApikeyRequest(server string, body PostApiV1ManifestsApikeyJSONRequestBody) (*http.Request, error) {
-	var bodyReader io.Reader
-	buf, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-	bodyReader = bytes.NewReader(buf)
-	return NewPostApiV1ManifestsApikeyRequestWithBody(server, "application/json", bodyReader)
-}
-
-// NewPostApiV1ManifestsApikeyRequestWithBody generates requests for PostApiV1ManifestsApikey with any type of body
-func NewPostApiV1ManifestsApikeyRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/manifests/apikey")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("POST", queryURL.String(), body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -1934,67 +1769,6 @@ func NewGetApiV1OauthProviderTokenRequest(server string, provider string, params
 	return req, nil
 }
 
-// NewGetApiV1ProvidersRequest generates requests for GetApiV1Providers
-func NewGetApiV1ProvidersRequest(server string) (*http.Request, error) {
-	var err error
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/providers")
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
-// NewGetApiV1ProvidersKeyRequest generates requests for GetApiV1ProvidersKey
-func NewGetApiV1ProvidersKeyRequest(server string, key string) (*http.Request, error) {
-	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "key", runtime.ParamLocationPath, key)
-	if err != nil {
-		return nil, err
-	}
-
-	serverURL, err := url.Parse(server)
-	if err != nil {
-		return nil, err
-	}
-
-	operationPath := fmt.Sprintf("/api/v1/providers/%s", pathParam0)
-	if operationPath[0] == '/' {
-		operationPath = "." + operationPath
-	}
-
-	queryURL, err := serverURL.Parse(operationPath)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequest("GET", queryURL.String(), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	return req, nil
-}
-
 func (c *Client) applyEditors(ctx context.Context, req *http.Request, additionalEditors []RequestEditorFn) error {
 	for _, r := range c.RequestEditors {
 		if err := r(ctx, req); err != nil {
@@ -2081,12 +1855,7 @@ type ClientWithResponsesInterface interface {
 	GetApiV1CredentialsNameWithResponse(ctx context.Context, name string, reqEditors ...RequestEditorFn) (*GetApiV1CredentialsNameResponse, error)
 
 	// GetApiV1ManifestsWithResponse request
-	GetApiV1ManifestsWithResponse(ctx context.Context, params *GetApiV1ManifestsParams, reqEditors ...RequestEditorFn) (*GetApiV1ManifestsResponse, error)
-
-	// PostApiV1ManifestsApikeyWithBodyWithResponse request with any body
-	PostApiV1ManifestsApikeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1ManifestsApikeyResponse, error)
-
-	PostApiV1ManifestsApikeyWithResponse(ctx context.Context, body PostApiV1ManifestsApikeyJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1ManifestsApikeyResponse, error)
+	GetApiV1ManifestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1ManifestsResponse, error)
 
 	// PostApiV1ManifestsOauthWithBodyWithResponse request with any body
 	PostApiV1ManifestsOauthWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1ManifestsOauthResponse, error)
@@ -2123,12 +1892,6 @@ type ClientWithResponsesInterface interface {
 
 	// GetApiV1OauthProviderTokenWithResponse request
 	GetApiV1OauthProviderTokenWithResponse(ctx context.Context, provider string, params *GetApiV1OauthProviderTokenParams, reqEditors ...RequestEditorFn) (*GetApiV1OauthProviderTokenResponse, error)
-
-	// GetApiV1ProvidersWithResponse request
-	GetApiV1ProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1ProvidersResponse, error)
-
-	// GetApiV1ProvidersKeyWithResponse request
-	GetApiV1ProvidersKeyWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetApiV1ProvidersKeyResponse, error)
 }
 
 type GetApiConfigResponse struct {
@@ -2397,6 +2160,7 @@ func (r GetApiV1CredentialsNameResponse) StatusCode() int {
 type GetApiV1ManifestsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON200      *[]OAuthManifestDto
 }
 
 // Status returns HTTPResponse.Status
@@ -2409,28 +2173,6 @@ func (r GetApiV1ManifestsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetApiV1ManifestsResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type PostApiV1ManifestsApikeyResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ApiKeyProviderDto
-}
-
-// Status returns HTTPResponse.Status
-func (r PostApiV1ManifestsApikeyResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r PostApiV1ManifestsApikeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2658,50 +2400,6 @@ func (r GetApiV1OauthProviderTokenResponse) StatusCode() int {
 	return 0
 }
 
-type GetApiV1ProvidersResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *[]ApiKeyProviderDto
-}
-
-// Status returns HTTPResponse.Status
-func (r GetApiV1ProvidersResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetApiV1ProvidersResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
-type GetApiV1ProvidersKeyResponse struct {
-	Body         []byte
-	HTTPResponse *http.Response
-	JSON200      *ApiKeyProviderDto
-}
-
-// Status returns HTTPResponse.Status
-func (r GetApiV1ProvidersKeyResponse) Status() string {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.Status
-	}
-	return http.StatusText(0)
-}
-
-// StatusCode returns HTTPResponse.StatusCode
-func (r GetApiV1ProvidersKeyResponse) StatusCode() int {
-	if r.HTTPResponse != nil {
-		return r.HTTPResponse.StatusCode
-	}
-	return 0
-}
-
 // GetApiConfigWithResponse request returning *GetApiConfigResponse
 func (c *ClientWithResponses) GetApiConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConfigResponse, error) {
 	rsp, err := c.GetApiConfig(ctx, reqEditors...)
@@ -2835,29 +2533,12 @@ func (c *ClientWithResponses) GetApiV1CredentialsNameWithResponse(ctx context.Co
 }
 
 // GetApiV1ManifestsWithResponse request returning *GetApiV1ManifestsResponse
-func (c *ClientWithResponses) GetApiV1ManifestsWithResponse(ctx context.Context, params *GetApiV1ManifestsParams, reqEditors ...RequestEditorFn) (*GetApiV1ManifestsResponse, error) {
-	rsp, err := c.GetApiV1Manifests(ctx, params, reqEditors...)
+func (c *ClientWithResponses) GetApiV1ManifestsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1ManifestsResponse, error) {
+	rsp, err := c.GetApiV1Manifests(ctx, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseGetApiV1ManifestsResponse(rsp)
-}
-
-// PostApiV1ManifestsApikeyWithBodyWithResponse request with arbitrary body returning *PostApiV1ManifestsApikeyResponse
-func (c *ClientWithResponses) PostApiV1ManifestsApikeyWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1ManifestsApikeyResponse, error) {
-	rsp, err := c.PostApiV1ManifestsApikeyWithBody(ctx, contentType, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostApiV1ManifestsApikeyResponse(rsp)
-}
-
-func (c *ClientWithResponses) PostApiV1ManifestsApikeyWithResponse(ctx context.Context, body PostApiV1ManifestsApikeyJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1ManifestsApikeyResponse, error) {
-	rsp, err := c.PostApiV1ManifestsApikey(ctx, body, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParsePostApiV1ManifestsApikeyResponse(rsp)
 }
 
 // PostApiV1ManifestsOauthWithBodyWithResponse request with arbitrary body returning *PostApiV1ManifestsOauthResponse
@@ -2972,24 +2653,6 @@ func (c *ClientWithResponses) GetApiV1OauthProviderTokenWithResponse(ctx context
 		return nil, err
 	}
 	return ParseGetApiV1OauthProviderTokenResponse(rsp)
-}
-
-// GetApiV1ProvidersWithResponse request returning *GetApiV1ProvidersResponse
-func (c *ClientWithResponses) GetApiV1ProvidersWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1ProvidersResponse, error) {
-	rsp, err := c.GetApiV1Providers(ctx, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetApiV1ProvidersResponse(rsp)
-}
-
-// GetApiV1ProvidersKeyWithResponse request returning *GetApiV1ProvidersKeyResponse
-func (c *ClientWithResponses) GetApiV1ProvidersKeyWithResponse(ctx context.Context, key string, reqEditors ...RequestEditorFn) (*GetApiV1ProvidersKeyResponse, error) {
-	rsp, err := c.GetApiV1ProvidersKey(ctx, key, reqEditors...)
-	if err != nil {
-		return nil, err
-	}
-	return ParseGetApiV1ProvidersKeyResponse(rsp)
 }
 
 // ParseGetApiConfigResponse parses an HTTP response from a GetApiConfigWithResponse call
@@ -3301,25 +2964,9 @@ func ParseGetApiV1ManifestsResponse(rsp *http.Response) (*GetApiV1ManifestsRespo
 		HTTPResponse: rsp,
 	}
 
-	return response, nil
-}
-
-// ParsePostApiV1ManifestsApikeyResponse parses an HTTP response from a PostApiV1ManifestsApikeyWithResponse call
-func ParsePostApiV1ManifestsApikeyResponse(rsp *http.Response) (*PostApiV1ManifestsApikeyResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &PostApiV1ManifestsApikeyResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ApiKeyProviderDto
+		var dest []OAuthManifestDto
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -3581,58 +3228,6 @@ func ParseGetApiV1OauthProviderTokenResponse(rsp *http.Response) (*GetApiV1Oauth
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest OAuthAccessTokenResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetApiV1ProvidersResponse parses an HTTP response from a GetApiV1ProvidersWithResponse call
-func ParseGetApiV1ProvidersResponse(rsp *http.Response) (*GetApiV1ProvidersResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetApiV1ProvidersResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest []ApiKeyProviderDto
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON200 = &dest
-
-	}
-
-	return response, nil
-}
-
-// ParseGetApiV1ProvidersKeyResponse parses an HTTP response from a GetApiV1ProvidersKeyWithResponse call
-func ParseGetApiV1ProvidersKeyResponse(rsp *http.Response) (*GetApiV1ProvidersKeyResponse, error) {
-	bodyBytes, err := io.ReadAll(rsp.Body)
-	defer func() { _ = rsp.Body.Close() }()
-	if err != nil {
-		return nil, err
-	}
-
-	response := &GetApiV1ProvidersKeyResponse{
-		Body:         bodyBytes,
-		HTTPResponse: rsp,
-	}
-
-	switch {
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
-		var dest ApiKeyProviderDto
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

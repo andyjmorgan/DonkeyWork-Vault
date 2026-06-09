@@ -26,7 +26,6 @@ public static class VaultApiEndpoints
         api.AddEndpointFilter(new ScopeGateFilter());
 
         MapIdentity(api);
-        MapCatalog(api);
         MapApiKeys(api);
         MapCredentials(api);
         MapAccessKeys(api);
@@ -48,20 +47,6 @@ public static class VaultApiEndpoints
             TenantId: user.FindFirst("tenant_id")?.Value ?? "",
             Email: user.FindFirst("email")?.Value,
             Name: user.FindFirst("name")?.Value ?? user.FindFirst("preferred_username")?.Value)));
-
-    // ---- API-key provider catalog ----
-
-    private static void MapCatalog(RouteGroupBuilder api)
-    {
-        api.MapGet("/providers", async (ManifestResolver manifests, CancellationToken ct) =>
-            TypedResults.Ok((await manifests.ListApiKeyAsync(ct)).Select(ToProviderDto).ToList()));
-
-        api.MapGet("/providers/{key}", async Task<Results<Ok<ApiKeyProviderDto>, NotFound>> (string key, ManifestResolver manifests, CancellationToken ct) =>
-        {
-            var m = await manifests.GetApiKeyAsync(key, ct);
-            return m is null ? TypedResults.NotFound() : TypedResults.Ok(ToProviderDto(m));
-        });
-    }
 
     // ---- stored API keys ----
 
@@ -151,37 +136,14 @@ public static class VaultApiEndpoints
             await svc.DeleteAsync(id, ct) ? TypedResults.NoContent() : TypedResults.NotFound());
     }
 
-    // ---- provider manifests (runtime catalog CRUD) ----
+    // ---- OAuth provider manifests (runtime catalog CRUD) ----
 
     private static void MapManifests(RouteGroupBuilder api)
     {
-        api.MapGet("/manifests", async (string? kind, ManifestResolver m, CancellationToken ct) =>
+        api.MapGet("/manifests", async (ManifestResolver m, CancellationToken ct) =>
         {
-            if (kind == "oauth")
-            {
-                var items = await m.ListOAuthAsync(ct);
-                return Results.Ok(items.Select(x => ToOAuthManifestDto(x, m.IsOAuthBuiltin(x.Key))).ToList());
-            }
-            var api2 = await m.ListApiKeyAsync(ct);
-            return Results.Ok(api2.Select(ToProviderDto).ToList());
-        });
-
-        api.MapPost("/manifests/apikey", async (UpsertApiKeyManifestRequest dto, ManifestResolver m, CancellationToken ct) =>
-        {
-            var manifest = new ApiKeyManifest
-            {
-                Key = dto.Key, Name = dto.Name, IconUrl = dto.IconUrl ?? "", DocsUrl = dto.DocsUrl ?? "", BaseUrl = dto.BaseUrl ?? "",
-                Auth = new ApiKeyAuth
-                {
-                    Scheme = string.IsNullOrEmpty(dto.AuthScheme) ? "header" : dto.AuthScheme,
-                    Header = dto.Header ?? "", Prefix = dto.Prefix ?? "",
-                    StaticHeaders = dto.StaticHeaders ?? new(),
-                },
-                Fields = (dto.Fields ?? []).Select(f => new ApiKeyFieldDef { Name = f.Name, Label = f.Label, Secret = f.Secret, Required = f.Required }).ToList(),
-            };
-            await m.UpsertApiKeyAsync(manifest, ct);
-            var saved = await m.GetApiKeyAsync(dto.Key, ct);
-            return TypedResults.Ok(ToProviderDto(saved ?? manifest));
+            var items = await m.ListOAuthAsync(ct);
+            return TypedResults.Ok(items.Select(x => ToOAuthManifestDto(x, m.IsOAuthBuiltin(x.Key))).ToList());
         });
 
         api.MapPost("/manifests/oauth", async (UpsertOAuthManifestRequest dto, ManifestResolver m, CancellationToken ct) =>
@@ -327,11 +289,6 @@ public static class VaultApiEndpoints
     }
 
     // ---- mappers ----
-
-    private static ApiKeyProviderDto ToProviderDto(ApiKeyManifest m) => new(
-        m.Key, m.Name, m.IconUrl, m.DocsUrl, m.Auth.Scheme, m.Auth.Header, m.Auth.Prefix, m.BaseUrl,
-        m.Auth.StaticHeaders,
-        m.Fields.Select(f => new ApiKeyFieldDto(f.Name, f.Label, f.Secret, f.Required)).ToList());
 
     private static ApiKeyDto ToApiKeyDto(StoredApiKey k) => new(
         k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.Header, k.Prefix, k.Username, k.CreatedAt, k.LastUsedAt);

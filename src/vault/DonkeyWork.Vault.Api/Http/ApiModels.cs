@@ -13,22 +13,6 @@ public sealed record MeResponse(string? UserId, string TenantId, string? Email, 
 /// <summary>Public runtime config the SPA reads before sign-in (anonymous).</summary>
 public sealed record AppConfigResponse(string Authority, string ClientId, string Scopes, bool AuthEnabled);
 
-// ---- API-key catalog (provider manifests) ----
-
-public sealed record ApiKeyFieldDto(string Name, string Label, bool Secret, bool Required);
-
-public sealed record ApiKeyProviderDto(
-    string Key,
-    string Name,
-    string IconUrl,
-    string DocsUrl,
-    string AuthScheme,
-    string Header,
-    string Prefix,
-    string BaseUrl,
-    IReadOnlyDictionary<string, string> StaticHeaders,
-    IReadOnlyList<ApiKeyFieldDto> Fields);
-
 // ---- stored API keys (self-describing credentials) ----
 
 public sealed record ApiKeyDto(
@@ -114,18 +98,6 @@ public sealed record OAuthManifestDto(
     string ScopeDelimiter,
     IReadOnlyList<string> DefaultScopes,
     IReadOnlyList<OAuthScopeDto> Scopes);
-
-public sealed record UpsertApiKeyManifestRequest(
-    string Key,
-    string Name,
-    string? IconUrl,
-    string? DocsUrl,
-    string? AuthScheme,
-    string? Header,
-    string? Prefix,
-    string? BaseUrl,
-    Dictionary<string, string>? StaticHeaders,
-    List<ApiKeyFieldDto>? Fields);
 
 public sealed record UpsertOAuthManifestRequest(
     string Key,
