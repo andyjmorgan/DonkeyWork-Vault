@@ -16,10 +16,9 @@ import { api, type AccessKey, type AccessScope, type Me } from '../api'
 const lbl = 'mb-1 block text-xs text-muted-foreground'
 
 const SCOPES: { value: AccessScope; label: string; hint: string }[] = [
-  { value: 'frontend:read', label: 'frontend:read', hint: 'Read the portal API (GET).' },
-  { value: 'frontend:readwrite', label: 'frontend:readwrite', hint: 'Read + write the portal API.' },
-  { value: 'vault:read', label: 'vault:read', hint: 'Read credentials/tokens via gRPC.' },
-  { value: 'vault:readwrite', label: 'vault:readwrite', hint: 'Read + write the vault via gRPC.' },
+  { value: 'vault:read', label: 'vault:read', hint: 'Read credentials, tokens, and config (GET).' },
+  { value: 'vault:readwrite', label: 'vault:readwrite', hint: 'Read + create/update/delete credentials.' },
+  { value: 'vault:audit', label: 'vault:audit', hint: 'Read the audit trail.' },
 ]
 
 export function ProfilePage({ me }: { me: Me | null }) {

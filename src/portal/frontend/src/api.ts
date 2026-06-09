@@ -36,7 +36,7 @@ export interface NewApiKey { name: string; secret: string; description?: string;
 export interface OAuthTokenItem { id: string; provider: string; account: string; expiresAt: string; lastRefreshedAt: string; scopes: string[] }
 export interface OAuthConfigItem { id: string; provider: string; clientIdMasked: string; scopes: string[]; redirectUri: string; createdAt: string }
 export interface Me { userId: string; tenantId: string; email?: string; name?: string }
-export type AccessScope = 'frontend:read' | 'frontend:readwrite' | 'vault:read' | 'vault:readwrite'
+export type AccessScope = 'vault:read' | 'vault:readwrite' | 'vault:audit'
 export interface AccessKey {
   id: string; name: string; description?: string; scopes: AccessScope[]
   enabled: boolean; prefix: string; createdAt: string; lastUsedAt: string
