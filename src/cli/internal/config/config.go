@@ -37,13 +37,23 @@ const (
 	fileName = "hosts.json"
 )
 
-// Path returns the config file path ($XDG_CONFIG_HOME/dwvault/hosts.json).
-func Path() (string, error) {
+// Dir returns the dwvault config directory ($XDG_CONFIG_HOME/dwvault), the home for
+// hosts.json and other non-secret state files (e.g. the update-check cache).
+func Dir() (string, error) {
 	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(base, dirName, fileName), nil
+	return filepath.Join(base, dirName), nil
+}
+
+// Path returns the config file path ($XDG_CONFIG_HOME/dwvault/hosts.json).
+func Path() (string, error) {
+	dir, err := Dir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, fileName), nil
 }
 
 // Load reads the config, returning an empty (non-nil) Config if the file is absent.
