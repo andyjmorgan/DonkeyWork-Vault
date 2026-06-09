@@ -15,17 +15,15 @@ import (
 )
 
 // httpBaseURL derives the REST base URL (and the credstore host key) from --addr.
-// An http(s):// addr is used verbatim; a bare host[:port] is mapped to http:// unless
-// --tls / VAULT_TLS is set (or an https:// addr is given), in which case https://.
+// The scheme is the sole signal: an http(s):// addr is used verbatim; a bare host[:port]
+// with no scheme defaults to plaintext http:// (give an https:// addr, or rely on the
+// default https://vault.donkeywork.dev, for TLS).
 func httpBaseURL() string {
 	a := strings.TrimRight(addr, "/")
 	switch {
 	case strings.HasPrefix(a, "http://"), strings.HasPrefix(a, "https://"):
 		return a
 	default:
-		if useTLS {
-			return "https://" + a
-		}
 		return "http://" + a
 	}
 }

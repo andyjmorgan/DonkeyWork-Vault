@@ -215,6 +215,10 @@ dwvault credentials get grafana          # works (vault:read)
 dwvault credentials create x --secret y  # denied (needs vault:readwrite)
 ```
 
+> **Wiring up an agent?** [`examples/skills/credential-manager/`](examples/skills/credential-manager/SKILL.md)
+> is a ready-to-use Claude Code skill that drives the CLI (discover → `shape` → use) with the
+> secret-handling guardrails baked in. Copy it into your agent's skills directory.
+
 ## The web console
 
 The vault serves a React console (the same origin as the API) where you:
@@ -287,6 +291,7 @@ src/vault/      The vault service (.NET): Api (REST + OAuth + SPA host), Core, P
 src/portal/     frontend/ — the Vite + React + Tailwind console (built into the vault's wwwroot)
 src/cli/        dwvault — the Go credential CLI
 api/            openapi.json (the REST contract) + oapi-codegen config
+examples/       reusable examples, e.g. examples/skills/credential-manager (agent skill)
 test/           integration tests
 tools/          maintenance utilities (e.g. importer)
 Dockerfile.vault, install.sh

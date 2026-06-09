@@ -28,10 +28,7 @@ var version = "dev" // set via -ldflags -X main.version on release builds
 
 var (
 	addr     string
-	userID   string
-	tenantID string
 	apiKey   string
-	useTLS   bool
 	doUpdate bool
 )
 
@@ -89,10 +86,7 @@ func main() {
 		},
 	}
 	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "https://vault.donkeywork.dev"), "vault address (https://host[:port] or host:port); default https://vault.donkeywork.dev")
-	root.PersistentFlags().StringVar(&userID, "user", env("VAULT_USER_ID", ""), "caller user id (on-prem only)")
-	root.PersistentFlags().StringVar(&tenantID, "tenant", env("VAULT_TENANT_ID", ""), "caller tenant id")
 	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (X-Api-Key)")
-	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by an https://host address)")
 	root.Flags().BoolVar(&doUpdate, "update", false, "upgrade dwvault to the latest release in place (see `dwvault update`)")
 	// Output discipline: STDOUT is reserved for the requested secret/token. Send all
 	// Cobra-generated text (help, usage, --version) to STDERR; the secret commands write
@@ -120,7 +114,10 @@ func main() {
 func cmdList() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List your API keys with how to use each (header/prefix/base-url/docs)",
+		Short: "List your credentials (name, description, base-url, scheme) for discovery",
+		Long: "List your credentials as a light discovery payload: name, a truncated description,\n" +
+			"base URL, and auth scheme. Pick one and run `dwvault credentials shape <name>` for\n" +
+			"the full usage detail (header, prefix, username, docs).",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			client, err := newClient()
 			if err != nil {
@@ -136,10 +133,10 @@ func cmdList() *cobra.Command {
 				return apiError("list api keys", resp.Status(), resp.Body)
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tDESCRIPTION\tHEADER\tPREFIX\tBASE URL\tDOCS")
+			fmt.Fprintln(w, "NAME\tDESCRIPTION\tBASE URL\tSCHEME")
 			for _, k := range *resp.JSON200 {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%q\t%s\t%s\n",
-					k.Name, deref(k.Description), deref(k.Header), deref(k.Prefix), deref(k.BaseUrl), deref(k.DocsUrl))
+				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+					k.Name, truncate(deref(k.Description), 60), deref(k.BaseUrl), scheme(k.Username))
 			}
 			return w.Flush()
 		},
@@ -492,6 +489,26 @@ func cmdKeysDelete() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// scheme derives the auth scheme for the discovery listing exactly as the server does
+// (CredentialUsage.Scheme): a credential with a username is "basic", otherwise "header".
+// Mirroring the server's literal strings keeps `list` and `shape` in agreement.
+func scheme(username *string) string {
+	if username != nil && *username != "" {
+		return "basic"
+	}
+	return "header"
+}
+
+// truncate shortens s to at most n runes, appending an ellipsis when it was cut, so the
+// discovery table stays scannable regardless of description length.
+func truncate(s string, n int) string {
+	r := []rune(s)
+	if len(r) <= n {
+		return s
+	}
+	return string(r[:n-1]) + "…"
 }
 
 // strPtr returns a pointer to s, or nil when s is empty (so omitted flags stay unset).
