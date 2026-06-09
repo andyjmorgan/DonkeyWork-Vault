@@ -173,6 +173,12 @@ export function CredentialsPage() {
   )
 }
 
+// Middle-truncate a long secret for display so a giant value (e.g. a Microsoft JWT, which
+// can run thousands of chars) can't push the reveal modal off-screen. The full value is
+// still what the CopyButton copies — this only affects what's shown.
+const middleTruncate = (s: string, max = 64) =>
+  s.length > max ? `${s.slice(0, max / 2 - 1)}…${s.slice(-(max / 2 - 1))}` : s
+
 // Reveal a secret in a modal (not inline) so long values can't push the row off-screen on
 // mobile. The value is fetched on click and discarded when the dialog closes.
 function RevealButton({ title, load }: { title: string; load: () => Promise<string> }) {
@@ -201,7 +207,7 @@ function RevealButton({ title, load }: { title: string; load: () => Promise<stri
             <p className="text-sm text-destructive">{err}</p>
           ) : (
             <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
-              <code className="min-w-0 flex-1 break-all text-sm">{val}</code>
+              <code className="min-w-0 flex-1 break-all text-sm" title={val}>{val !== undefined ? middleTruncate(val) : ''}</code>
               {val !== undefined && <CopyButton value={val} />}
             </div>
           )}
