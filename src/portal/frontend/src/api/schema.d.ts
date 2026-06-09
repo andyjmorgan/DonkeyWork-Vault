@@ -935,6 +935,7 @@ export interface components {
             header: string | null;
             /** Format: uuid */
             id: string;
+            kind: components["schemas"]["CredentialKind"];
             /** Format: date-time */
             lastUsedAt: string | null;
             name: string;
@@ -991,6 +992,7 @@ export interface components {
             description: string | null;
             docsUrl: string | null;
             header: string | null;
+            kind: components["schemas"]["CredentialKind"];
             name: string;
             prefix: string | null;
             secret: string | null;
@@ -1008,11 +1010,14 @@ export interface components {
             id: string;
             name: string;
         };
+        /** @enum {string} */
+        CredentialKind: "opaque" | "header_api_key" | "http_basic" | "ssh" | "connection_string";
         CredentialShapeResponse: {
             baseUrl: string;
             description: string;
             docsUrl: string;
             header: string;
+            kind: components["schemas"]["CredentialKind"];
             prefix: string;
             scheme: string;
             username: string;
@@ -1089,6 +1094,7 @@ export interface components {
             docsUrl: string;
             header: string;
             headerValue: string;
+            kind: components["schemas"]["CredentialKind"];
             prefix: string;
             scheme: string;
             secret: string;

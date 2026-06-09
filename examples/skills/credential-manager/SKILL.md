@@ -61,12 +61,13 @@ is shown **once** on creation. Scopes: `vault:read`, `vault:readwrite`, `vault:a
 ## Commands
 
 ```bash
-dwvault credentials list                 # discovery: name + truncated description + base-url + scheme
-dwvault credentials get   <name>         # the secret to stdout (for $(...) substitution)
-dwvault credentials shape <name>         # JSON: description/base_url/header/prefix/scheme/username/docs_url
-dwvault credentials header <name>        # the ready Authorization header line (for curl -H)
-dwvault credentials create <name> --secret <v> [--description ..] [--base-url ..] [--docs ..] \
-                                       [--header ..] [--prefix ..] [--username ..]
+dwvault credentials list                 # discovery: name + truncated description + base-url + KIND
+dwvault credentials get    <name>        # the secret to stdout (for $(...) substitution)
+dwvault credentials shape  <name>        # JSON: kind/description/base_url/header/prefix/scheme/username/docs_url
+dwvault credentials header <name>        # the ready Authorization header line (for curl -H; HTTP kinds)
+dwvault credentials create <name> --secret <v> --kind <kind> [--description ..] [--base-url ..] \
+                                       [--docs ..] [--header ..] [--prefix ..] [--username ..]
+dwvault credentials delete <name>        # remove a stored credential
 
 dwvault oauth list                       # connected OAuth providers (provider/account/expiry/scopes)
 dwvault oauth token <provider> [--account <a>]   # a valid access token to stdout (auto-refreshed)
@@ -78,16 +79,26 @@ dwvault keys delete <id>
 ```
 
 > `credentials` is the canonical group; the old `creds` shorthand still works as an alias.
+> `create` is an **upsert** — re-running it for an existing name updates that credential's
+> fields in place (a blank `--secret` keeps the stored secret).
 
-### API key vs HTTP Basic on `credentials create`
+### Credential kinds (`--kind`)
 
-A stored credential is presented one of two ways, decided by whether a **username** is set:
+Every credential has an explicit **kind** — the discriminator an agent reads (in `list`/`shape`)
+to know how to use the secret. Set it on `create`; it defaults to `opaque`.
 
-- **No `--username` ⇒ header API key.** Sent as `"<header>: <prefix><secret>"`
-  (`--header` defaults to `Authorization`; `--prefix` e.g. `'Bearer '`).
-- **`--username` ⇒ HTTP Basic.** The secret is the password; the vault sends
-  `Authorization: Basic base64(username:secret)` and `--header`/`--prefix` do not apply
-  (passing both is rejected).
+| kind | meaning / how to use | key fields |
+|---|---|---|
+| `opaque` (default) | secret returned verbatim — HMAC secrets, tokens with no header, anything bespoke | `--secret` |
+| `header_api_key` | sent as `"<header>: <prefix><secret>"` | `--header` (default Authorization), `--prefix` |
+| `http_basic` | `Authorization: Basic base64(username:secret)` | `--username` (secret is the password) |
+| `ssh` | SSH login | `--username`, `--base-url ssh://host:port` (secret = password or key) |
+| `connection_string` | the whole DSN is the secret; returned verbatim | `--base-url` optional |
+
+For `header_api_key`/`http_basic`, `dwvault credentials header <name>` assembles the ready
+header line. For `ssh`/`connection_string`/`opaque`, just `get` the secret (it *is* the usable
+value). `--username` (without `--header`/`--prefix`) still drives HTTP Basic header assembly
+regardless of kind.
 
 ## Workflow: discover → select → interpret → use
 
@@ -102,20 +113,21 @@ dwvault oauth list            # connected OAuth providers
 ```
 
 `credentials list` is a light discovery table — name, a truncated description, base URL,
-and auth scheme. It carries enough to *route* (not the full usage detail):
+and kind. It carries enough to *route* (not the full usage detail):
 
 ```
-NAME          DESCRIPTION                              BASE URL                  SCHEME
-acme-api      Acme prod REST API                       https://api.acme.com      header
-backups-db    Postgres backup user (basic auth)        https://db.acme.example   basic
+NAME          DESCRIPTION                              BASE URL                  KIND
+acme-api      Acme prod REST API                       https://api.acme.com      header_api_key
+backups-db    Postgres backup user                     ssh://db.acme.example     ssh
+warehouse-dsn Analytics warehouse connection string    postgresql://wh.acme:5432 connection_string
 ```
 
 ### 2. Select the right one, then shape it
 
-Match the **DESCRIPTION** / **BASE URL** / **SCHEME** to the task (e.g. "I need to call
+Match the **DESCRIPTION** / **BASE URL** / **KIND** to the task (e.g. "I need to call
 the Acme API" → `acme-api`). The **NAME** is the identifier you pass to `shape` / `get` /
 `header`. `list` is intentionally light — once you've picked one, run
-`dwvault credentials shape <name>` for the full record (header, prefix, username, docs_url).
+`dwvault credentials shape <name>` for the full record (kind, header, prefix, username, docs_url).
 
 ### 3. Interpret the shape — header, prefix, base URL
 
@@ -123,6 +135,7 @@ the Acme API" → `acme-api`). The **NAME** is the identifier you pass to `shape
 
 | Field | Meaning / how to apply |
 |---|---|
+| `kind`       | How to use the secret: `opaque` / `header_api_key` / `http_basic` / `ssh` / `connection_string` (see the kinds table above). |
 | `base_url`   | The host the secret is for — build your request URL from this. |
 | `header`     | The HTTP header to put the secret in (e.g. `Authorization`, `x-api-key`). |
 | `prefix`     | Goes **immediately before** the secret in that header (e.g. `Bearer ` → `Authorization: Bearer <secret>`). Often empty. |
@@ -185,11 +198,19 @@ call returned 200), not the value itself.
 ### Storing a new credential
 
 ```bash
-# Secret via env so it isn't on the command line:
-SECRET=$(some-source) dwvault credentials create acme-api --secret "$SECRET" \
+# Secret via env so it isn't on the command line; set --kind so discovery is meaningful:
+SECRET=$(some-source) dwvault credentials create acme-api --secret "$SECRET" --kind header_api_key \
   --description "Acme prod API" --base-url https://api.acme.com --docs https://docs.acme.com \
   --header Authorization --prefix "Bearer "
+
+# An SSH login or a DB connection string:
+PW=$(some-source) dwvault credentials create db-box --secret "$PW" --kind ssh \
+  --username ops --base-url ssh://db.acme.example:22 --description "DB box SSH"
+DSN=$(some-source) dwvault credentials create warehouse-dsn --secret "$DSN" --kind connection_string \
+  --base-url postgresql://wh.acme:5432 --description "Analytics warehouse"
 ```
 
-Fill `description` / `base-url` / `docs` / `header` / `prefix` well — that metadata is
+Before creating, `dwvault credentials list` to avoid a duplicate — `create` is an upsert, so
+re-running it with the same name edits that credential. Pick the right `--kind` and fill
+`description` / `base-url` / `docs` (and `header`/`prefix` or `username`) — that metadata is
 exactly what the next agent reads in step 3 to know how to use it.

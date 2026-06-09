@@ -96,7 +96,7 @@ func main() {
 	// `credentials` is the canonical group; `creds` stays as a hidden alias so existing scripts and
 	// agents that shell out keep working without surfacing the shorthand in help.
 	creds := &cobra.Command{Use: "credentials", Aliases: []string{"creds"}, Short: "Manage and retrieve API-key credentials"}
-	creds.AddCommand(cmdList(), cmdGet(), cmdHeader(), cmdShape(), cmdCreate())
+	creds.AddCommand(cmdList(), cmdGet(), cmdHeader(), cmdShape(), cmdCreate(), cmdCredDelete())
 
 	oauth := &cobra.Command{Use: "oauth", Short: "Retrieve OAuth access tokens"}
 	oauth.AddCommand(cmdOAuthToken(), cmdOAuthList())
@@ -114,9 +114,9 @@ func main() {
 func cmdList() *cobra.Command {
 	return &cobra.Command{
 		Use:   "list",
-		Short: "List your credentials (name, description, base-url, scheme) for discovery",
+		Short: "List your credentials (name, description, base-url, kind) for discovery",
 		Long: "List your credentials as a light discovery payload: name, a truncated description,\n" +
-			"base URL, and auth scheme. Pick one and run `dwvault credentials shape <name>` for\n" +
+			"base URL, and kind. Pick one and run `dwvault credentials shape <name>` for\n" +
 			"the full usage detail (header, prefix, username, docs).",
 		RunE: func(_ *cobra.Command, _ []string) error {
 			client, err := newClient()
@@ -133,10 +133,10 @@ func cmdList() *cobra.Command {
 				return apiError("list api keys", resp.Status(), resp.Body)
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tDESCRIPTION\tBASE URL\tSCHEME")
+			fmt.Fprintln(w, "NAME\tDESCRIPTION\tBASE URL\tKIND")
 			for _, k := range *resp.JSON200 {
 				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
-					k.Name, truncate(deref(k.Description), 60), deref(k.BaseUrl), scheme(k.Username))
+					k.Name, truncate(deref(k.Description), 60), deref(k.BaseUrl), string(k.Kind))
 			}
 			return w.Flush()
 		},
@@ -171,7 +171,7 @@ func cmdGet() *cobra.Command {
 func cmdShape() *cobra.Command {
 	return &cobra.Command{
 		Use:   "shape <name>",
-		Short: "Print how to use the credential (scheme, username, header, prefix, base url, docs)",
+		Short: "Print how to use the credential (kind, scheme, username, header, prefix, base url, docs)",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			client, err := newClient()
@@ -189,6 +189,7 @@ func cmdShape() *cobra.Command {
 			}
 			s := resp.JSON200
 			out, _ := json.MarshalIndent(map[string]any{
+				"kind":        string(s.Kind),
 				"description": s.Description,
 				"scheme":      s.Scheme,
 				"username":    s.Username,
@@ -292,19 +293,24 @@ func cmdOAuthList() *cobra.Command {
 }
 
 func cmdCreate() *cobra.Command {
-	var secret, description, baseURL, docs, header, prefix, username string
+	var secret, description, baseURL, docs, header, prefix, username, kind string
 	c := &cobra.Command{
 		Use:   "create <name>",
-		Short: "Store a self-describing credential (header API key, or HTTP Basic with --username)",
-		Long: "Store a self-describing credential. There are two kinds:\n\n" +
-			"  header API key (default) — the secret is sent as \"<header>: <prefix><secret>\".\n" +
-			"      Use --header (default Authorization) and --prefix (e.g. 'Bearer ').\n" +
-			"  HTTP Basic (--username) — the secret is the password; the vault sends\n" +
-			"      Authorization: Basic base64(username:secret). --header/--prefix do not apply.",
+		Short: "Store a self-describing credential (set --kind for ssh/connection_string/etc.)",
+		Long: "Store a self-describing credential. --kind tags how the secret is used (default\n" +
+			"opaque); the vault returns it on discovery so an agent knows what it is:\n\n" +
+			"  opaque (default)   — the secret is returned verbatim (HMAC secrets, DSNs, …).\n" +
+			"  header_api_key     — sent as \"<header>: <prefix><secret>\" (--header/--prefix).\n" +
+			"  http_basic         — Authorization: Basic base64(username:secret) (--username).\n" +
+			"  ssh                — SSH login: --username + --base-url ssh://host:port.\n" +
+			"  connection_string  — the whole DSN is the secret.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if secret == "" {
 				return fmt.Errorf("--secret is required")
+			}
+			if !validKind(kind) {
+				return fmt.Errorf("--kind %q is not one of: opaque, header_api_key, http_basic, ssh, connection_string", kind)
 			}
 			// username ⇒ HTTP Basic; --header/--prefix are meaningless then. Reject the ambiguous
 			// mix rather than silently ignoring them (mirrors the server's CredentialUsage rule).
@@ -326,6 +332,7 @@ func cmdCreate() *cobra.Command {
 				BaseUrl:     strPtr(baseURL),
 				DocsUrl:     strPtr(docs),
 				Username:    strPtr(username),
+				Kind:        vaultapi.CredentialKind(kind),
 			}
 			if !basic {
 				body.Header = strPtr(header)
@@ -338,11 +345,7 @@ func cmdCreate() *cobra.Command {
 			if resp.JSON200 == nil {
 				return apiError(fmt.Sprintf("create credential %q", args[0]), resp.Status(), resp.Body)
 			}
-			scheme := "header API key"
-			if basic {
-				scheme = "HTTP Basic"
-			}
-			fmt.Fprintf(os.Stderr, "stored %s (%s) as %s\n", resp.JSON200.Name, resp.JSON200.Id, scheme)
+			fmt.Fprintf(os.Stderr, "stored %s (%s) kind=%s\n", resp.JSON200.Name, resp.JSON200.Id, kind)
 			return nil
 		},
 	}
@@ -353,7 +356,61 @@ func cmdCreate() *cobra.Command {
 	c.Flags().StringVar(&header, "header", "Authorization", "header name to send")
 	c.Flags().StringVar(&prefix, "prefix", "", "optional value prefix, e.g. 'Bearer '")
 	c.Flags().StringVar(&username, "username", "", "username ⇒ HTTP Basic auth (secret is the password)")
+	c.Flags().StringVar(&kind, "kind", "opaque", "credential kind: opaque|header_api_key|http_basic|ssh|connection_string")
 	return c
+}
+
+func cmdCredDelete() *cobra.Command {
+	return &cobra.Command{
+		Use:   "delete <name>",
+		Short: "Delete a stored credential by name",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(_ *cobra.Command, args []string) error {
+			client, err := newClient()
+			if err != nil {
+				return err
+			}
+			ctx, cancel := reqCtx()
+			defer cancel()
+			// The delete API is keyed by id; resolve the name to its id first.
+			list, err := client.GetApiV1ApiKeysWithResponse(ctx)
+			if err != nil {
+				return err
+			}
+			if list.JSON200 == nil {
+				return apiError("list api keys", list.Status(), list.Body)
+			}
+			var target *vaultapi.ApiKeyDto
+			for i := range *list.JSON200 {
+				if (*list.JSON200)[i].Name == args[0] {
+					target = &(*list.JSON200)[i]
+					break
+				}
+			}
+			if target == nil {
+				return fmt.Errorf("no credential named %q", args[0])
+			}
+			resp, err := client.DeleteApiV1ApiKeysIdWithResponse(ctx, target.Id)
+			if err != nil {
+				return err
+			}
+			if resp.StatusCode()/100 != 2 {
+				return apiError(fmt.Sprintf("delete credential %q", args[0]), resp.Status(), resp.Body)
+			}
+			fmt.Fprintf(os.Stderr, "deleted %s\n", args[0])
+			return nil
+		},
+	}
+}
+
+// validKind reports whether k is one of the supported credential kinds.
+func validKind(k string) bool {
+	switch k {
+	case "opaque", "header_api_key", "http_basic", "ssh", "connection_string":
+		return true
+	default:
+		return false
+	}
 }
 
 func cmdKeysList() *cobra.Command {
@@ -489,16 +546,6 @@ func cmdKeysDelete() *cobra.Command {
 			return nil
 		},
 	}
-}
-
-// scheme derives the auth scheme for the discovery listing exactly as the server does
-// (CredentialUsage.Scheme): a credential with a username is "basic", otherwise "header".
-// Mirroring the server's literal strings keeps `list` and `shape` in agreement.
-func scheme(username *string) string {
-	if username != nil && *username != "" {
-		return "basic"
-	}
-	return "header"
 }
 
 // truncate shortens s to at most n runes, appending an ellipsis when it was cut, so the

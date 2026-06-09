@@ -90,6 +90,9 @@
             "format": "uuid",
             "type": "string"
           },
+          "kind": {
+            "$ref": "#/components/schemas/CredentialKind"
+          },
           "lastUsedAt": {
             "format": "date-time",
             "nullable": true,
@@ -116,6 +119,7 @@
           "header",
           "prefix",
           "username",
+          "kind",
           "createdAt",
           "lastUsedAt"
         ],
@@ -310,6 +314,9 @@
             "nullable": true,
             "type": "string"
           },
+          "kind": {
+            "$ref": "#/components/schemas/CredentialKind"
+          },
           "name": {
             "type": "string"
           },
@@ -334,7 +341,8 @@
           "docsUrl",
           "header",
           "prefix",
-          "username"
+          "username",
+          "kind"
         ],
         "type": "object"
       },
@@ -381,6 +389,16 @@
         ],
         "type": "object"
       },
+      "CredentialKind": {
+        "enum": [
+          "opaque",
+          "header_api_key",
+          "http_basic",
+          "ssh",
+          "connection_string"
+        ],
+        "type": "string"
+      },
       "CredentialShapeResponse": {
         "properties": {
           "baseUrl": {
@@ -394,6 +412,9 @@
           },
           "header": {
             "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/CredentialKind"
           },
           "prefix": {
             "type": "string"
@@ -412,7 +433,8 @@
           "docsUrl",
           "description",
           "scheme",
-          "username"
+          "username",
+          "kind"
         ],
         "type": "object"
       },
@@ -689,6 +711,9 @@
           "headerValue": {
             "type": "string"
           },
+          "kind": {
+            "$ref": "#/components/schemas/CredentialKind"
+          },
           "prefix": {
             "type": "string"
           },
@@ -711,7 +736,8 @@
           "docsUrl",
           "description",
           "scheme",
-          "username"
+          "username",
+          "kind"
         ],
         "type": "object"
       },

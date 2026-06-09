@@ -18,6 +18,15 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for CredentialKind.
+const (
+	ConnectionString CredentialKind = "connection_string"
+	HeaderApiKey     CredentialKind = "header_api_key"
+	HttpBasic        CredentialKind = "http_basic"
+	Opaque           CredentialKind = "opaque"
+	Ssh              CredentialKind = "ssh"
+)
+
 // AccessKeyDto defines model for AccessKeyDto.
 type AccessKeyDto struct {
 	CreatedAt   time.Time          `json:"createdAt"`
@@ -44,6 +53,7 @@ type ApiKeyDto struct {
 	DocsUrl     *string            `json:"docsUrl"`
 	Header      *string            `json:"header"`
 	Id          openapi_types.UUID `json:"id"`
+	Kind        CredentialKind     `json:"kind"`
 	LastUsedAt  *time.Time         `json:"lastUsedAt"`
 	Name        string             `json:"name"`
 	Prefix      *string            `json:"prefix"`
@@ -100,14 +110,15 @@ type CreateAccessKeyRequest struct {
 
 // CreateApiKeyRequest defines model for CreateApiKeyRequest.
 type CreateApiKeyRequest struct {
-	BaseUrl     *string `json:"baseUrl"`
-	Description *string `json:"description"`
-	DocsUrl     *string `json:"docsUrl"`
-	Header      *string `json:"header"`
-	Name        string  `json:"name"`
-	Prefix      *string `json:"prefix"`
-	Secret      *string `json:"secret"`
-	Username    *string `json:"username"`
+	BaseUrl     *string        `json:"baseUrl"`
+	Description *string        `json:"description"`
+	DocsUrl     *string        `json:"docsUrl"`
+	Header      *string        `json:"header"`
+	Kind        CredentialKind `json:"kind"`
+	Name        string         `json:"name"`
+	Prefix      *string        `json:"prefix"`
+	Secret      *string        `json:"secret"`
+	Username    *string        `json:"username"`
 }
 
 // CreatedAccessKeyResponse defines model for CreatedAccessKeyResponse.
@@ -124,15 +135,19 @@ type CreatedApiKeyResponse struct {
 	Name string             `json:"name"`
 }
 
+// CredentialKind defines model for CredentialKind.
+type CredentialKind string
+
 // CredentialShapeResponse defines model for CredentialShapeResponse.
 type CredentialShapeResponse struct {
-	BaseUrl     string `json:"baseUrl"`
-	Description string `json:"description"`
-	DocsUrl     string `json:"docsUrl"`
-	Header      string `json:"header"`
-	Prefix      string `json:"prefix"`
-	Scheme      string `json:"scheme"`
-	Username    string `json:"username"`
+	BaseUrl     string         `json:"baseUrl"`
+	Description string         `json:"description"`
+	DocsUrl     string         `json:"docsUrl"`
+	Header      string         `json:"header"`
+	Kind        CredentialKind `json:"kind"`
+	Prefix      string         `json:"prefix"`
+	Scheme      string         `json:"scheme"`
+	Username    string         `json:"username"`
 }
 
 // DiscoverOidcRequest defines model for DiscoverOidcRequest.
@@ -216,15 +231,16 @@ type OAuthTokenDto struct {
 
 // RevealApiKeyResponse defines model for RevealApiKeyResponse.
 type RevealApiKeyResponse struct {
-	BaseUrl     string `json:"baseUrl"`
-	Description string `json:"description"`
-	DocsUrl     string `json:"docsUrl"`
-	Header      string `json:"header"`
-	HeaderValue string `json:"headerValue"`
-	Prefix      string `json:"prefix"`
-	Scheme      string `json:"scheme"`
-	Secret      string `json:"secret"`
-	Username    string `json:"username"`
+	BaseUrl     string         `json:"baseUrl"`
+	Description string         `json:"description"`
+	DocsUrl     string         `json:"docsUrl"`
+	Header      string         `json:"header"`
+	HeaderValue string         `json:"headerValue"`
+	Kind        CredentialKind `json:"kind"`
+	Prefix      string         `json:"prefix"`
+	Scheme      string         `json:"scheme"`
+	Secret      string         `json:"secret"`
+	Username    string         `json:"username"`
 }
 
 // SetEnabledRequest defines model for SetEnabledRequest.

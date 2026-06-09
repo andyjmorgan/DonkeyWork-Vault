@@ -1,5 +1,6 @@
 using System.Security.Claims;
 using DonkeyWork.Vault.Api.Http.Auth;
+using DonkeyWork.Vault.Contracts;
 using DonkeyWork.Vault.Contracts.Audit;
 using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Manifests;
@@ -61,7 +62,7 @@ public static class VaultApiEndpoints
         {
             try
             {
-                var item = await svc.CreateAsync(dto.Name, dto.Secret ?? "", dto.Description, dto.BaseUrl, dto.DocsUrl, dto.Header, dto.Prefix, dto.Username, ct);
+                var item = await svc.CreateAsync(dto.Name, dto.Secret ?? "", dto.Description, dto.BaseUrl, dto.DocsUrl, dto.Header, dto.Prefix, dto.Username, dto.Kind, ct);
                 return TypedResults.Ok(new CreatedApiKeyResponse(item.Id, item.Name));
             }
             catch (CredentialValidationException ex)
@@ -86,7 +87,7 @@ public static class VaultApiEndpoints
             return TypedResults.Ok(new RevealApiKeyResponse(
                 Secret: s.Secret, Header: header, HeaderValue: headerValue,
                 Prefix: s.Prefix ?? "", BaseUrl: s.BaseUrl ?? "", DocsUrl: s.DocsUrl ?? "",
-                Description: s.Description ?? "", Scheme: CredentialUsage.Scheme(s.Username), Username: s.Username ?? ""));
+                Description: s.Description ?? "", Scheme: CredentialUsage.Scheme(s.Username), Username: s.Username ?? "", Kind: s.Kind));
         });
     }
 
@@ -102,7 +103,7 @@ public static class VaultApiEndpoints
                 : TypedResults.Ok(new CredentialShapeResponse(
                     Header: CredentialUsage.HeaderName(item.Header), Prefix: item.Prefix ?? "",
                     BaseUrl: item.BaseUrl ?? "", DocsUrl: item.DocsUrl ?? "", Description: item.Description ?? "",
-                    Scheme: CredentialUsage.Scheme(item.Username), Username: item.Username ?? ""));
+                    Scheme: CredentialUsage.Scheme(item.Username), Username: item.Username ?? "", Kind: item.Kind));
         });
 
     // ---- access keys ----
@@ -300,7 +301,7 @@ public static class VaultApiEndpoints
     // ---- mappers ----
 
     private static ApiKeyDto ToApiKeyDto(StoredApiKey k) => new(
-        k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.Header, k.Prefix, k.Username, k.CreatedAt, k.LastUsedAt);
+        k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.Header, k.Prefix, k.Username, k.Kind, k.CreatedAt, k.LastUsedAt);
 
     private static AccessKeyDto ToAccessKeyDto(StoredAccessKey k) => new(
         k.Id, k.Name, k.Description, k.Scopes, k.Enabled, k.Prefix, k.CreatedAt, k.LastUsedAt);

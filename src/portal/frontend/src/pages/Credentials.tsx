@@ -10,9 +10,19 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../ui/components/dropdown-menu'
 import { CopyButton } from '../components/CopyButton'
 import { Field } from '../components/Field'
-import { api, type ApiKeyItem, type OAuthTokenItem } from '../api'
+import { api, type ApiKeyItem, type OAuthTokenItem, type CredentialKind } from '../api'
 
 const lbl = 'mb-1 block text-xs text-muted-foreground'
+
+// Localize the internal kind discriminator to a human label for the console.
+const kindLabel: Record<CredentialKind, string> = {
+  opaque: 'Opaque',
+  header_api_key: 'Header API key',
+  http_basic: 'HTTP Basic',
+  ssh: 'SSH',
+  connection_string: 'Connection string',
+}
+const prettyKind = (k: CredentialKind) => kindLabel[k] ?? k
 
 // Google-style OAuth scopes are full URLs (https://www.googleapis.com/auth/calendar) that overflow
 // the pill; show the meaningful tail. Short scopes (gist, Calendars.Read) are shown as-is.
@@ -76,7 +86,7 @@ export function CredentialsPage() {
               {/* Desktop: table. */}
               <div className="hidden sm:block">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Auth</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Kind</TableHead><TableHead>Auth</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>
                     {keys.map((k) => (
                       <TableRow key={k.id}>
@@ -84,6 +94,7 @@ export function CredentialsPage() {
                           <div className="font-medium">{k.name}</div>
                           {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
                         </TableCell>
+                        <TableCell className="whitespace-nowrap"><Badge variant="secondary">{prettyKind(k.kind)}</Badge></TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">{k.username ? `Basic · ${k.username}` : `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}`}</TableCell>
                         <TableCell className="max-w-[12rem] truncate text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer">{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
                         <TableCell><RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
@@ -111,6 +122,7 @@ export function CredentialsPage() {
                       </div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
+                      <Field label="Kind">{prettyKind(k.kind)}</Field>
                       <Field label="Auth">{k.username ? `Basic · ${k.username}` : (k.header ? `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}` : '—')}</Field>
                       <Field label="Base URL">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer">{k.baseUrl || 'docs'}</a> : (k.baseUrl || '—')}</Field>
                     </div>
@@ -251,9 +263,10 @@ function StoreKey({ initial, scheme, onStored }: { initial?: ApiKeyItem; scheme:
     setMsg(undefined)
     // Send only the fields for the chosen scheme so the other mode's values can't leak through:
     // Basic clears header/prefix (auto-assembled); a token credential clears username.
+    const kind: CredentialKind = basic ? 'http_basic' : 'header_api_key'
     const payload = basic
-      ? { ...k, username: k.username.trim(), header: '', prefix: '' }
-      : { ...k, username: '' }
+      ? { ...k, kind, username: k.username.trim(), header: '', prefix: '' }
+      : { ...k, kind, username: '' }
     try { await api.createApiKey(payload); onStored() } catch (e) { setMsg(String(e)) }
   }
 
