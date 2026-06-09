@@ -23,6 +23,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 
+	"donkeywork.dev/vault-cli/internal/credstore"
 	pb "donkeywork.dev/vault-cli/internal/vaultpb"
 
 	"github.com/spf13/cobra"
@@ -71,17 +72,25 @@ func dial() (*grpc.ClientConn, context.Context, context.CancelFunc) {
 		fail("connect %s: %v", target, err)
 	}
 
+	// API-key precedence: --api-key / VAULT_API_KEY, else a key stored by
+	// `dwvault auth login` (keyring → 0600 file). User-id is the legacy on-prem fallback.
+	effKey := apiKey
+	if effKey == "" {
+		if k, _, rerr := credstore.Resolve(httpBaseURL()); rerr == nil {
+			effKey = k
+		}
+	}
 	var pairs []string
 	switch {
-	case apiKey != "":
-		pairs = []string{"x-api-key", apiKey}
+	case effKey != "":
+		pairs = []string{"x-api-key", effKey}
 	case userID != "":
 		pairs = []string{"x-user-id", userID}
 		if tenantID != "" {
 			pairs = append(pairs, "x-tenant-id", tenantID)
 		}
 	default:
-		fail("no credentials; set VAULT_API_KEY (mint one with `dwvault keys create`) or VAULT_USER_ID for on-prem")
+		fail("no credentials; run `dwvault auth login`, set VAULT_API_KEY, or set VAULT_USER_ID for on-prem")
 	}
 	ctx, cancel := context.WithTimeout(
 		metadata.NewOutgoingContext(context.Background(), metadata.Pairs(pairs...)),
@@ -130,7 +139,7 @@ func main() {
 	keys := &cobra.Command{Use: "keys", Short: "Manage access keys (scoped auth credentials)"}
 	keys.AddCommand(cmdKeysList(), cmdKeysCreate(), cmdKeysSetEnabled(true), cmdKeysSetEnabled(false), cmdKeysDelete())
 
-	root.AddCommand(creds, oauth, keys, cmdProviders())
+	root.AddCommand(creds, oauth, keys, cmdProviders(), authCmd())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
@@ -387,7 +396,7 @@ func cmdKeysCreate() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&description, "description", "", "what this key is for")
-	c.Flags().StringArrayVar(&scopes, "scope", nil, "grant a scope (repeatable): frontend:read|frontend:readwrite|vault:read|vault:readwrite")
+	c.Flags().StringArrayVar(&scopes, "scope", nil, "grant a scope (repeatable): vault:read|vault:readwrite|vault:audit")
 	return c
 }
 
