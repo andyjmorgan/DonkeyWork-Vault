@@ -1,4 +1,10 @@
 import { getToken } from './auth'
+import type { components } from './api/schema'
+
+// Reuse the generated audit DTO so the page stays in sync with the spec.
+export type AuditEvent = components['schemas']['AuditEventDto']
+export interface AuditPage { items: AuditEvent[]; total: number; limit: number; offset: number }
+export interface AuditQuery { limit?: number; offset?: number; type?: string; outcome?: string; userId?: string; since?: string; until?: string }
 
 async function authed(path: string, init: RequestInit = {}) {
   const token = await getToken()
@@ -74,4 +80,12 @@ export const api = {
     authed('/oauth/configs', { method: 'POST', body: JSON.stringify(c) }),
   deleteOAuthConfig: (id: string) => authed(`/oauth/configs/${id}`, { method: 'DELETE' }),
   connect: (provider: string) => authed(`/oauth/${provider}/connect`) as Promise<{ authorizeUrl: string }>,
+
+  // audit trail (admin-only; same JWT as the other admin pages)
+  audit: (q: AuditQuery = {}) => {
+    const p = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') p.set(k, String(v))
+    const qs = p.toString()
+    return authed(`/audit${qs ? `?${qs}` : ''}`) as Promise<AuditPage>
+  },
 }

@@ -5,6 +5,7 @@ import { api, type Me } from './api'
 import { CredentialsPage } from './pages/Credentials'
 import { ProvidersPage } from './pages/Providers'
 import { ConnectPage } from './pages/Connect'
+import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
 
 export function App() {
@@ -28,6 +29,7 @@ export function App() {
       {tab === 'credentials' && <CredentialsPage />}
       {tab === 'providers' && <ProvidersPage />}
       {tab === 'connect' && <ConnectPage />}
+      {tab === 'audit' && <AuditPage />}
       {tab === 'profile' && <ProfilePage me={me} />}
     </AppLayout>
   )
