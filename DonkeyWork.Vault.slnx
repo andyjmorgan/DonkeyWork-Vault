@@ -1,11 +1,5 @@
 <Solution>
   <Folder Name="/src/" />
-  <Folder Name="/src/portal/">
-    <Project Path="src/portal/DonkeyWork.Portal.Api/DonkeyWork.Portal.Api.csproj" />
-  </Folder>
-  <Folder Name="/src/proto/">
-    <Project Path="src/proto/DonkeyWork.Vault.Proto/DonkeyWork.Vault.Proto.csproj" />
-  </Folder>
   <Folder Name="/src/vault/">
     <Project Path="src/vault/DonkeyWork.Vault.Api/DonkeyWork.Vault.Api.csproj" />
     <Project Path="src/vault/DonkeyWork.Vault.Contracts/DonkeyWork.Vault.Contracts.csproj" />

@@ -58,13 +58,13 @@ public sealed class AccessKeyServiceTests : IAsyncLifetime
         var (db, svc) = await BuildAsync(new FixedCaller(owner));
         await using var _ = db;
 
-        var (_, secret) = await svc.CreateAsync("k", null, ["vault:read", "frontend:readwrite"], default);
+        var (_, secret) = await svc.CreateAsync("k", null, ["vault:read", "vault:readwrite"], default);
 
         var principal = await svc.AuthenticateAsync(secret, default);
         Assert.NotNull(principal);
         Assert.Equal(owner, principal!.UserId);
         Assert.Contains("vault:read", principal.Scopes);
-        Assert.Contains("frontend:readwrite", principal.Scopes);
+        Assert.Contains("vault:readwrite", principal.Scopes);
     }
 
     [Fact]

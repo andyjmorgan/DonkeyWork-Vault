@@ -1,36 +1,80 @@
-using System.Net;
+using DonkeyWork.Vault.Api.Http;
+using DonkeyWork.Vault.Api.Http.Audit;
+using DonkeyWork.Vault.Api.Http.Auth;
+using DonkeyWork.Vault.Api.Http.Endpoints;
 using DonkeyWork.Vault.Api.Identity;
-using DonkeyWork.Vault.Api.Services;
 using DonkeyWork.Vault.Contracts;
 using DonkeyWork.Vault.Core;
 using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Services;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.HttpOverrides;
-using Microsoft.AspNetCore.Server.Kestrel.Core;
+using Microsoft.IdentityModel.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// gRPC on 8080 as HTTP/2-only cleartext (h2c) — Kestrel does not serve h2c under
-// Http1AndHttp2. /healthz lives on 8081 (HTTP/1.1) for the k8s httpGet probe.
-builder.WebHost.ConfigureKestrel(options =>
-{
-    options.ListenAnyIP(8080, listen => listen.Protocols = HttpProtocols.Http2);
-    options.ListenAnyIP(8081, listen => listen.Protocols = HttpProtocols.Http1);
-});
-
-builder.Services.AddOptions<VaultAuthOptions>().BindConfiguration(VaultAuthOptions.SectionName);
-builder.Services.AddSingleton<UserContextInterceptor>();
-builder.Services.AddGrpc(options => options.Interceptors.Add<UserContextInterceptor>());
-builder.Services.AddGrpcReflection();
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddHealthChecks();
 
+// Caller identity + Core (services, crypto, audit) + persistence.
 builder.Services.AddSingleton<IVaultCallerContext, VaultCallerContext>();
 builder.Services.AddVaultPersistence(builder.Configuration);
 builder.Services.AddVaultCore();
 
-// Correct RemoteIpAddress to the real client behind k3s ingress. Only forwarded headers from a
-// trusted immediate peer (Vault:Audit:TrustedProxies, the ingress / Service / lab subnets) are
+// OIDC config — `Oidc:` section, falling back to the legacy `Keycloak:` section (deprecated).
+var oidc = builder.Configuration.GetSection(OidcOptions.SectionName).Get<OidcOptions>() ?? new OidcOptions();
+if (string.IsNullOrWhiteSpace(oidc.Authority))
+{
+    var legacy = builder.Configuration.GetSection(OidcOptions.LegacySectionName).Get<OidcOptions>();
+    if (legacy is not null && !string.IsNullOrWhiteSpace(legacy.Authority))
+    {
+        oidc = legacy;
+    }
+}
+var spaClientId = string.IsNullOrWhiteSpace(oidc.ClientId) ? oidc.Audience : oidc.ClientId;
+var authConfigured = !string.IsNullOrWhiteSpace(oidc.Authority);
+
+// Two ways in: interactive users via an OIDC JWT, and scripts/agents via a dwv_ access key. A policy
+// scheme routes each request to the right handler so HttpContext.User is set from whichever credential
+// was presented. The ApiKey scheme is always available (so keys + their scopes work in every config).
+var authBuilder = builder.Services.AddAuthentication(authConfigured ? "Multi" : VaultApiKeyAuthenticationHandler.SchemeName);
+authBuilder.AddScheme<AuthenticationSchemeOptions, VaultApiKeyAuthenticationHandler>(VaultApiKeyAuthenticationHandler.SchemeName, null);
+if (authConfigured)
+{
+    authBuilder.AddJwtBearer(options =>
+    {
+        options.Authority = oidc.Authority;
+        options.MetadataAddress = $"{(oidc.InternalAuthority ?? oidc.Authority).TrimEnd('/')}/.well-known/openid-configuration";
+        options.RequireHttpsMetadata = oidc.RequireHttpsMetadata;
+        options.TokenValidationParameters = new TokenValidationParameters
+        {
+            ValidIssuer = oidc.Authority,
+            ValidateAudience = false, // many IdPs put the client id in azp; audience varies
+            NameClaimType = "sub",
+        };
+    });
+    authBuilder.AddPolicyScheme("Multi", "JWT or API key", o =>
+    {
+        o.ForwardDefaultSelector = ctx =>
+        {
+            if (!string.IsNullOrEmpty(ctx.Request.Headers["X-Api-Key"]))
+            {
+                return VaultApiKeyAuthenticationHandler.SchemeName;
+            }
+            var auth = ctx.Request.Headers.Authorization.ToString();
+            return auth.StartsWith("Bearer " + VaultApiKeyAuthenticationHandler.KeyPrefix, StringComparison.OrdinalIgnoreCase)
+                ? VaultApiKeyAuthenticationHandler.SchemeName
+                : JwtBearerDefaults.AuthenticationScheme;
+        };
+    });
+}
+builder.Services.AddAuthorization();
+builder.Services.AddOpenApi();
+
+// Correct RemoteIpAddress to the real client behind the k3s ingress. Only forwarded headers from a
+// trusted immediate peer (Vault:Audit:TrustedProxies — the ingress / Service / lab subnets) are
 // honoured; otherwise a client could spoof X-Forwarded-For and forge the audited source IP.
 builder.Services.Configure<ForwardedHeadersOptions>(opts =>
 {
@@ -62,28 +106,37 @@ builder.Services.Configure<ForwardedHeadersOptions>(opts =>
     }
 });
 
+var publicBaseUrl = builder.Configuration["Vault:PublicBaseUrl"]
+    ?? builder.Configuration["Portal:PublicBaseUrl"]
+    ?? "https://vault.donkeywork.dev";
+var appConfig = new AppConfigResponse(oidc.Authority, spaClientId, oidc.Scopes, authConfigured);
+
 var app = builder.Build();
 
-// Must run before the gRPC endpoint so the interceptor sees the corrected client IP.
+// Must run before anything reads the client IP so the audit trail records the real client.
 app.UseForwardedHeaders();
 
-// Apply migrations on startup (Postgres must be reachable).
-using (var scope = app.Services.CreateScope())
+// Apply migrations on startup (Postgres must be reachable). Skippable so the OpenAPI document can be
+// emitted (codegen / drift gate) without a live database.
+if (builder.Configuration.GetValue("Vault:RunMigrationsOnStartup", true))
 {
+    using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<IMigrationService>().MigrateAsync();
 }
 
-app.MapGrpcService<CredentialStoreGrpcService>();
-app.MapGrpcService<ApiKeysGrpcService>();
-app.MapGrpcService<AccessKeysGrpcService>();
-app.MapGrpcService<ApiKeyCatalogGrpcService>();
-app.MapGrpcService<OAuthTokensGrpcService>();
-app.MapGrpcService<ManifestsGrpcService>();
-app.MapGrpcService<OAuthProviderConfigsGrpcService>();
-app.MapGrpcService<OAuthFlowGrpcService>();
-app.MapGrpcReflectionService();
+app.UseDefaultFiles();
+app.UseStaticFiles();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
+// After auth: publish the caller identity + audit metadata (IP, redacted headers, key reference) so
+// the domain services see them. Outer to the endpoints, so the AsyncLocal flows down into Core.
+app.UseMiddleware<AuditContextMiddleware>();
+
+app.MapOpenApi();
 app.MapHealthChecks("/healthz");
-app.MapGet("/", () => Results.Text("DonkeyWork Vault — internal gRPC service. No public surface."));
+app.MapVaultApi(authConfigured, publicBaseUrl, appConfig);
+app.MapFallbackToFile("index.html");
 
 app.Run();

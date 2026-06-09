@@ -20,9 +20,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\vault\DonkeyWork.Vault.Api\DonkeyWork.Vault.Api.csproj" />
+    <ProjectReference Include="..\..\src\vault\DonkeyWork.Vault.Core\DonkeyWork.Vault.Core.csproj" />
     <ProjectReference Include="..\..\src\vault\DonkeyWork.Vault.Persistence\DonkeyWork.Vault.Persistence.csproj" />
-    <ProjectReference Include="..\..\src\proto\DonkeyWork.Vault.Proto\DonkeyWork.Vault.Proto.csproj" />
   </ItemGroup>
 
 </Project>
