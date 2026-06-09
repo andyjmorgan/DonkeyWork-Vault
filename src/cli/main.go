@@ -78,7 +78,7 @@ func main() {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "localhost:8080"), "vault address (host:port or https://host:port)")
+	root.PersistentFlags().StringVar(&addr, "addr", env("VAULT_ADDR", "https://vault.donkeywork.dev"), "vault address (https://host[:port] or host:port); default https://vault.donkeywork.dev")
 	root.PersistentFlags().StringVar(&userID, "user", env("VAULT_USER_ID", ""), "caller user id (on-prem only)")
 	root.PersistentFlags().StringVar(&tenantID, "tenant", env("VAULT_TENANT_ID", ""), "caller tenant id")
 	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (X-Api-Key)")
