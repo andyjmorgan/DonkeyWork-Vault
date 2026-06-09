@@ -71,7 +71,10 @@ if (authConfigured)
     });
 }
 builder.Services.AddAuthorization();
-builder.Services.AddOpenApi();
+
+// Emit OpenAPI 3.0 (not 3.1): the Go (oapi-codegen) and TS (openapi-typescript) generators both
+// consume 3.0 cleanly, and the document is the authoritative contract those clients derive from.
+builder.Services.AddOpenApi(options => options.OpenApiVersion = Microsoft.OpenApi.OpenApiSpecVersion.OpenApi3_0);
 
 // Correct RemoteIpAddress to the real client behind the k3s ingress. Only forwarded headers from a
 // trusted immediate peer (Vault:Audit:TrustedProxies — the ingress / Service / lab subnets) are
