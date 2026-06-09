@@ -29,12 +29,16 @@ jobs:
         id: ver
         run: |
           git fetch --tags --force
-          latest=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1)
+          # Strict semver (no leading zeroes) so the patch bump can't hit bash octal.
+          latest=$(git tag -l 'v*' | grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' | sort -V | tail -n1)
           if [ -z "$latest" ]; then
             next="v0.1.0"
           else
             v=${latest#v}; IFS=. read -r MA MI PA <<<"$v"
-            next="v${MA}.${MI}.$((PA + 1))"
+            next="v${MA}.${MI}.$((10#$PA + 1))"
+          fi
+          if git rev-parse -q --verify "refs/tags/$next" >/dev/null; then
+            echo "::error::tag $next already exists; aborting"; exit 1
           fi
           echo "next=$next" >> "$GITHUB_OUTPUT"
           echo "Next dwvault version: $next (from ${latest:-<none>})"
@@ -46,12 +50,14 @@ jobs:
 
       - name: Build dwvault (multi-arch)
         working-directory: src/cli
+        env:
+          VERSION: ${{ steps.ver.outputs.next }} # via env (not inline) per GH best practice
         run: |
           mkdir -p "$GITHUB_WORKSPACE/dist"
           for t in linux/amd64 linux/arm64 darwin/arm64 darwin/amd64; do
             os="${t%/*}"; arch="${t#*/}"
             GOOS="$os" GOARCH="$arch" CGO_ENABLED=0 \
-              go build -ldflags "-s -w -X main.version=${{ steps.ver.outputs.next }}" \
+              go build -ldflags "-s -w -X main.version=${VERSION}" \
               -o "$GITHUB_WORKSPACE/dist/dwvault-$os-$arch" .
           done
           ( cd "$GITHUB_WORKSPACE/dist" && sha256sum dwvault-* > SHA256SUMS )
@@ -61,6 +67,7 @@ jobs:
         with:
           tag_name: ${{ steps.ver.outputs.next }}
           name: ${{ steps.ver.outputs.next }}
+          target_commitish: ${{ github.sha }} # bind the tag to the built commit
           files: |
             dist/dwvault-*
             dist/SHA256SUMS
