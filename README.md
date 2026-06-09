@@ -1,225 +1,295 @@
-# DonkeyWork Vault
+<p align="center">
+  <img src="src/portal/frontend/public/donkeywork.png" alt="DonkeyWork Vault" width="160">
+</p>
 
-A small, self-hostable **credential vault** for humans and agents. It stores API keys and
-OAuth tokens encrypted at rest, describes *how each credential is used*, and hands them out
-on demand — over a gRPC API, a web console, and a single-binary CLI (`dwvault`).
+<h1 align="center">DonkeyWork Vault</h1>
 
-The design goal is **agent-friendly credential discovery**: a credential isn't an opaque
-secret, it's *self-describing* (name, description, base URL, docs link, header, prefix), so
-an automated caller can list what exists, learn how to apply each one, and retrieve the
-secret only at the moment of use — without it ever being printed.
+A **credential vault for humans and agents**. It stores API keys and OAuth tokens encrypted at
+rest, records *how each credential is used*, and hands them out on demand — through a web console,
+a REST API, and a single-binary CLI (`dwvault`).
+
+It's offered two ways:
+
+- **Hosted** at **[vault.donkeywork.dev](https://vault.donkeywork.dev)** — nothing to run. Log in,
+  add credentials, mint an access key, and point the CLI at it. This is the default.
+- **Self-hosted** — it's a single container + Postgres, so you can run the whole thing yourself if
+  you'd rather hold the keys. See [Self-hosting](#self-hosting).
+
+The design goal is **agent-friendly credential discovery**: a credential isn't an opaque secret,
+it's *self-describing* (name, description, base URL, docs link, auth scheme, header, prefix). An
+automated caller can list what exists, learn how to apply each one, and fetch the secret only at the
+moment of use — without it ever being printed.
+
+**Install the CLI** (Linux / macOS):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andyjmorgan/DonkeyWork-Vault/main/install.sh | sh
+```
+
+Then `dwvault auth login` and you're set — full [Quick start](#quick-start) below.
 
 ---
 
 ## Contents
 
-- [Architecture](#architecture)
-- [Components](#components)
-- [Security model](#security-model)
+- [What it does](#what-it-does)
+- [Quick start](#quick-start)
 - [Install the CLI](#install-the-cli)
-- [Using the CLI](#using-the-cli)
-- [Authentication & access keys](#authentication--access-keys)
-- [The Portal](#the-portal)
+- [CLI reference](#cli-reference)
 - [Credential model](#credential-model)
+- [Access keys & scopes](#access-keys--scopes)
+- [The web console](#the-web-console)
+- [Security model](#security-model)
+- [Self-hosting](#self-hosting)
 - [Repository layout](#repository-layout)
 - [Build & develop](#build--develop)
-- [Deploying](#deploying)
-- [Roadmap](#roadmap)
 
 ---
 
-## Architecture
+## What it does
 
-```
-                 ┌─────────────────┐
-   browser ────▶ │  Portal (SPA +  │ ── gRPC ─┐
-  (OIDC SSO)     │  BFF, 1 image)  │          │
-                 └─────────────────┘          ▼
-                                       ┌───────────────┐     ┌────────────┐
-   terminal ───── gRPC (h2c) ────────▶ │  Vault (gRPC) │ ──▶ │ PostgreSQL │
-   dwvault CLI                         │  envelope enc │     │ (ciphertext)│
-                                       └───────────────┘     └────────────┘
-```
+- **Stores API keys** as self-describing credentials — each carries the secret plus the metadata a
+  caller needs to *use* it: base URL, docs link, the header to send, an optional value prefix
+  (`Bearer `), or HTTP Basic (`--username`).
+- **Manages OAuth** for Google, Microsoft, GitHub and any custom OIDC provider. You connect once in
+  the browser; the vault stores the tokens encrypted and **auto-refreshes** them, so the CLI always
+  hands you a live access token.
+- **Hands credentials to scripts and agents** over a small REST API and the `dwvault` CLI, with
+  **secret-to-stdout discipline** so values flow through `$(...)` and never get echoed.
+- **Encrypts everything at rest** with per-secret envelope encryption (AES-256-GCM); the database
+  only ever holds ciphertext.
+- **Authenticates machines with scoped, revocable access keys** (`dwv_…`) and humans with your own
+  OIDC identity provider.
+- **Audits every access** — who/what read which credential, when.
 
-- **Vault** — gRPC service; the only thing that can decrypt. Envelope-encrypts every secret
-  before it touches the database.
-- **Portal** — a React SPA + a thin backend-for-frontend in one container; authenticates
-  users with **your** OIDC IdP (JWT) and talks to the Vault over gRPC.
-- **dwvault** — a dependency-free Go CLI that retrieves credentials for shell/agent use.
+## Quick start
 
-## Components
+Using the hosted vault:
 
-| Path | What |
-|---|---|
-| `src/vault/` | The gRPC Vault: crypto, persistence (EF Core + Postgres), credential + OAuth services. |
-| `src/portal/` | `DonkeyWork.Portal.Api` (BFF) + `frontend/` (Vite + React + Tailwind SPA). |
-| `src/cli/` | `dwvault` — the Go credential CLI. |
-| `src/proto/` | The shared `vault.proto` (gRPC contract for .NET + Go). |
+1. **Sign in** at [vault.donkeywork.dev](https://vault.donkeywork.dev) and add a credential (or
+   connect an OAuth provider).
+2. **Mint an access key** — *Profile & API keys* (top-right menu) → create a key with scope
+   `vault:read`. The secret (`dwv_…`) is shown **once**; copy it.
+3. **Install the CLI** and log in:
 
-## Security model
+   ```bash
+   curl -fsSL https://raw.githubusercontent.com/andyjmorgan/DonkeyWork-Vault/main/install.sh | sh
+   dwvault auth login          # paste the dwv_… key
+   ```
 
-- **Envelope encryption.** Each secret gets a per-row data key (DEK); the value is sealed
-  with **AES-256-GCM**, and the DEK is wrapped by a key-encryption key (KEK). The stored
-  blob is self-describing (`magic | version | kekId | wrappedDek | nonce | tag | ciphertext`)
-  so keys can be rotated.
-- **The database only ever holds ciphertext.** Decryption happens in the Vault process.
-- **Secret-to-stdout discipline.** The CLI prints a secret to **stdout only**, with no
-  decoration, so it's safe for `$(...)` substitution and never needs to be echoed. Logs and
-  errors go to stderr.
-- **Auth.** The Portal trusts standard OIDC JWTs from your identity provider. OAuth connect uses the
-  authorization-code flow with **PKCE (S256)**; one-time state + PKCE verifier are stored
-  server-side and consumed on callback.
-- **Access keys.** Scripts and agents authenticate with a database-backed **access key**
-  (`dwv_…`) carrying scopes (`frontend:read|readwrite`, `vault:read|readwrite`) and an
-  enabled flag. Keys are **show-once**: only a SHA-256 hash + a display prefix are stored, so
-  a database dump never yields a usable key — a lost key is rotated, not recovered. The Vault
-  enforces `vault:*` scopes on each gRPC method; the Portal enforces `frontend:*` on its HTTP
-  API. See [Authentication & access keys](#authentication--access-keys).
+4. **Use it:**
+
+   ```bash
+   dwvault credentials list                          # what's stored + how to use each
+   curl -H "Authorization: Bearer $(dwvault credentials get grafana)" https://grafana.example/api/health
+   TOKEN=$(dwvault oauth token microsoft)            # live, auto-refreshed OAuth token
+   ```
+
+The CLI defaults to the hosted vault (`https://vault.donkeywork.dev`). Point it elsewhere with
+`--addr` or `VAULT_ADDR` if you self-host.
 
 ## Install the CLI
 
-Prebuilt binaries are published on every release for **linux** and **darwin**, `amd64` and
-`arm64`. Download the one for your platform from the latest release:
+One line — downloads the right prebuilt binary for your platform from the latest release, verifies
+its checksum, and installs it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andyjmorgan/DonkeyWork-Vault/main/install.sh | sh
+```
+
+The installer honors a few env overrides:
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `DWVAULT_VERSION` | `latest` | install a specific release tag (e.g. `v0.4.0`) |
+| `DWVAULT_BIN_DIR` | `~/.local/bin` (or `/usr/local/bin` if writable & on `PATH`) | install location |
+| `DWVAULT_NO_VERIFY` | unset | set `1` to skip checksum verification |
+
+Prebuilt binaries are published on every release for **linux** and **darwin**, `amd64` and `arm64`.
+Prefer to do it by hand?
 
 ```bash
 os=$(uname -s | tr '[:upper:]' '[:lower:]')
 arch=$(uname -m); case "$arch" in x86_64|amd64) arch=amd64;; aarch64|arm64) arch=arm64;; esac
 curl -fsSL -o dwvault \
   "https://github.com/andyjmorgan/DonkeyWork-Vault/releases/latest/download/dwvault-$os-$arch"
-chmod +x dwvault
-install -Dm755 dwvault ~/.local/bin/dwvault    # or: sudo mv dwvault /usr/local/bin/
+chmod +x dwvault && install -Dm755 dwvault ~/.local/bin/dwvault
 dwvault --version
 ```
 
-Verify the download against the published checksums:
+> **macOS:** the binaries aren't notarized yet, so a *browser* download is Gatekeeper-quarantined.
+> The installer (and the `curl` line above) avoid that; if needed, `xattr -d com.apple.quarantine dwvault`.
+
+## CLI reference
+
+`dwvault` talks to the vault's REST API and authenticates with a `dwv_…` access key. Run
+`dwvault auth login` once to store the key (OS keyring, or a `0600` file when no keyring is
+available); thereafter every command uses it.
+
+**Global flags** (each has an env equivalent):
+
+| Flag | Env | Default | Meaning |
+|---|---|---|---|
+| `--addr` | `VAULT_ADDR` | `https://vault.donkeywork.dev` | vault address (`https://host[:port]` or bare `host:port`) |
+| `--api-key` | `VAULT_API_KEY` | — | access key (`dwv_…`); overrides the stored login for this call |
+| `--tls` | `VAULT_TLS` | off | force TLS for a bare `host:port` (implied by an `https://` addr) |
+| `--user` | `VAULT_USER_ID` | — | caller user id (self-host / trusted-network only) |
+| `--tenant` | `VAULT_TENANT_ID` | — | caller tenant id |
+
+**Commands:**
 
 ```bash
-curl -fsSL -O "https://github.com/andyjmorgan/DonkeyWork-Vault/releases/latest/download/SHA256SUMS"
-sha256sum -c SHA256SUMS --ignore-missing
-```
+# auth — manage the stored key for a host (validated against /api/v1/me)
+dwvault auth login [--force]       # paste & store a dwv_… key
+dwvault auth status                # which credential is active for --addr
+dwvault auth logout                # forget the stored key
 
-Collaborators can also use `gh`:
+# credentials — your self-describing API-key credentials  (alias: creds)
+dwvault credentials list                 # name + description + header/prefix/base-url/docs
+dwvault credentials get    <name>        # the secret to stdout (for $(...) substitution)
+dwvault credentials header <name>        # ready "Header: value" line, e.g. for curl -H
+dwvault credentials shape  <name>        # JSON: scheme/username/base_url/header/prefix/docs_url
+dwvault credentials create <name> --secret <v> \
+        [--description ..] [--base-url ..] [--docs ..] \
+        [--header Authorization] [--prefix 'Bearer '] \
+        [--username <u>]                 # --username ⇒ HTTP Basic (secret is the password)
 
-```bash
-gh release download -R andyjmorgan/DonkeyWork-Vault -p "dwvault-$os-$arch"
-```
+# oauth — live access tokens (auto-refreshed)
+dwvault oauth list                       # connected providers (provider/account/expiry/scopes)
+dwvault oauth token <provider> [--account <a>]   # a valid access token to stdout
 
-> **macOS:** the binaries are not yet code-signed, so a *browser* download is
-> Gatekeeper-quarantined. The `curl` install above avoids that; if needed,
-> `xattr -d com.apple.quarantine dwvault`. (Signing + notarization is on the roadmap.)
-
-## Using the CLI
-
-Point it at your Vault and identify yourself (env or flags):
-
-```bash
-export VAULT_ADDR=your-vault-host:8080        # the Vault gRPC endpoint (h2c)
-export VAULT_USER_ID=<your-user-id>           # sent as x-user-id metadata
-# export VAULT_TENANT_ID=<tenant>             # optional
-```
-
-Commands:
-
-```bash
-dwvault creds list                 # every API key + how to use it (header/prefix/base-url/docs)
-dwvault creds get   <name>         # the secret to stdout (for $(...) substitution)
-dwvault creds shape <name>         # JSON: description/base_url/header/prefix/docs_url
-dwvault creds create <name> --secret <v> [--description ..] [--base-url ..] [--docs ..] [--header ..] [--prefix ..]
-
-dwvault oauth list                 # connected OAuth providers (provider/account/expiry/scopes)
-dwvault oauth token <provider> [--account <a>]   # a valid access token to stdout (auto-refreshed)
-
-dwvault keys list                  # your access keys (id/scopes/enabled/prefix/last-used)
+# keys — scoped access keys for scripts/agents
+dwvault keys list                        # id/name/scopes/enabled/prefix/last-used
 dwvault keys create <name> --scope vault:read [--scope ..] [--description ..]   # secret → stdout, ONCE
-dwvault keys enable  <id>          # re-enable a key
-dwvault keys disable <id>          # revoke without deleting
-dwvault keys delete  <id>          # remove a key
+dwvault keys enable  <id>
+dwvault keys disable <id>                # revoke without deleting
+dwvault keys delete  <id>
 ```
 
-**Workflow: discover → select → interpret → use.** Read `creds list` / `creds shape` to learn
-which header + prefix + base URL a credential needs, then `get` it only at call time:
+**Workflow: discover → interpret → use.** Read `credentials list` / `shape` to learn the header,
+prefix and base URL a credential needs, then `get` (or `header`) it only at call time:
 
 ```bash
 # Build the call from the credential's own shape — secret never printed:
-curl -H "Authorization: Bearer $(dwvault creds get grafana)" https://grafana.example.com/api/health
+curl -H "$(dwvault credentials header grafana)" https://grafana.example.com/api/health
 
 # OAuth (auto-refreshed) access token:
 TOKEN=$(dwvault oauth token microsoft) && \
   curl -H "Authorization: Bearer $TOKEN" https://graph.microsoft.com/v1.0/me
 ```
 
-> **Never echo the value.** Use it via `$(...)` or an env var; don't `echo` it, put it in a
-> visible command argument, a URL query, `curl -v`, or any committed/printed text. Confirm
-> success by a side effect (e.g. HTTP 200), not by printing the secret.
-
-## Authentication & access keys
-
-The Vault accepts a caller three ways, in this order of preference:
-
-1. **Access key** (`x-api-key: dwv_…`) — a scoped, revocable credential resolved to its owner
-   and scopes. The Vault enforces the method's required `vault:*` scope; the Portal enforces
-   `frontend:*` on its HTTP API. **This is the way for internet-facing vaults.**
-2. **Internal service token** (`x-internal-token`) — proves a call comes from the trusted
-   Portal BFF on the private in-cluster hop, letting it act for a logged-in (OIDC) user
-   without minting per-user keys. Injected only on that hop; an internet edge must strip it.
-3. **Bare user id** (`x-user-id`) with no credential — the original, **insecure** model. It is
-   **off by default** and acceptable only for **on-prem / fully-trusted-network** deployments;
-   enable with `Vault:Auth:AllowUnauthenticatedUserId=true`.
-
-**Scopes**
-
-| Scope | Grants |
-|---|---|
-| `vault:read` | read RPCs — get a credential/OAuth token, describe, list |
-| `vault:readwrite` | the above **plus** create/delete/upsert (implies `vault:read`) |
-| `frontend:read` | `GET` on the Portal API |
-| `frontend:readwrite` | mutating Portal API calls (implies `frontend:read`) |
-
-**Minting & lifecycle.** Create keys from the Portal **Profile** page (top-right user menu →
-*Profile & API keys*) or with `dwvault keys create`. The secret is shown **once** — copy it
-then; it's stored only as a SHA-256 hash and can never be revealed again. Disable a key to
-revoke it instantly without deleting it, or delete it outright. Each key is owned by a user
-and scoped to that user's credentials.
-
-```bash
-# mint a read-only key for an agent (secret prints once, to stdout)
-export VAULT_API_KEY=$(dwvault keys create agent-bot --scope vault:read)
-dwvault creds get grafana            # works (vault:read)
-dwvault creds create x --secret y    # PermissionDenied (needs vault:readwrite)
-```
-
-## The Portal
-
-A web console (served at your chosen host, authenticated via your OIDC IdP) to:
-
-- **Credentials** — add/edit/delete self-describing API keys; reveal a stored secret or a
-  live OAuth access token on demand; see connected OAuth accounts.
-- **Providers** — add custom OAuth providers via **OIDC discovery** (paste an issuer URL,
-  endpoints are fetched from `.well-known/openid-configuration`); built-ins are read-only.
-- **OAuth Connect** — brand provider cards; enter your OAuth app's client id/secret, pick
-  scopes from a described catalog (with *sensitive* flags), and connect via browser redirect.
-- **Profile** (top-right user menu) — your user id + tenant id, and where you create, scope,
-  enable/disable and delete **access keys**. The full key value is shown once, on creation.
+> **Never echo the value.** Use it via `$(...)` or an env var; don't `echo` it, put it in a visible
+> command argument, a URL query, `curl -v`, or any committed/printed text. Confirm success by a side
+> effect (e.g. HTTP 200), not by printing the secret.
 
 ## Credential model
 
-- **API keys are free-form and self-describing** — `name`, `description`, `base_url`,
-  `docs_url`, `header` (optional), `prefix` (optional), and the secret. There's no fixed
-  "provider type"; the metadata is what tells a caller how to use the key.
-- **OAuth** — built-in manifests for Google / Microsoft / GitHub plus custom OIDC providers;
-  per-user app configs (client id/secret) and tokens are envelope-encrypted; tokens are
-  auto-refreshed on retrieval.
+- **API keys are free-form and self-describing** — `name`, `description`, `base_url`, `docs_url`,
+  and an auth shape: either a **header** key (sent as `<header>: <prefix><secret>`, default header
+  `Authorization`) or **HTTP Basic** (`--username`, secret is the password →
+  `Authorization: Basic base64(user:secret)`). There's no fixed "provider type"; the metadata is
+  what tells a caller how to use the key.
+- **OAuth** — built-in manifests for Google / Microsoft / GitHub plus custom OIDC providers (added by
+  pasting an issuer URL — endpoints are discovered from `.well-known/openid-configuration`). Per-user
+  app configs (client id/secret) and tokens are envelope-encrypted; tokens are **auto-refreshed** on
+  retrieval.
+
+## Access keys & scopes
+
+Scripts and agents authenticate with a database-backed **access key** (`dwv_…`) sent as
+`X-Api-Key: dwv_…` (or `Authorization: Bearer dwv_…`). Keys are **show-once**: only a SHA-256 hash
+and a display prefix are stored, so a database dump never yields a usable key — a lost key is
+**rotated, not recovered**. Disable a key to revoke it instantly without deleting it.
+
+| Scope | Grants |
+|---|---|
+| `vault:read` | read RPCs — get a credential / OAuth token, describe, list |
+| `vault:readwrite` | the above **plus** create / delete / upsert (implies `vault:read`) |
+| `vault:audit` | read the audit log |
+
+Mint keys from the web console (**Profile & API keys**) or with `dwvault keys create`:
+
+```bash
+export VAULT_API_KEY=$(dwvault keys create agent-bot --scope vault:read)
+dwvault credentials get grafana          # works (vault:read)
+dwvault credentials create x --secret y  # denied (needs vault:readwrite)
+```
+
+## The web console
+
+The vault serves a React console (the same origin as the API) where you:
+
+- **Credentials** — add/edit/delete self-describing API keys; reveal a stored secret or a live OAuth
+  access token on demand.
+- **OAuth Connect** — enter your OAuth app's client id/secret, pick scopes from a described catalog,
+  and connect via browser redirect; see connected accounts.
+- **Providers** — add custom OAuth providers via OIDC discovery (paste an issuer URL); built-ins are
+  read-only.
+- **Profile & API keys** — your user/tenant id, and where you create, scope, enable/disable and
+  delete access keys. The full key value is shown once, on creation.
+
+On the **hosted** vault, login is handled for you. **Self-hosted**, you bring your own OIDC identity
+provider (see below).
+
+## Security model
+
+- **Envelope encryption.** Each secret gets a per-row data key (DEK); the value is sealed with
+  **AES-256-GCM**, and the DEK is wrapped by a key-encryption key (KEK). The stored blob is
+  self-describing (`magic | version | kekId | wrappedDek | nonce | tag | ciphertext`) so KEKs can be
+  rotated — add a new `ActiveKekId` and keep the old one to decrypt historical rows.
+- **The database only ever holds ciphertext.** Decryption happens in the vault process.
+- **Secret-to-stdout discipline.** The CLI prints a secret to **stdout only**, with no decoration,
+  so it's safe for `$(...)` and never needs echoing. Logs and errors go to stderr.
+- **Auth.** Machines use scoped, revocable access keys (`dwv_…`); the vault resolves the key, owns
+  the identity, and enforces the required `vault:*` scope on every endpoint. Humans use standard OIDC
+  bearer JWTs from your IdP. OAuth connect uses authorization-code flow with **PKCE (S256)**.
+- **Audit.** Every credential access is recorded (key reference, never the secret) and queryable with
+  `vault:audit`.
+
+## Self-hosting
+
+The whole product is **one container** — REST API + OAuth + the React console — plus Postgres. It
+serves HTTP on **:8080** (health at **/healthz**) and runs EF Core migrations on start.
+
+Build/run with `Dockerfile.vault`. Provide via configuration:
+
+| Setting | Meaning |
+|---|---|
+| `Vault:Persistence:ConnectionString` | Postgres connection string. |
+| `Vault:Crypto:ActiveKekId` | id of the KEK used to wrap new secrets. |
+| `Vault:Crypto:Keks:<id>` | base64-encoded 256-bit (32-byte) key material; keep every historical id to decrypt old rows. |
+| `Vault:PublicBaseUrl` | public origin, used to build OAuth redirect URIs. |
+| `Vault:RunMigrationsOnStartup` | defaults `true`. |
+| `Oidc:Authority` | your issuer URL (the SPA logs in against it; the API validates the token issuer via JWKS). Leave **blank to disable auth** — local/dev only. |
+| `Oidc:ClientId` / `Oidc:Audience` | SPA client id / expected audience (`ClientId` defaults to `Audience`). |
+| `Oidc:Scopes` | SPA scopes (default `openid profile email`). |
+| `Oidc:InternalAuthority` | optional in-cluster issuer URL, if it differs from the public one. |
+
+**Bring your own identity provider.** The console is vendor-neutral — any OIDC-compliant IdP works
+(Keycloak, Entra ID, Auth0, Okta, Cognito, Authentik, Zitadel, …) with **config only, no rebuild**.
+Register `https://<your-host>/` as a redirect URI for the SPA client, and
+`https://<your-host>/api/oauth/{provider}/callback` as the allowed redirect URI on each OAuth app you
+connect. The SPA runs Authorization Code + PKCE and forwards `sub → user id` (and optional
+`tenant_id`) to the vault.
+(The legacy `Keycloak:*` section is honored as a deprecated alias.)
+
+Point the CLI at your instance:
+
+```bash
+dwvault --addr https://vault.example.com auth login
+# or: export VAULT_ADDR=https://vault.example.com
+```
 
 ## Repository layout
 
 ```
-src/vault/      gRPC Vault (.NET): Api, Core, Persistence, Contracts
-src/portal/     Portal: DonkeyWork.Portal.Api (BFF) + frontend/ (React SPA)
-src/cli/        dwvault Go CLI
-src/proto/      vault.proto (shared gRPC contract)
+src/vault/      The vault service (.NET): Api (REST + OAuth + SPA host), Core, Persistence, Contracts
+src/portal/     frontend/ — the Vite + React + Tailwind console (built into the vault's wwwroot)
+src/cli/        dwvault — the Go credential CLI
+api/            openapi.json (the REST contract) + oapi-codegen config
 test/           integration tests
 tools/          maintenance utilities (e.g. importer)
-Dockerfile.vault, Dockerfile.portal
+Dockerfile.vault, install.sh
 ```
 
 ## Build & develop
@@ -227,86 +297,16 @@ Dockerfile.vault, Dockerfile.portal
 Requirements: **.NET 10 SDK**, **Go 1.24+**, **Node 22+** (for the SPA).
 
 ```bash
-# backend (vault + portal + tests)
+# service (vault + tests)
 dotnet build DonkeyWork.Vault.slnx
 
 # CLI
 cd src/cli && CGO_ENABLED=0 go build -o dwvault .
 
-# SPA
+# SPA (also built into the container by Dockerfile.vault)
 cd src/portal/frontend && npm ci && npm run build
 ```
 
-The gRPC stubs are generated from `src/proto/.../vault.proto` (Grpc.Tools for .NET;
-`protoc` + `protoc-gen-go`/`protoc-gen-go-grpc` for the CLI).
-
-## Deploying
-
-Both services ship as containers (`Dockerfile.vault`, `Dockerfile.portal`). The Vault
-serves gRPC over **h2c on 8080** and a health endpoint on **8081**; it runs EF Core
-migrations on start. Provide via configuration:
-
-- `Vault:Persistence:ConnectionString` — Postgres.
-- `Vault:Crypto:ActiveKekId` + `Vault:Crypto:Keks:<id>` — the KEK(s).
-- `Vault:Auth:InternalToken` — shared secret the Portal presents on its in-cluster hop; set
-  the **same** value on both the Vault and the Portal (`Vault:InternalToken`).
-- `Vault:Auth:AllowUnauthenticatedUserId` — defaults `false`; set `true` **only** for
-  on-prem / trusted-network deployments that want the keyless `x-user-id` model.
-- Portal: `Vault:GrpcEndpoint`, `Vault:InternalToken`, `Oidc:Authority` +
-  `Oidc:ClientId`/`Oidc:Audience`, and `Portal:PublicBaseUrl` (used to build OAuth redirect
-  URIs). See [bring your own identity provider](#bring-your-own-identity-provider-jwt--oidc) below.
-
-You bring your own public DNS and identity provider, and register
-`https://<your-host>/api/oauth/{provider}/callback` as an allowed redirect URI on each
-OAuth app you connect.
-
-### One public host for both gRPC and HTTP
-
-To expose the gRPC Vault (for `dwvault` over the internet) and the Portal on a **single**
-TLS host, terminate TLS at an L7 edge with **HTTP/2 (ALPN `h2`) enabled** and path-route —
-gRPC method paths never collide with the Portal's:
-
-- `PathPrefix(/donkeywork.vault.v1.)` → the **Vault** Service (h2c upstream)
-- everything else (`/`, `/api/v1/*`, assets) → the **Portal**
-
-On k3s that's a single Traefik `IngressRoute` (an h2c `ServersTransport` for the vault rule,
-`websecure`/TLS on the host). **The edge MUST strip inbound `x-internal-token`, `x-user-id`
-and `x-tenant-id`** so the public can't forge the trusted-hop identity — internet callers may
-only set `x-api-key`. The CLI then dials the public host over TLS:
-`dwvault --addr grpcs://vault.example.com:443 …` (or `VAULT_ADDR=grpcs://…`).
-
-### Bring your own identity provider (JWT / OIDC)
-
-The Portal is **vendor-neutral**: it authenticates users with standard OIDC bearer JWTs and
-isn't tied to any provider. Any OIDC-compliant IdP works (Keycloak, Microsoft Entra ID,
-Auth0, Okta, Cognito, Authentik, Zitadel, …) with **config only — no rebuild**:
-
-| Setting | Meaning |
-|---|---|
-| `Oidc:Authority` | Your issuer URL. The BFF fetches `<authority>/.well-known/openid-configuration` for keys (issuer validated against this) and the SPA logs in against it. Leave **blank to disable auth** (local/dev only). |
-| `Oidc:ClientId`  | Public client id the SPA logs in with. Defaults to `Oidc:Audience` if unset. |
-| `Oidc:Audience`  | Expected audience. |
-| `Oidc:Scopes`    | Space-separated scopes the SPA requests (default `openid profile email`). |
-| `Oidc:InternalAuthority` | Optional — issuer URL reachable from inside the cluster, if it differs from the public one (metadata is fetched from here). |
-| `Oidc:RequireHttpsMetadata` | Defaults to `true`. |
-
-> The legacy `Keycloak:*` section is still honored as a **deprecated alias** for one release.
-
-How it works: the **SPA** reads `GET /api/config` at boot (issuer / client id / scopes) and
-runs Authorization Code + PKCE via a generic OIDC client — so the same build points at any
-IdP. The **BFF** validates tokens by **signature + issuer via JWKS** (audience validation is
-currently off — tighten if your IdP sets a stable `aud`) and forwards two claims to the
-Vault: **`sub` → user id**, optional **`tenant_id` → tenant**. So your IdP must issue a stable
-`sub` (and `tenant_id` if you use tenancy), and allow `https://<your-host>/` as a redirect URI
-for the SPA client.
-
-A tagged release (`vX.Y.Z`) also cross-compiles and publishes the `dwvault` binaries via the
-`release-cli` GitHub Actions workflow.
-
-## Roadmap
-
-- **HTTP Basic + SSH-key credentials** (user:password logins; SSH/git auth).
-- **Browserless device registration** for the CLI (OAuth 2.0 Device Grant, RFC 8628) to
-  replace the manual `VAULT_USER_ID`.
-- **Public distribution polish** — `install.sh`, a Homebrew tap, and **Apple code signing +
-  notarization** so the macOS binaries run without a Gatekeeper prompt.
+The CLI's REST client is generated from `api/openapi.json` (oapi-codegen); see `scripts/gen-clients.sh`
+and `scripts/emit-openapi.sh`. Tagging a commit `vX.Y.Z` (or any change under `src/cli/`) cross-compiles
+the `dwvault` binaries and publishes a GitHub release via the release workflows.
