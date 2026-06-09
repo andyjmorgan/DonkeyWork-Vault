@@ -26,6 +26,9 @@ public class AuditHeaderRedactorTests
     [InlineData("x-user-password")]   // *password*
     [InlineData("signing-key")]       // *-key
     [InlineData("api-key")]           // *-key
+    [InlineData("grpc-token")]        // grpc-* must NOT bypass the deny patterns
+    [InlineData("grpc-secret")]       // grpc-* must NOT bypass the deny patterns
+    [InlineData("grpc-api-key")]      // grpc-* must NOT bypass the deny patterns
     public void Redact_PatternDenyHeaders_AreMasked(string name)
     {
         Assert.True(AuditHeaderRedactor.IsDenied(name), $"expected {name} to be denied");

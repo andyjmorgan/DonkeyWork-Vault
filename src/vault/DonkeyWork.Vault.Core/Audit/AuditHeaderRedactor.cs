@@ -24,6 +24,13 @@ public static class AuditHeaderRedactor
         "x-real-ip",
         "x-forwarded-proto",
         "host",
+        // gRPC framing headers — non-secret. Listed explicitly (not a `grpc-*` wildcard) so a
+        // secret-bearing name like `grpc-token` still trips the deny patterns below.
+        "grpc-encoding",
+        "grpc-accept-encoding",
+        "grpc-timeout",
+        "grpc-status",
+        "grpc-message",
     };
 
     /// <summary>Always redacted, even though they might otherwise look innocuous.</summary>
@@ -53,12 +60,6 @@ public static class AuditHeaderRedactor
         if (IsDenied(name))
         {
             return Redacted;
-        }
-
-        // gRPC framing headers (grpc-encoding, grpc-timeout, …) are non-secret; store verbatim.
-        if (name.StartsWith("grpc-", StringComparison.OrdinalIgnoreCase))
-        {
-            return value;
         }
 
         return Allowlist.Contains(name) ? value : Redacted;
@@ -95,12 +96,6 @@ public static class AuditHeaderRedactor
         if (DenyExact.Contains(name))
         {
             return true;
-        }
-
-        // grpc-* framing headers are safe to store verbatim (they carry no secret).
-        if (name.StartsWith("grpc-", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
         }
 
         var lower = name.ToLowerInvariant();

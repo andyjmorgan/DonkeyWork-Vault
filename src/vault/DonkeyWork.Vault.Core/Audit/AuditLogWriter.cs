@@ -25,6 +25,10 @@ public sealed class AuditLogWriter(
 {
     private readonly AuditOptions _options = options.Value;
 
+    // The host's shutdown token, captured in StopAsync so the final drain is bounded by the
+    // shutdown deadline rather than able to hang the process on a stuck DB write.
+    private CancellationToken _shutdownToken = CancellationToken.None;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var batchSize = Math.Max(1, _options.BatchSize);
@@ -65,7 +69,8 @@ public sealed class AuditLogWriter(
 
     public override async Task StopAsync(CancellationToken cancellationToken)
     {
-        // Stop accepting new events so the final drain terminates.
+        // Bound the final drain by the host shutdown deadline, then stop accepting new events.
+        _shutdownToken = cancellationToken;
         auditLog.Complete();
         await base.StopAsync(cancellationToken).ConfigureAwait(false);
     }
@@ -81,7 +86,7 @@ public sealed class AuditLogWriter(
             }
             if (remaining.Count > 0)
             {
-                await PersistWithRetryAsync(remaining, CancellationToken.None).ConfigureAwait(false);
+                await PersistWithRetryAsync(remaining, _shutdownToken).ConfigureAwait(false);
             }
         }
         catch (Exception ex)

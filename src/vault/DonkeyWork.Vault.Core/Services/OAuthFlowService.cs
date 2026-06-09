@@ -81,6 +81,23 @@ public sealed class OAuthFlowService(
 
     public async Task<CompleteAuthResult> CompleteAsync(string provider, string code, string state, CancellationToken ct)
     {
+        try
+        {
+            return await CompleteCoreAsync(provider, code, state, ct);
+        }
+        catch (Exception ex)
+        {
+            // A failed anonymous callback is security-relevant; record it. Identity is unknown
+            // here (no caller, possibly no valid state), so it falls back to the ambient context.
+            // ex.Message is status-only (no provider body) by construction above.
+            audit.Emit(AuditEventType.TokenAdded, AuditOutcome.Failure,
+                targetKind: "oauth_token", targetProvider: provider, detail: ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<CompleteAuthResult> CompleteCoreAsync(string provider, string code, string state, CancellationToken ct)
+    {
         // State is a standalone (non-user-scoped) row; readable in the anonymous callback.
         var stateRow = await db.OAuthStates.FirstOrDefaultAsync(s => s.State == state, ct)
             ?? throw new OAuthAuthorizationException("invalid or expired state.");
@@ -113,7 +130,7 @@ public sealed class OAuthFlowService(
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
         {
-            throw new OAuthAuthorizationException($"token exchange failed: {(int)resp.StatusCode} {body}");
+            throw new OAuthAuthorizationException($"token exchange failed: HTTP {(int)resp.StatusCode}");
         }
 
         using var doc = JsonDocument.Parse(body);

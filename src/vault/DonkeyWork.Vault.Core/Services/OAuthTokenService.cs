@@ -110,14 +110,16 @@ public sealed class OAuthTokenService(
             var body = await resp.Content.ReadAsStringAsync(ct);
             if (!resp.IsSuccessStatusCode)
             {
-                throw new OAuthRefreshException($"refresh failed for {manifest.Key}: {(int)resp.StatusCode} {body}");
+                // Status only — the raw provider body can carry token-like material and this
+                // message flows into the audit Detail; never persist the body.
+                throw new OAuthRefreshException($"refresh failed for {manifest.Key}: HTTP {(int)resp.StatusCode}");
             }
 
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
             if (!root.TryGetProperty("access_token", out var at))
             {
-                throw new OAuthRefreshException($"refresh response for {manifest.Key} had no access_token: {body}");
+                throw new OAuthRefreshException($"refresh response for {manifest.Key} had no access_token");
             }
             var accessToken = at.GetString()!;
 
