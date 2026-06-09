@@ -28,7 +28,8 @@ public sealed class AccessKeyServiceTests : IAsyncLifetime
             .Options;
         var db = new VaultDbContext(options, caller);
         await db.Database.MigrateAsync();
-        return (db, new AccessKeyService(db, caller));
+        var (audit, _) = TestAudit.Build(caller);
+        return (db, new AccessKeyService(db, caller, audit));
     }
 
     [Fact]

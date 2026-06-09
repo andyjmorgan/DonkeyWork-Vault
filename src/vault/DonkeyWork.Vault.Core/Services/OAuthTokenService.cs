@@ -1,5 +1,7 @@
 using System.Text.Json;
 using DonkeyWork.Vault.Contracts;
+using DonkeyWork.Vault.Contracts.Audit;
+using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Crypto;
 using DonkeyWork.Vault.Core.Manifests;
 using DonkeyWork.Vault.Persistence;
@@ -26,7 +28,8 @@ public sealed class OAuthTokenService(
     IEnvelopeCipher cipher,
     ManifestResolver manifests,
     IVaultCallerContext caller,
-    IHttpClientFactory httpFactory) : IOAuthTokenService
+    IHttpClientFactory httpFactory,
+    AuditEmitter audit) : IOAuthTokenService
 {
     private static readonly TimeSpan RefreshWindow = TimeSpan.FromSeconds(60);
 
@@ -49,8 +52,17 @@ public sealed class OAuthTokenService(
         var token = await query.OrderByDescending(t => t.CreatedAt).FirstOrDefaultAsync(ct);
         if (token is null)
         {
+            // Not found is still an access event (Failure).
+            audit.Emit(AuditEventType.TokenAccessed, AuditOutcome.Failure,
+                targetKind: "oauth_token", targetProvider: provider, targetAccount: account,
+                detail: "no token for provider/account");
             return null;
         }
+
+        // Emit the access on every read, whether or not a refresh follows (a refresh adds its own
+        // TokenRefreshed event — two events, by design).
+        audit.Emit(AuditEventType.TokenAccessed, AuditOutcome.Success,
+            targetKind: "oauth_token", targetProvider: token.ProviderKey, targetAccount: token.Account);
 
         var scopes = token.ScopesJson is null ? new List<string>() : JsonSerializer.Deserialize<List<string>>(token.ScopesJson)!;
 
@@ -76,52 +88,69 @@ public sealed class OAuthTokenService(
 
     private async Task<OAuthAccessToken> RefreshAsync(OAuthManifest manifest, OAuthProviderConfigEntity config, OAuthTokenEntity token, CancellationToken ct)
     {
-        var form = new Dictionary<string, string>
+        try
         {
-            ["grant_type"] = "refresh_token",
-            ["refresh_token"] = cipher.DecryptToString(token.RefreshTokenCipher),
-            ["client_id"] = cipher.DecryptToString(config.ClientIdCipher),
-            ["client_secret"] = cipher.DecryptToString(config.ClientSecretCipher),
-        };
+            var form = new Dictionary<string, string>
+            {
+                ["grant_type"] = "refresh_token",
+                ["refresh_token"] = cipher.DecryptToString(token.RefreshTokenCipher),
+                ["client_id"] = cipher.DecryptToString(config.ClientIdCipher),
+                ["client_secret"] = cipher.DecryptToString(config.ClientSecretCipher),
+            };
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, manifest.TokenEndpoint)
-        {
-            Content = new FormUrlEncodedContent(form),
-        };
-        req.Headers.TryAddWithoutValidation("Accept", "application/json");
-        req.Headers.TryAddWithoutValidation("User-Agent", "donkeywork-vault");
+            using var req = new HttpRequestMessage(HttpMethod.Post, manifest.TokenEndpoint)
+            {
+                Content = new FormUrlEncodedContent(form),
+            };
+            req.Headers.TryAddWithoutValidation("Accept", "application/json");
+            req.Headers.TryAddWithoutValidation("User-Agent", "donkeywork-vault");
 
-        var client = httpFactory.CreateClient("oauth");
-        using var resp = await client.SendAsync(req, ct);
-        var body = await resp.Content.ReadAsStringAsync(ct);
-        if (!resp.IsSuccessStatusCode)
-        {
-            throw new OAuthRefreshException($"refresh failed for {manifest.Key}: {(int)resp.StatusCode} {body}");
+            var client = httpFactory.CreateClient("oauth");
+            using var resp = await client.SendAsync(req, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
+            if (!resp.IsSuccessStatusCode)
+            {
+                // Status only — the raw provider body can carry token-like material and this
+                // message flows into the audit Detail; never persist the body.
+                throw new OAuthRefreshException($"refresh failed for {manifest.Key}: HTTP {(int)resp.StatusCode}");
+            }
+
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (!root.TryGetProperty("access_token", out var at))
+            {
+                throw new OAuthRefreshException($"refresh response for {manifest.Key} had no access_token");
+            }
+            var accessToken = at.GetString()!;
+
+            DateTimeOffset? expiresAt = null;
+            if (root.TryGetProperty("expires_in", out var ei) && ei.TryGetInt64(out var secs))
+            {
+                expiresAt = DateTimeOffset.UtcNow.AddSeconds(secs);
+            }
+
+            token.AccessTokenCipher = cipher.EncryptString(accessToken);
+            if (root.TryGetProperty("refresh_token", out var rt) && rt.GetString() is { Length: > 0 } newRefresh)
+            {
+                token.RefreshTokenCipher = cipher.EncryptString(newRefresh);
+            }
+            token.ExpiresAt = expiresAt;
+            token.LastRefreshedAt = DateTimeOffset.UtcNow;
+
+            // One TokenRefreshed event per successful refresh.
+            audit.Emit(AuditEventType.TokenRefreshed, AuditOutcome.Success,
+                targetKind: "oauth_token", targetProvider: token.ProviderKey, targetAccount: token.Account);
+
+            var scopes = token.ScopesJson is null ? new List<string>() : JsonSerializer.Deserialize<List<string>>(token.ScopesJson)!;
+            return new OAuthAccessToken(accessToken, expiresAt, scopes);
         }
-
-        using var doc = JsonDocument.Parse(body);
-        var root = doc.RootElement;
-        if (!root.TryGetProperty("access_token", out var at))
+        catch (OAuthRefreshException ex)
         {
-            throw new OAuthRefreshException($"refresh response for {manifest.Key} had no access_token: {body}");
+            // Capture the failed refresh with its reason, then rethrow unchanged.
+            audit.Emit(AuditEventType.TokenRefreshed, AuditOutcome.Failure,
+                targetKind: "oauth_token", targetProvider: token.ProviderKey, targetAccount: token.Account,
+                detail: ex.Message);
+            throw;
         }
-        var accessToken = at.GetString()!;
-
-        DateTimeOffset? expiresAt = null;
-        if (root.TryGetProperty("expires_in", out var ei) && ei.TryGetInt64(out var secs))
-        {
-            expiresAt = DateTimeOffset.UtcNow.AddSeconds(secs);
-        }
-
-        token.AccessTokenCipher = cipher.EncryptString(accessToken);
-        if (root.TryGetProperty("refresh_token", out var rt) && rt.GetString() is { Length: > 0 } newRefresh)
-        {
-            token.RefreshTokenCipher = cipher.EncryptString(newRefresh);
-        }
-        token.ExpiresAt = expiresAt;
-        token.LastRefreshedAt = DateTimeOffset.UtcNow;
-
-        var scopes = token.ScopesJson is null ? new List<string>() : JsonSerializer.Deserialize<List<string>>(token.ScopesJson)!;
-        return new OAuthAccessToken(accessToken, expiresAt, scopes);
     }
 }

@@ -37,7 +37,8 @@ public sealed class ApiKeyServiceTests : IAsyncLifetime
             ActiveKekId = "v1",
             Keks = new() { ["v1"] = Convert.ToBase64String(Enumerable.Repeat((byte)7, 32).ToArray()) },
         })));
-        return (db, new ApiKeyService(db, cipher, caller));
+        var (audit, _) = TestAudit.Build(caller);
+        return (db, new ApiKeyService(db, cipher, caller, audit));
     }
 
     [Fact]

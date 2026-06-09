@@ -1,5 +1,7 @@
 using System.Text.Json;
 using DonkeyWork.Vault.Contracts;
+using DonkeyWork.Vault.Contracts.Audit;
+using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Crypto;
 using DonkeyWork.Vault.Core.Manifests;
 using DonkeyWork.Vault.Core.OAuth;
@@ -25,7 +27,8 @@ public sealed class OAuthFlowService(
     IEnvelopeCipher cipher,
     ManifestResolver manifests,
     IVaultCallerContext caller,
-    IHttpClientFactory httpFactory) : IOAuthFlowService
+    IHttpClientFactory httpFactory,
+    AuditEmitter audit) : IOAuthFlowService
 {
     public async Task<BeginAuthResult> BeginAsync(string provider, IReadOnlyList<string>? scopes, string publicBaseUrl, CancellationToken ct)
     {
@@ -78,6 +81,23 @@ public sealed class OAuthFlowService(
 
     public async Task<CompleteAuthResult> CompleteAsync(string provider, string code, string state, CancellationToken ct)
     {
+        try
+        {
+            return await CompleteCoreAsync(provider, code, state, ct);
+        }
+        catch (Exception ex)
+        {
+            // A failed anonymous callback is security-relevant; record it. Identity is unknown
+            // here (no caller, possibly no valid state), so it falls back to the ambient context.
+            // ex.Message is status-only (no provider body) by construction above.
+            audit.Emit(AuditEventType.TokenAdded, AuditOutcome.Failure,
+                targetKind: "oauth_token", targetProvider: provider, detail: ex.Message);
+            throw;
+        }
+    }
+
+    private async Task<CompleteAuthResult> CompleteCoreAsync(string provider, string code, string state, CancellationToken ct)
+    {
         // State is a standalone (non-user-scoped) row; readable in the anonymous callback.
         var stateRow = await db.OAuthStates.FirstOrDefaultAsync(s => s.State == state, ct)
             ?? throw new OAuthAuthorizationException("invalid or expired state.");
@@ -110,7 +130,7 @@ public sealed class OAuthFlowService(
         var body = await resp.Content.ReadAsStringAsync(ct);
         if (!resp.IsSuccessStatusCode)
         {
-            throw new OAuthAuthorizationException($"token exchange failed: {(int)resp.StatusCode} {body}");
+            throw new OAuthAuthorizationException($"token exchange failed: HTTP {(int)resp.StatusCode}");
         }
 
         using var doc = JsonDocument.Parse(body);
@@ -156,6 +176,12 @@ public sealed class OAuthFlowService(
 
         db.OAuthStates.Remove(stateRow);
         await db.SaveChangesAsync(ct);
+
+        // Anonymous callback: identity comes from the state row, and there is no access key, so the
+        // access_key_* fields are null. IP/headers are still captured from the ambient context.
+        audit.Emit(AuditEventType.TokenAdded, AuditOutcome.Success,
+            targetKind: "oauth_token", targetProvider: provider, targetAccount: account,
+            userId: stateRow.OwnerUserId, tenantId: stateRow.OwnerTenantId);
 
         return new CompleteAuthResult(provider, account, scopes, expiresAt);
     }

@@ -1,5 +1,7 @@
 using System.Security.Cryptography;
 using DonkeyWork.Vault.Contracts;
+using DonkeyWork.Vault.Contracts.Audit;
+using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -11,8 +13,13 @@ public sealed record StoredAccessKey(
     Guid Id, string Name, string? Description, IReadOnlyList<string> Scopes,
     bool Enabled, string Prefix, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
 
-/// <summary>The result of authenticating a presented secret.</summary>
-public sealed record AccessKeyPrincipal(Guid UserId, Guid TenantId, IReadOnlyList<string> Scopes, string Name);
+/// <summary>
+/// The result of authenticating a presented secret. Carries the key's <see cref="Id"/> and
+/// non-secret <see cref="KeyPrefix"/> so the interceptor can record the audit reference without a
+/// second lookup. The secret and its hash are never carried here.
+/// </summary>
+public sealed record AccessKeyPrincipal(
+    Guid Id, Guid UserId, Guid TenantId, IReadOnlyList<string> Scopes, string Name, string KeyPrefix);
 
 public interface IAccessKeyService
 {
@@ -26,7 +33,7 @@ public interface IAccessKeyService
     Task<AccessKeyPrincipal?> AuthenticateAsync(string secret, CancellationToken ct);
 }
 
-public sealed class AccessKeyService(VaultDbContext db, IVaultCallerContext caller) : IAccessKeyService
+public sealed class AccessKeyService(VaultDbContext db, IVaultCallerContext caller, AuditEmitter audit) : IAccessKeyService
 {
     public const string SecretPrefix = "dwv_";
 
@@ -72,6 +79,11 @@ public sealed class AccessKeyService(VaultDbContext db, IVaultCallerContext call
         };
         db.AccessKeys.Add(entity);
         await db.SaveChangesAsync(ct);
+
+        // Audit the creation — never the secret nor its hash, only the display reference.
+        audit.Emit(AuditEventType.CredentialCreated, AuditOutcome.Success,
+            targetKind: "access_key", targetName: entity.Name);
+
         return (ToStored(entity), secret);
     }
 
@@ -119,7 +131,7 @@ public sealed class AccessKeyService(VaultDbContext db, IVaultCallerContext call
         }
         entity.LastUsedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
-        return new AccessKeyPrincipal(entity.UserId, entity.TenantId, entity.Scopes, entity.Name);
+        return new AccessKeyPrincipal(entity.Id, entity.UserId, entity.TenantId, entity.Scopes, entity.Name, entity.KeyPrefix);
     }
 
     private static byte[] Hash(string secret) => SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(secret));
