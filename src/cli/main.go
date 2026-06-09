@@ -84,7 +84,9 @@ func main() {
 	root.PersistentFlags().StringVar(&apiKey, "api-key", env("VAULT_API_KEY", ""), "access key for authentication (X-Api-Key)")
 	root.PersistentFlags().BoolVar(&useTLS, "tls", env("VAULT_TLS", "") != "", "use TLS (implied by an https://host address)")
 
-	creds := &cobra.Command{Use: "creds", Short: "Manage and retrieve API-key credentials"}
+	// `credentials` is the canonical group; `creds` stays as a hidden alias so existing scripts and
+	// agents that shell out keep working without surfacing the shorthand in help.
+	creds := &cobra.Command{Use: "credentials", Aliases: []string{"creds"}, Short: "Manage and retrieve API-key credentials"}
 	creds.AddCommand(cmdList(), cmdGet(), cmdHeader(), cmdShape(), cmdCreate())
 
 	oauth := &cobra.Command{Use: "oauth", Short: "Retrieve OAuth access tokens"}
@@ -309,9 +311,24 @@ func cmdCreate() *cobra.Command {
 	var secret, description, baseURL, docs, header, prefix, username string
 	c := &cobra.Command{
 		Use:   "create <name>",
-		Short: "Store a self-describing API key (set --username for HTTP Basic auth)",
-		Args:  cobra.ExactArgs(1),
-		RunE: func(_ *cobra.Command, args []string) error {
+		Short: "Store a self-describing credential (header API key, or HTTP Basic with --username)",
+		Long: "Store a self-describing credential. There are two kinds:\n\n" +
+			"  header API key (default) — the secret is sent as \"<header>: <prefix><secret>\".\n" +
+			"      Use --header (default Authorization) and --prefix (e.g. 'Bearer ').\n" +
+			"  HTTP Basic (--username) — the secret is the password; the vault sends\n" +
+			"      Authorization: Basic base64(username:secret). --header/--prefix do not apply.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if secret == "" {
+				return fmt.Errorf("--secret is required")
+			}
+			// username ⇒ HTTP Basic; --header/--prefix are meaningless then. Reject the ambiguous
+			// mix rather than silently ignoring them (mirrors the server's CredentialUsage rule).
+			basic := username != ""
+			if basic && (cmd.Flags().Changed("header") || cmd.Flags().Changed("prefix")) {
+				return fmt.Errorf("--username makes this an HTTP Basic credential; --header/--prefix do not apply — drop one")
+			}
+
 			client, err := newClient()
 			if err != nil {
 				return err
@@ -324,9 +341,11 @@ func cmdCreate() *cobra.Command {
 				Description: strPtr(description),
 				BaseUrl:     strPtr(baseURL),
 				DocsUrl:     strPtr(docs),
-				Header:      strPtr(header),
-				Prefix:      strPtr(prefix),
 				Username:    strPtr(username),
+			}
+			if !basic {
+				body.Header = strPtr(header)
+				body.Prefix = strPtr(prefix)
 			}
 			resp, err := client.PostApiV1ApiKeysWithResponse(ctx, body)
 			if err != nil {
@@ -335,7 +354,11 @@ func cmdCreate() *cobra.Command {
 			if resp.JSON200 == nil {
 				return apiError(fmt.Sprintf("create credential %q", args[0]), resp.Status(), resp.Body)
 			}
-			fmt.Fprintf(os.Stderr, "stored %s (%s)\n", resp.JSON200.Name, resp.JSON200.Id)
+			scheme := "header API key"
+			if basic {
+				scheme = "HTTP Basic"
+			}
+			fmt.Fprintf(os.Stderr, "stored %s (%s) as %s\n", resp.JSON200.Name, resp.JSON200.Id, scheme)
 			return nil
 		},
 	}
