@@ -1,0 +1,9 @@
+# oapi-codegen config — generates the vault's Go client from the authoritative OpenAPI document.
+# The CLI imports donkeywork.dev/vault-cli/internal/vaultapi. Regenerate with scripts/gen-clients.sh.
+package: vaultapi
+output: src/cli/internal/vaultapi/vaultapi.gen.go
+generate:
+  models: true
+  client: true
+output-options:
+  skip-prune: true

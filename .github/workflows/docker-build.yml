@@ -16,7 +16,6 @@ concurrency:
 env:
   REGISTRY: ${{ vars.DOCKER_REGISTRY }}
   VAULT_IMAGE: donkeywork-vault/vault
-  PORTAL_IMAGE: donkeywork-vault/portal
 
 jobs:
   test-backend:
@@ -69,41 +68,6 @@ jobs:
         with:
           context: .
           file: ./Dockerfile.vault
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          platforms: linux/amd64
-
-  build-portal:
-    name: Build & Push Portal Image
-    needs: [test-backend]
-    if: needs.test-backend.result == 'success'
-    runs-on: [self-hosted, Linux, X64]
-    steps:
-      - uses: actions/checkout@v4
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-        with:
-          driver: docker
-      - name: Login to Nexus
-        uses: docker/login-action@v3
-        with:
-          registry: ${{ env.REGISTRY }}
-          username: ${{ secrets.NEXUS_USERNAME }}
-          password: ${{ secrets.NEXUS_PASSWORD }}
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.PORTAL_IMAGE }}
-          tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
-            type=sha,prefix=
-      - name: Build & push portal image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.portal
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

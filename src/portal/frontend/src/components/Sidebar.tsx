@@ -1,12 +1,13 @@
-import { KeyRound, Boxes, Plug } from 'lucide-react'
+import { KeyRound, Boxes, Plug, ScrollText } from 'lucide-react'
 import { cn } from '../ui/lib/utils'
 
-export type Tab = 'credentials' | 'providers' | 'connect' | 'profile'
+export type Tab = 'credentials' | 'providers' | 'connect' | 'audit' | 'profile'
 
 export const navItems: { id: Tab; label: string; icon: typeof KeyRound }[] = [
   { id: 'credentials', label: 'Credentials', icon: KeyRound },
   { id: 'providers', label: 'Providers', icon: Boxes },
   { id: 'connect', label: 'OAuth Connect', icon: Plug },
+  { id: 'audit', label: 'Audit trail', icon: ScrollText },
 ]
 
 /** The nav buttons, shared by the desktop sidebar and the mobile drawer. */

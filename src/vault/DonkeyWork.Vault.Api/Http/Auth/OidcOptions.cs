@@ -1,17 +1,17 @@
-namespace DonkeyWork.Portal.Api.Auth;
+namespace DonkeyWork.Vault.Api.Http.Auth;
 
 /// <summary>
-/// OIDC settings for the Portal. Bound from the <c>Oidc</c> config section, falling back to
-/// the legacy <c>Keycloak</c> section (deprecated — kept for one release). Vendor-neutral:
-/// any OIDC IdP that serves <c>.well-known/openid-configuration</c> works.
+/// OIDC settings for the vault's interactive (human) auth. Bound from the <c>Oidc</c> config section,
+/// falling back to the legacy <c>Keycloak</c> section (deprecated). Vendor-neutral: any OIDC IdP that
+/// serves <c>.well-known/openid-configuration</c> works. Machine callers use <c>dwv_</c> access keys
+/// instead and do not touch this.
 /// </summary>
 public sealed class OidcOptions
 {
     public const string SectionName = "Oidc";
     public const string LegacySectionName = "Keycloak";
 
-    /// <summary>Public issuer URL used to validate the token issuer + by the SPA to log in
-    /// (e.g. https://idp.example.com/realms/foo).</summary>
+    /// <summary>Public issuer URL used to validate the token issuer + by the SPA to log in.</summary>
     public string Authority { get; set; } = string.Empty;
 
     /// <summary>Optional in-cluster issuer URL for metadata/JWKS retrieval (avoids DNS hairpin).</summary>

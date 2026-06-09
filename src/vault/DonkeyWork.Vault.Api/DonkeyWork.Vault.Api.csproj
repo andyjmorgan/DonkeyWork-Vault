@@ -4,12 +4,12 @@
     <ProjectReference Include="..\DonkeyWork.Vault.Core\DonkeyWork.Vault.Core.csproj" />
     <ProjectReference Include="..\DonkeyWork.Vault.Contracts\DonkeyWork.Vault.Contracts.csproj" />
     <ProjectReference Include="..\DonkeyWork.Vault.Persistence\DonkeyWork.Vault.Persistence.csproj" />
-    <ProjectReference Include="..\..\proto\DonkeyWork.Vault.Proto\DonkeyWork.Vault.Proto.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Grpc.AspNetCore" Version="2.67.0" />
-    <PackageReference Include="Grpc.AspNetCore.Server.Reflection" Version="2.67.0" />
+    <!-- Interactive (JWT) auth + the OpenAPI document the Go/TS clients are generated from. -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.2" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.2" />
   </ItemGroup>
 
   <PropertyGroup>

@@ -15,20 +15,14 @@ import (
 )
 
 // httpBaseURL derives the REST base URL (and the credstore host key) from --addr.
-// An http(s):// addr is used verbatim; a grpc(s):// or bare host[:port] is mapped
-// to the matching HTTP scheme (bare host is assumed TLS).
+// An http(s):// addr is used verbatim; a bare host[:port] is mapped to http:// unless
+// --tls / VAULT_TLS is set (or an https:// addr is given), in which case https://.
 func httpBaseURL() string {
 	a := strings.TrimRight(addr, "/")
 	switch {
 	case strings.HasPrefix(a, "http://"), strings.HasPrefix(a, "https://"):
 		return a
-	case strings.HasPrefix(a, "grpcs://"):
-		return "https://" + a[len("grpcs://"):]
-	case strings.HasPrefix(a, "grpc://"):
-		return "http://" + a[len("grpc://"):]
 	default:
-		// Bare host[:port] mirrors the gRPC transport default: plaintext unless
-		// --tls / VAULT_TLS is set (a remote vault is reached via https:// or --tls).
 		if useTLS {
 			return "https://" + a
 		}

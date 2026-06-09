@@ -57,5 +57,8 @@ public static class DependencyInjection
 
         // Per-request convenience wrapper used by the domain services to emit events.
         services.AddScoped<AuditEmitter>();
+
+        // Read side of the trail (admin/cross-user; gated by the vault:audit scope at the transport).
+        services.AddScoped<IAuditQueryService, AuditQueryService>();
     }
 }

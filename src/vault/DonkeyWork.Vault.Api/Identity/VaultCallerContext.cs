@@ -3,9 +3,9 @@ using DonkeyWork.Vault.Contracts;
 namespace DonkeyWork.Vault.Api.Identity;
 
 /// <summary>
-/// AsyncLocal-backed caller identity, set per gRPC call by <see cref="UserContextInterceptor"/>
-/// and consumed by the service + DbContext query filter. Registered as a singleton; the
-/// AsyncLocal makes it safe across concurrent calls.
+/// AsyncLocal-backed caller identity, set per request by the <c>AuditContextMiddleware</c> from the
+/// authenticated principal and consumed by the domain services + the DbContext per-user query filter.
+/// Registered as a singleton; the AsyncLocal makes it safe across concurrent requests.
 /// </summary>
 public sealed class VaultCallerContext : IVaultCallerContext
 {

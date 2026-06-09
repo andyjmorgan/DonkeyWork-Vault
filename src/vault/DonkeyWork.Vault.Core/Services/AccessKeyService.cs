@@ -37,10 +37,10 @@ public sealed class AccessKeyService(VaultDbContext db, IVaultCallerContext call
 {
     public const string SecretPrefix = "dwv_";
 
-    /// <summary>The scopes a key may carry.</summary>
+    /// <summary>The scopes a key may carry. <c>vault:audit</c> grants read of the audit trail.</summary>
     public static readonly IReadOnlySet<string> ValidScopes = new HashSet<string>
     {
-        "frontend:read", "frontend:readwrite", "vault:read", "vault:readwrite",
+        "vault:read", "vault:readwrite", "vault:audit",
     };
 
     public async Task<(StoredAccessKey Key, string Secret)> CreateAsync(
