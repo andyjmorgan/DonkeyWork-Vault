@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using DonkeyWork.Vault.Contracts;
 
 namespace DonkeyWork.Vault.Api.Http;
 
@@ -24,6 +25,7 @@ public sealed record ApiKeyDto(
     string? Header,
     string? Prefix,
     string? Username,
+    CredentialKind Kind,
     DateTimeOffset CreatedAt,
     DateTimeOffset? LastUsedAt);
 
@@ -35,7 +37,8 @@ public sealed record CreateApiKeyRequest(
     string? DocsUrl,
     string? Header,
     string? Prefix,
-    string? Username);
+    string? Username,
+    CredentialKind Kind);
 
 public sealed record CreatedApiKeyResponse(Guid Id, string Name);
 
@@ -49,7 +52,8 @@ public sealed record RevealApiKeyResponse(
     string DocsUrl,
     string Description,
     string Scheme,
-    string Username);
+    string Username,
+    CredentialKind Kind);
 
 /// <summary>CLI-lean credential shape (no secret) — the LLM/agent reads this to know how to send a key.</summary>
 public sealed record CredentialShapeResponse(
@@ -59,7 +63,8 @@ public sealed record CredentialShapeResponse(
     string DocsUrl,
     string Description,
     string Scheme,
-    string Username);
+    string Username,
+    CredentialKind Kind);
 
 // ---- access keys (scoped auth credentials; secret shown once) ----
 

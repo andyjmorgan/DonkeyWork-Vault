@@ -15,17 +15,17 @@ namespace DonkeyWork.Vault.Core.Services;
 /// </summary>
 public sealed record StoredApiKey(
     Guid Id, string Name, string? Description, string? BaseUrl, string? DocsUrl,
-    string? Header, string? Prefix, string? Username, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
+    string? Header, string? Prefix, string? Username, CredentialKind Kind, DateTimeOffset CreatedAt, DateTimeOffset? LastUsedAt);
 
 public sealed record ApiKeySecret(
-    string Secret, string? Header, string? Prefix, string? Username, string? BaseUrl, string? DocsUrl, string? Description);
+    string Secret, string? Header, string? Prefix, string? Username, CredentialKind Kind, string? BaseUrl, string? DocsUrl, string? Description);
 
 /// <summary>Thrown when create input is invalid.</summary>
 public sealed class CredentialValidationException(string message) : Exception(message);
 
 public interface IApiKeyService
 {
-    Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, string? username, CancellationToken ct);
+    Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, string? username, CredentialKind kind, CancellationToken ct);
     Task<IReadOnlyList<StoredApiKey>> ListAsync(CancellationToken ct);
     Task<ApiKeySecret?> GetByNameAsync(string name, CancellationToken ct);
     Task<bool> DeleteAsync(Guid id, CancellationToken ct);
@@ -34,7 +34,7 @@ public interface IApiKeyService
 public sealed class ApiKeyService(
     VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller, AuditEmitter audit) : IApiKeyService
 {
-    public async Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, string? username, CancellationToken ct)
+    public async Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, string? username, CredentialKind kind, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(name))
         {
@@ -72,6 +72,7 @@ public sealed class ApiKeyService(
         existing.BaseUrl = baseUrl;
         existing.DocsUrl = docsUrl;
         existing.Username = username;
+        existing.Kind = kind.ToWire();
         // For Basic, default the header to Authorization so list/shape read sensibly; the
         // prefix is irrelevant (the value is assembled as "Basic base64(user:pass)").
         existing.HeaderName = username is not null
@@ -115,7 +116,7 @@ public sealed class ApiKeyService(
         audit.Emit(AuditEventType.TokenAccessed, AuditOutcome.Success,
             targetKind: "api_key", targetName: entity.Name);
 
-        return new ApiKeySecret(secret, entity.HeaderName, entity.Prefix, entity.Username, entity.BaseUrl, entity.DocsUrl, entity.Description);
+        return new ApiKeySecret(secret, entity.HeaderName, entity.Prefix, entity.Username, CredentialKindExtensions.FromWire(entity.Kind), entity.BaseUrl, entity.DocsUrl, entity.Description);
     }
 
     public async Task<bool> DeleteAsync(Guid id, CancellationToken ct)
@@ -131,5 +132,5 @@ public sealed class ApiKeyService(
     }
 
     private static StoredApiKey ToStored(ApiKeyEntity k) =>
-        new(k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.HeaderName, k.Prefix, k.Username, k.CreatedAt, k.LastUsedAt);
+        new(k.Id, k.Name, k.Description, k.BaseUrl, k.DocsUrl, k.HeaderName, k.Prefix, k.Username, CredentialKindExtensions.FromWire(k.Kind), k.CreatedAt, k.LastUsedAt);
 }

@@ -11,6 +11,11 @@ public sealed class ApiKeyEntity : BaseEntity
     public string Name { get; set; } = string.Empty;
     public byte[] FieldsCipher { get; set; } = [];
 
+    // Explicit credential kind (discriminator) so an agent knows how to use the secret.
+    // Stored verbatim as the snake_case wire string (e.g. "opaque", "ssh"); the typed
+    // CredentialKind enum lives at the Core/API boundary. Defaults to opaque.
+    public string Kind { get; set; } = "opaque";
+
     // Self-describing metadata (non-secret) so an agent can discover what the credential is,
     // where it's used, how to send it, and where to read the docs.
     public string? Description { get; set; }

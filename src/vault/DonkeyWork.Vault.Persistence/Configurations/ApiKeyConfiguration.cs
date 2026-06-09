@@ -20,6 +20,9 @@ public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKeyEntity>
         b.Property(x => x.HeaderName).HasMaxLength(100);
         b.Property(x => x.Prefix).HasMaxLength(100);
         b.Property(x => x.Username).HasMaxLength(255);
+        // Snake_case text column (not an int), defaulting to opaque so existing rows and
+        // kind-less creates land on the catch-all.
+        b.Property(x => x.Kind).HasMaxLength(32).IsRequired().HasDefaultValue("opaque");
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
 
         b.HasIndex(x => new { x.UserId, x.Name }).IsUnique();

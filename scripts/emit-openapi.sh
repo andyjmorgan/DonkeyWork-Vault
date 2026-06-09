@@ -34,5 +34,10 @@ if [ ! -s /tmp/openapi.raw.json ]; then
 fi
 
 mkdir -p "$ROOT/api"
-jq -S 'del(.servers)' /tmp/openapi.raw.json > "$ROOT/api/openapi.json"
+# Drop the env-specific servers block; and give string-enum schemas an explicit `type: string`
+# (the .NET OpenAPI emitter omits it for JsonStringEnumConverter enums, which would otherwise
+# make oapi-codegen generate `interface{}` instead of a typed string enum).
+jq -S 'del(.servers)
+  | walk(if (type == "object" and has("enum") and (has("type") | not)) then . + {"type": "string"} end)' \
+  /tmp/openapi.raw.json > "$ROOT/api/openapi.json"
 echo "wrote api/openapi.json"
