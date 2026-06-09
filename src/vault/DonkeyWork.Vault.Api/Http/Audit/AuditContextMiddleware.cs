@@ -35,6 +35,17 @@ public sealed class AuditContextMiddleware(RequestDelegate next)
         if (ctx.User.Identity?.IsAuthenticated == true)
         {
             var userId = ParseGuid(ctx.User.FindFirst("sub")?.Value ?? ctx.User.FindFirst(ClaimTypes.NameIdentifier)?.Value);
+
+            // An authenticated principal whose subject is not a GUID must NOT fall through to the
+            // empty-Guid bucket — the DbContext per-user query filter scopes to CurrentUserId, so
+            // every such caller would share one anonymous bucket. Reject instead of silently scoping.
+            if (userId == Guid.Empty)
+            {
+                ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                await ctx.Response.WriteAsJsonAsync(new ErrorResponse("authenticated subject is missing or not a valid identifier."));
+                return;
+            }
+
             var tenantId = ParseGuid(ctx.User.FindFirst("tenant_id")?.Value);
             VaultCallerContext.Set(userId, tenantId);
         }
@@ -48,7 +59,17 @@ public sealed class AuditContextMiddleware(RequestDelegate next)
             Transport: HttpAuditContext.Transport,
             Method: HttpAuditContext.Method(ctx)));
 
-        await next(ctx);
+        try
+        {
+            await next(ctx);
+        }
+        finally
+        {
+            // Reset the ambient AsyncLocals so no caller/audit metadata lingers on this execution
+            // flow after the response (defence against fire-and-forget work capturing the context).
+            VaultCallerContext.Set(Guid.Empty, Guid.Empty);
+            auditContext.Set(AuditRequestInfo.Empty);
+        }
     }
 
     private static Guid ParseGuid(string? value) => Guid.TryParse(value, out var g) ? g : Guid.Empty;

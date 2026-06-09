@@ -13,9 +13,9 @@ import (
 // caller's API key as the X-Api-Key header on every request.
 //
 // The base URL and transport (plaintext vs TLS) come from httpBaseURL(), which
-// honours --addr, the grpc(s)://|http(s):// schemes, and --tls / VAULT_TLS.
-// The key is resolved via credstore: --api-key / VAULT_API_KEY, then the OS
-// keyring, then the 0600 file written by `dwvault auth login`.
+// honours --addr (http(s):// or a bare host) and --tls / VAULT_TLS. The key is
+// resolved via credstore: --api-key / VAULT_API_KEY, then the OS keyring, then
+// the 0600 file written by `dwvault auth login`.
 func newClient() (*vaultapi.ClientWithResponses, error) {
 	base := httpBaseURL()
 

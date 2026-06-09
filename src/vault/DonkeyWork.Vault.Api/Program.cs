@@ -10,6 +10,7 @@ using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Services;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.IdentityModel.Tokens;
 
@@ -76,6 +77,28 @@ builder.Services.AddAuthorization();
 // consume 3.0 cleanly, and the document is the authoritative contract those clients derive from.
 builder.Services.AddOpenApi(options => options.OpenApiVersion = Microsoft.OpenApi.OpenApiSpecVersion.OpenApi3_0);
 
+// Public HTTP edge: cap request volume per client IP so a flood of (DB-backed) auth attempts or API
+// calls can't exhaust resources. The limit is generous — well above any legitimate human / CLI /
+// agent usage — and only the API surface is limited; static SPA assets are unrestricted.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(ctx =>
+    {
+        if (!ctx.Request.Path.StartsWithSegments("/api"))
+        {
+            return RateLimitPartition.GetNoLimiter("static");
+        }
+        var key = ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(key, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 600,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+        });
+    });
+});
+
 // Correct RemoteIpAddress to the real client behind the k3s ingress. Only forwarded headers from a
 // trusted immediate peer (Vault:Audit:TrustedProxies — the ingress / Service / lab subnets) are
 // honoured; otherwise a client could spoof X-Forwarded-For and forge the audited source IP.
@@ -126,6 +149,9 @@ if (builder.Configuration.GetValue("Vault:RunMigrationsOnStartup", true))
     using var scope = app.Services.CreateScope();
     await scope.ServiceProvider.GetRequiredService<IMigrationService>().MigrateAsync();
 }
+
+// Shed excess load before auth/DB work (uses the forwarded-corrected client IP).
+app.UseRateLimiter();
 
 app.UseDefaultFiles();
 app.UseStaticFiles();

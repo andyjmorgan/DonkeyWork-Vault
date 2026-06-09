@@ -19,11 +19,10 @@ public static class VaultApiEndpoints
     public static void MapVaultApi(this WebApplication app, bool authConfigured, string publicBaseUrl, AppConfigResponse appConfig)
     {
         // Main surface: JWT users (unrestricted) + API-key callers (vault:read / vault:readwrite by method).
+        // Authorization is ALWAYS required — the default authentication scheme is the ApiKey handler
+        // when OIDC is absent, so a missing OIDC authority can never leave the API anonymously open.
         var api = app.MapGroup("/api/v1");
-        if (authConfigured)
-        {
-            api.RequireAuthorization();
-        }
+        api.RequireAuthorization();
         api.AddEndpointFilter(new ScopeGateFilter());
 
         MapIdentity(api);
@@ -293,10 +292,7 @@ public static class VaultApiEndpoints
             return TypedResults.Ok(new AuditPageResponse(items, result.Total, result.Limit, result.Offset));
         }).AddEndpointFilter(new ScopeGateFilter("vault:audit"));
 
-        if (authConfigured)
-        {
-            ep.RequireAuthorization();
-        }
+        ep.RequireAuthorization();
     }
 
     // ---- anonymous (no auth) ----
