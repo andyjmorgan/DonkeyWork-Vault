@@ -1,5 +1,7 @@
 using System.Text.Json;
 using DonkeyWork.Vault.Contracts;
+using DonkeyWork.Vault.Contracts.Audit;
+using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Crypto;
 using DonkeyWork.Vault.Core.Manifests;
 using DonkeyWork.Vault.Core.OAuth;
@@ -25,7 +27,8 @@ public sealed class OAuthFlowService(
     IEnvelopeCipher cipher,
     ManifestResolver manifests,
     IVaultCallerContext caller,
-    IHttpClientFactory httpFactory) : IOAuthFlowService
+    IHttpClientFactory httpFactory,
+    AuditEmitter audit) : IOAuthFlowService
 {
     public async Task<BeginAuthResult> BeginAsync(string provider, IReadOnlyList<string>? scopes, string publicBaseUrl, CancellationToken ct)
     {
@@ -156,6 +159,12 @@ public sealed class OAuthFlowService(
 
         db.OAuthStates.Remove(stateRow);
         await db.SaveChangesAsync(ct);
+
+        // Anonymous callback: identity comes from the state row, and there is no access key, so the
+        // access_key_* fields are null. IP/headers are still captured from the ambient context.
+        audit.Emit(AuditEventType.TokenAdded, AuditOutcome.Success,
+            targetKind: "oauth_token", targetProvider: provider, targetAccount: account,
+            userId: stateRow.OwnerUserId, tenantId: stateRow.OwnerTenantId);
 
         return new CompleteAuthResult(provider, account, scopes, expiresAt);
     }

@@ -1,4 +1,6 @@
 using DonkeyWork.Vault.Contracts;
+using DonkeyWork.Vault.Contracts.Audit;
+using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Crypto;
 using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Entities;
@@ -30,7 +32,7 @@ public interface IApiKeyService
 }
 
 public sealed class ApiKeyService(
-    VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller) : IApiKeyService
+    VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller, AuditEmitter audit) : IApiKeyService
 {
     public async Task<StoredApiKey> CreateAsync(string name, string secret, string? description, string? baseUrl, string? docsUrl, string? header, string? prefix, string? username, CancellationToken ct)
     {
@@ -82,6 +84,14 @@ public sealed class ApiKeyService(
         }
 
         await db.SaveChangesAsync(ct);
+
+        // Only a create is a CredentialCreated event; an edit reuses the existing row.
+        if (isNew)
+        {
+            audit.Emit(AuditEventType.CredentialCreated, AuditOutcome.Success,
+                targetKind: "api_key", targetName: existing.Name);
+        }
+
         return ToStored(existing);
     }
 
@@ -93,11 +103,18 @@ public sealed class ApiKeyService(
         var entity = await db.ApiKeys.FirstOrDefaultAsync(k => k.Name == name, ct);
         if (entity is null)
         {
+            // A reveal attempt for a missing credential is still an access event (Failure).
+            audit.Emit(AuditEventType.TokenAccessed, AuditOutcome.Failure,
+                targetKind: "api_key", targetName: name, detail: "credential not found");
             return null;
         }
         var secret = cipher.DecryptToString(entity.FieldsCipher);
         entity.LastUsedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(ct);
+
+        audit.Emit(AuditEventType.TokenAccessed, AuditOutcome.Success,
+            targetKind: "api_key", targetName: entity.Name);
+
         return new ApiKeySecret(secret, entity.HeaderName, entity.Prefix, entity.Username, entity.BaseUrl, entity.DocsUrl, entity.Description);
     }
 

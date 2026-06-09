@@ -26,6 +26,10 @@ public sealed class VaultDbContext : DbContext, IDataProtectionKeyContext
     public DbSet<OAuthTokenEntity> OAuthTokens => Set<OAuthTokenEntity>();
     public DbSet<ProviderManifestEntity> ProviderManifests => Set<ProviderManifestEntity>();
     public DbSet<OAuthStateEntity> OAuthStates => Set<OAuthStateEntity>();
+
+    /// <summary>Append-only audit trail. Not a <c>BaseEntity</c>: no per-user filter, no update path.</summary>
+    public DbSet<AuditLogEntity> AuditLogs => Set<AuditLogEntity>();
+
     public DbSet<DataProtectionKey> DataProtectionKeys => Set<DataProtectionKey>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

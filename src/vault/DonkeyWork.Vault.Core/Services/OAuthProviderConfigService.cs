@@ -1,5 +1,7 @@
 using System.Text.Json;
 using DonkeyWork.Vault.Contracts;
+using DonkeyWork.Vault.Contracts.Audit;
+using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Crypto;
 using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Entities;
@@ -18,7 +20,7 @@ public interface IOAuthProviderConfigService
 }
 
 public sealed class OAuthProviderConfigService(
-    VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller) : IOAuthProviderConfigService
+    VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller, AuditEmitter audit) : IOAuthProviderConfigService
 {
     public async Task<IReadOnlyList<OAuthConfigSummary>> ListAsync(CancellationToken ct)
     {
@@ -33,6 +35,7 @@ public sealed class OAuthProviderConfigService(
     {
         var row = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderKey == provider, ct);
         var scopesJson = JsonSerializer.Serialize(scopes);
+        var isNew = row is null;
         if (row is null)
         {
             if (string.IsNullOrEmpty(clientSecret))
@@ -63,6 +66,14 @@ public sealed class OAuthProviderConfigService(
             row.UpdatedAt = DateTimeOffset.UtcNow;
         }
         await db.SaveChangesAsync(ct);
+
+        // Only the first creation of a provider config is a CredentialCreated event.
+        if (isNew)
+        {
+            audit.Emit(AuditEventType.CredentialCreated, AuditOutcome.Success,
+                targetKind: "provider_config", targetProvider: provider, targetName: provider);
+        }
+
         return row.Id;
     }
 

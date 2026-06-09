@@ -1,3 +1,5 @@
+using DonkeyWork.Vault.Contracts.Audit;
+using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Services;
 using Grpc.Core;
 using Grpc.Core.Interceptors;
@@ -14,10 +16,18 @@ namespace DonkeyWork.Vault.Api.Identity;
 ///   <item><c>x-internal-token</c> — the trusted Portal hop; the asserted <c>x-user-id</c> is trusted.</item>
 ///   <item>bare <c>x-user-id</c> — legacy/on-prem only, off unless <see cref="VaultAuthOptions.AllowUnauthenticatedUserId"/>.</item>
 /// </list>
+/// It also populates the per-request <see cref="IAuditContextAccessor"/> (redacted headers, resolved
+/// source IP, access-key reference) and emits <c>AuthFailed</c> on every rejected path so the audit
+/// trail captures auth outcomes. The source IP is read from the connection's
+/// <c>RemoteIpAddress</c>, which <c>UseForwardedHeaders</c> has already corrected to the real client.
 /// </summary>
-public sealed class UserContextInterceptor(IOptions<VaultAuthOptions> options) : Interceptor
+public sealed class UserContextInterceptor(
+    IOptions<VaultAuthOptions> options,
+    IAuditContextAccessor auditContext,
+    IAuditLog auditLog) : Interceptor
 {
     private const string Package = "donkeywork.vault.v1";
+    private const string Transport = "grpc";
 
     // The OAuth callback exchange is anonymous — it derives identity from the state row.
     private static readonly string AnonymousMethod = $"/{Package}.OAuthFlow/Complete";
@@ -37,18 +47,23 @@ public sealed class UserContextInterceptor(IOptions<VaultAuthOptions> options) :
         UnaryServerMethod<TRequest, TResponse> continuation)
     {
         var method = context.Method;
+        var headers = context.RequestHeaders;
+
+        // Capture request metadata (redacted headers + resolved IP) up-front so every path —
+        // including the anonymous callback and auth failures — has IP/headers available.
+        PublishAuditContext(context, accessKey: null);
+
         if (method == AnonymousMethod)
         {
             return await continuation(request, context);
         }
-
-        var headers = context.RequestHeaders;
 
         // (2-only) Authenticate is the portal's bootstrap: it must carry the internal token.
         if (method == AuthenticateMethod)
         {
             if (!InternalTokenValid(headers))
             {
+                EmitAuthFailed(method, "internal token required.");
                 throw Unauthenticated("internal token required.");
             }
             return await continuation(request, context);
@@ -62,14 +77,23 @@ public sealed class UserContextInterceptor(IOptions<VaultAuthOptions> options) :
             var principal = await svc.AuthenticateAsync(apiKey, context.CancellationToken);
             if (principal is null)
             {
+                EmitAuthFailed(method, "invalid or disabled API key.");
                 throw Unauthenticated("invalid or disabled API key.");
             }
+
+            // Re-publish with the resolved key reference (id / prefix / name) so subsequent events
+            // on this request carry it. The secret and its hash never enter the audit context.
+            PublishAuditContext(context, principal);
+
             var required = MethodScopes.TryGetValue(method, out var s) ? s : "vault:readwrite";
             if (!HasScope(principal.Scopes, required))
             {
+                EmitAuthFailed(method, $"missing scope '{required}'.",
+                    principal.UserId, principal.TenantId, principal.Id, principal.KeyPrefix, principal.Name);
                 throw new RpcException(new Status(StatusCode.PermissionDenied, $"API key missing required scope '{required}'."));
             }
             VaultCallerContext.Set(principal.UserId, principal.TenantId);
+            EmitAuthSucceeded(method, principal);
             return await continuation(request, context);
         }
 
@@ -78,6 +102,7 @@ public sealed class UserContextInterceptor(IOptions<VaultAuthOptions> options) :
         {
             if (!TryReadUser(headers, out var hopUser, out var hopTenant))
             {
+                EmitAuthFailed(method, "missing or invalid x-user-id metadata.");
                 throw Unauthenticated("missing or invalid x-user-id metadata.");
             }
             VaultCallerContext.Set(hopUser, hopTenant);
@@ -91,7 +116,65 @@ public sealed class UserContextInterceptor(IOptions<VaultAuthOptions> options) :
             return await continuation(request, context);
         }
 
+        EmitAuthFailed(method, "authentication required: present an x-api-key.");
         throw Unauthenticated("authentication required: present an x-api-key.");
+    }
+
+    /// <summary>
+    /// Resolve and publish the per-request audit metadata: deny-by-default redacted headers and the
+    /// real client IP (already corrected by ForwardedHeaders). When an access key is known, its
+    /// id / prefix / name are recorded — never the secret nor its hash.
+    /// </summary>
+    private void PublishAuditContext(ServerCallContext context, AccessKeyPrincipal? accessKey)
+    {
+        var redacted = AuditHeaderRedactor.Redact(
+            context.RequestHeaders.Select(h => new KeyValuePair<string, string>(h.Key, h.Value)));
+
+        string? sourceIp = null;
+        try
+        {
+            sourceIp = context.GetHttpContext()?.Connection.RemoteIpAddress?.ToString();
+        }
+        catch
+        {
+            // No HttpContext (e.g. in tests) — leave the IP null.
+        }
+
+        auditContext.Set(new AuditRequestInfo(
+            SourceIp: sourceIp,
+            Headers: redacted,
+            AccessKeyId: accessKey?.Id,
+            AccessKeyPrefix: accessKey?.KeyPrefix,
+            AccessKeyName: accessKey?.Name,
+            Transport: Transport,
+            Method: context.Method));
+    }
+
+    private void EmitAuthSucceeded(string method, AccessKeyPrincipal principal)
+    {
+        var info = auditContext.Current;
+        auditLog.Enqueue(new AuditEvent(
+            AuditEventType.AuthSucceeded, AuditOutcome.Success,
+            principal.UserId, principal.TenantId,
+            principal.Id, principal.KeyPrefix, principal.Name,
+            info.SourceIp, info.Headers,
+            TargetKind: "access_key", TargetProvider: null, TargetAccount: null, TargetName: principal.Name,
+            Transport, method, Detail: null, CreatedAt: DateTimeOffset.UtcNow));
+    }
+
+    private void EmitAuthFailed(
+        string method, string reason,
+        Guid userId = default, Guid tenantId = default,
+        Guid? keyId = null, string? keyPrefix = null, string? keyName = null)
+    {
+        var info = auditContext.Current;
+        auditLog.Enqueue(new AuditEvent(
+            AuditEventType.AuthFailed, AuditOutcome.Failure,
+            userId, tenantId,
+            keyId, keyPrefix, keyName,
+            info.SourceIp, info.Headers,
+            TargetKind: null, TargetProvider: null, TargetAccount: null, TargetName: null,
+            Transport, method, Detail: reason, CreatedAt: DateTimeOffset.UtcNow));
     }
 
     private bool InternalTokenValid(Metadata headers) =>
