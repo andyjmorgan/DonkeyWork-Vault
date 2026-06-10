@@ -70,7 +70,7 @@ dwvault credentials create <name> --secret <v> --kind <kind> [--description ..] 
 dwvault credentials delete <name>        # remove a stored credential
 
 dwvault oauth list                       # connected OAuth providers (provider/account/expiry/scopes)
-dwvault oauth token <provider> [--account <a>]   # a valid access token to stdout (auto-refreshed)
+dwvault oauth get <provider> [--account <a>]   # a valid access token to stdout (auto-refreshed)
 
 dwvault keys list                        # access keys (scoped auth credentials)
 dwvault keys create <name> --scope vault:readwrite
@@ -167,7 +167,7 @@ curl -H "$H: ${P}$(dwvault credentials get "$NAME")" "$B/health"
 curl -H "$(dwvault credentials header acme-api)" https://api.acme.com/health
 
 # OAuth: the token IS the credential; always Authorization: Bearer <token> (auto-refreshed):
-TOKEN=$(dwvault oauth token microsoft) && \
+TOKEN=$(dwvault oauth get microsoft) && \
   curl -H "Authorization: Bearer $TOKEN" https://graph.microsoft.com/v1.0/me
 ```
 
