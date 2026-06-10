@@ -28,4 +28,7 @@ public enum AuditEventType
 
     /// <summary>Someone read the audit log itself.</summary>
     AuditAccessed = 7,
+
+    /// <summary>A stored OAuth token (connected account) was deleted.</summary>
+    TokenRemoved = 8,
 }

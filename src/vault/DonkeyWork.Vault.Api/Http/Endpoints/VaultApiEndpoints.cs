@@ -145,21 +145,18 @@ public static class VaultApiEndpoints
         api.MapGet("/manifests", async (ManifestResolver m, CancellationToken ct) =>
         {
             var items = await m.ListOAuthAsync(ct);
-            return TypedResults.Ok(items.Select(x => ToOAuthManifestDto(x, m.IsOAuthBuiltin(x.Key))).ToList());
+            var customKeys = await m.ListCustomOAuthKeysAsync(ct);
+            return TypedResults.Ok(items
+                .Select(x => ToOAuthManifestDto(x, builtin: m.IsOAuthBuiltin(x.Key), overridden: customKeys.Contains(x.Key)))
+                .ToList());
         });
 
-        api.MapPost("/manifests/oauth", async Task<Results<Ok<KeyResponse>, Conflict<ErrorResponse>>> (
+        // A built-in key is permitted here — it stores a per-user override that wins for that user only.
+        api.MapPost("/manifests/oauth", async Task<Ok<KeyResponse>> (
             UpsertOAuthManifestRequest dto, ManifestResolver m, CancellationToken ct) =>
         {
-            try
-            {
-                await m.UpsertOAuthAsync(FromOAuthManifestDto(dto), ct);
-                return TypedResults.Ok(new KeyResponse(dto.Key));
-            }
-            catch (BuiltinManifestException ex)
-            {
-                return TypedResults.Conflict(new ErrorResponse(ex.Message));
-            }
+            await m.UpsertOAuthAsync(FromOAuthManifestDto(dto), ct);
+            return TypedResults.Ok(new KeyResponse(dto.Key));
         });
 
         api.MapPost("/manifests/oauth/discover", async Task<Results<Ok<OAuthManifestDto>, BadRequest<ErrorResponse>>> (
@@ -212,6 +209,9 @@ public static class VaultApiEndpoints
         api.MapGet("/oauth/tokens", async (IOAuthTokenService t, CancellationToken ct) =>
             TypedResults.Ok((await t.ListAsync(ct)).Select(ToOAuthTokenDto).ToList()));
 
+        api.MapDelete("/oauth/tokens/{id:guid}", async Task<Results<NoContent, NotFound>> (Guid id, IOAuthTokenService t, CancellationToken ct) =>
+            await t.DeleteAsync(id, ct) ? TypedResults.NoContent() : TypedResults.NotFound());
+
         api.MapGet("/oauth/{provider}/token", async Task<Results<Ok<OAuthAccessTokenResponse>, NotFound, JsonHttpResult<ErrorResponse>>> (
             string provider, string? account, IOAuthTokenService t, CancellationToken ct) =>
         {
@@ -229,11 +229,13 @@ public static class VaultApiEndpoints
         });
 
         api.MapGet("/oauth/{provider}/connect", async Task<Results<Ok<ConnectResponse>, BadRequest<ErrorResponse>>> (
-            string provider, IOAuthFlowService f, CancellationToken ct) =>
+            string provider, string? scopes, IOAuthFlowService f, CancellationToken ct) =>
         {
             try
             {
-                var r = await f.BeginAsync(provider, null, publicBaseUrl, ct);
+                // Per-connection scope selection from the Connect page; null falls back to config/manifest defaults.
+                var selected = scopes?.Split([' ', ','], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                var r = await f.BeginAsync(provider, selected, publicBaseUrl, ct);
                 return TypedResults.Ok(new ConnectResponse(r.AuthorizeUrl));
             }
             catch (OAuthAuthorizationException ex)
@@ -306,8 +308,8 @@ public static class VaultApiEndpoints
     private static AccessKeyDto ToAccessKeyDto(StoredAccessKey k) => new(
         k.Id, k.Name, k.Description, k.Scopes, k.Enabled, k.Prefix, k.CreatedAt, k.LastUsedAt);
 
-    private static OAuthManifestDto ToOAuthManifestDto(OAuthManifest m, bool builtin) => new(
-        m.Key, m.Name, m.IconUrl, m.DocsUrl, builtin, m.AuthorizationEndpoint, m.TokenEndpoint, m.UserinfoEndpoint,
+    private static OAuthManifestDto ToOAuthManifestDto(OAuthManifest m, bool builtin, bool overridden = false) => new(
+        m.Key, m.Name, m.IconUrl, m.DocsUrl, builtin, overridden, m.AuthorizationEndpoint, m.TokenEndpoint, m.UserinfoEndpoint,
         m.ScopeDelimiter, m.DefaultScopes,
         m.Scopes.Select(s => new OAuthScopeDto(s.Value, s.Description, s.Category, s.Sensitive)).ToList());
 

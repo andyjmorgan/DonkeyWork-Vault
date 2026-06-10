@@ -2,13 +2,11 @@ import { useEffect, useMemo, useState } from 'react'
 import { Plug, Trash2, ExternalLink } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Button } from '../ui/components/button'
-import { Input } from '../ui/components/input'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
 import { ProviderIcon } from '../components/ProviderIcon'
-import { CopyButton } from '../components/CopyButton'
 import { cn } from '../ui/lib/utils'
-import { api, type OAuthProvider, type OAuthConfigItem, type OAuthTokenItem } from '../api'
+import { api, type OAuthProvider, type OAuthScope, type OAuthConfigItem, type OAuthTokenItem } from '../api'
 
 const lbl = 'mb-1 block text-xs text-muted-foreground'
 
@@ -34,7 +32,7 @@ export function ConnectPage() {
   return (
     <>
       <Card>
-        <CardHeader><CardTitle>Connect a provider</CardTitle><CardDescription>Pick a provider, add your OAuth app credentials, choose scopes, then connect.</CardDescription></CardHeader>
+        <CardHeader><CardTitle>Connect a provider</CardTitle><CardDescription>Pick a provider, choose the scopes you want, then connect. Credentials and scopes are set on the Providers tab.</CardDescription></CardHeader>
         <CardContent>
           {providers.length === 0 ? (
             <p className="text-sm text-muted-foreground">No OAuth providers. Add a custom one from the Providers tab.</p>
@@ -65,7 +63,7 @@ export function ConnectPage() {
       </Card>
 
       {sel && (
-        <ProviderSetup
+        <ProviderConnect
           key={sel.key}
           provider={sel}
           config={configs.find((c) => c.provider === sel.key)}
@@ -77,38 +75,30 @@ export function ConnectPage() {
   )
 }
 
-function ProviderSetup({ provider, config, tokens, onChanged }: {
+function ProviderConnect({ provider, config, tokens, onChanged }: {
   provider: OAuthProvider; config?: OAuthConfigItem; tokens: OAuthTokenItem[]; onChanged: () => void
 }) {
-  const [clientId, setClientId] = useState('')
-  const [clientSecret, setClientSecret] = useState('')
-  const [redirect, setRedirect] = useState(config?.redirectUri || '')
   const [scopes, setScopes] = useState<string[]>(config?.scopes?.length ? config.scopes : provider.defaultScopes || [])
-  const [extra, setExtra] = useState('')
   const [msg, setMsg] = useState<string>()
-  const redirectHint = `https://vault.donkeywork.dev/api/oauth/${provider.key}/callback`
 
   const toggle = (v: string) => setScopes((s) => (s.includes(v) ? s.filter((x) => x !== v) : [...s, v]))
 
+  // What the user can pick: the provider's scope catalog, falling back to its default scopes
+  // as plain rows. Scopes are defined on the Providers tab — never edited here.
+  const catalog: OAuthScope[] = useMemo(
+    () => (provider.scopes?.length ? provider.scopes : (provider.defaultScopes || []).map((v) => ({ value: v }))),
+    [provider])
   const groups = useMemo(() => {
-    const g: Record<string, NonNullable<OAuthProvider['scopes']>> = {}
-    for (const s of provider.scopes || []) (g[s.category || 'Other'] ??= []).push(s)
+    const g: Record<string, OAuthScope[]> = {}
+    for (const s of catalog) (g[s.category || 'Other'] ??= []).push(s)
     return g
-  }, [provider])
-  const hasCatalog = (provider.scopes?.length || 0) > 0
+  }, [catalog])
 
-  const saveConfig = async () => {
-    setMsg(undefined)
-    const all = Array.from(new Set([...scopes, ...extra.split(/\s+/).filter(Boolean)]))
-    try {
-      await api.upsertOAuthConfig({ provider: provider.key, clientId, clientSecret: clientSecret || undefined, scopes: all, redirectUri: redirect || undefined })
-      setMsg('Saved.'); setClientSecret(''); onChanged()
-    } catch (e) { setMsg(String(e)) }
-  }
   const connect = async () => {
-    try { const r = await api.connect(provider.key); window.location.href = r.authorizeUrl } catch (e) { setMsg(String(e)) }
+    setMsg(undefined)
+    try { const r = await api.connect(provider.key, scopes); window.location.href = r.authorizeUrl } catch (e) { setMsg(String(e)) }
   }
-  const removeConfig = async () => { if (config) { await api.deleteOAuthConfig(config.id); onChanged() } }
+  const removeToken = async (id: string) => { setMsg(undefined); try { await api.deleteOAuthToken(id); onChanged() } catch (e) { setMsg(String(e)) } }
 
   return (
     <Card>
@@ -122,23 +112,17 @@ function ProviderSetup({ provider, config, tokens, onChanged }: {
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div><Label className={lbl}>Client ID</Label><Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={config ? config.clientIdMasked : ''} /></div>
-          <div><Label className={lbl}>Client secret</Label><Input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={config ? '(blank keeps existing)' : ''} /></div>
-          <div className="sm:col-span-2">
-            <Label className={lbl}>Redirect URI</Label>
-            <Input value={redirect} onChange={(e) => setRedirect(e.target.value)} placeholder={redirectHint} />
-            <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-              <span>Allow-list this exact URL with the provider:</span>
-              <code className="text-accent">{redirectHint}</code>
-              <CopyButton value={redirectHint} />
-            </div>
-          </div>
-        </div>
+        {!config && (
+          <p className="rounded-xl border border-border bg-muted/40 p-3 text-sm text-muted-foreground">
+            No app credentials yet — set the client ID and secret for <span className="font-medium text-foreground">{provider.name}</span> on the Providers tab before connecting.
+          </p>
+        )}
 
         <div>
           <Label className={lbl}>Scopes</Label>
-          {hasCatalog ? (
+          {catalog.length === 0 ? (
+            <p className="text-sm text-muted-foreground">This provider defines no scopes. Add them on the Providers tab.</p>
+          ) : (
             <div className="space-y-3">
               {Object.entries(groups).map(([cat, items]) => (
                 <div key={cat}>
@@ -156,18 +140,13 @@ function ProviderSetup({ provider, config, tokens, onChanged }: {
                   </div>
                 </div>
               ))}
-              <div><Label className={lbl}>Additional scopes (space-separated)</Label><Input value={extra} onChange={(e) => setExtra(e.target.value)} /></div>
             </div>
-          ) : (
-            <Input value={scopes.join(' ')} onChange={(e) => setScopes(e.target.value.split(/\s+/).filter(Boolean))} placeholder="space-separated scopes" />
           )}
         </div>
 
         {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
         <div className="flex flex-wrap gap-2">
-          <Button onClick={saveConfig} disabled={!clientId && !config}>Save config</Button>
-          <Button variant="secondary" onClick={connect} disabled={!config}><Plug className="size-4" /> Connect</Button>
-          {config && <Button variant="ghost" onClick={removeConfig}><Trash2 className="size-4 text-destructive" /> Remove config</Button>}
+          <Button onClick={connect} disabled={!config}><Plug className="size-4" /> Connect</Button>
         </div>
 
         {tokens.length > 0 && (
@@ -176,7 +155,10 @@ function ProviderSetup({ provider, config, tokens, onChanged }: {
             {tokens.map((t) => (
               <div key={t.id} className="flex items-center justify-between rounded-xl border border-border p-2 text-sm">
                 <span>{t.account}</span>
-                <span className="text-xs text-muted-foreground">{t.expiresAt ? `expires ${new Date(t.expiresAt).toLocaleString()}` : 'no expiry'}</span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">{t.expiresAt ? `expires ${new Date(t.expiresAt).toLocaleString()}` : 'no expiry'}</span>
+                  <Button variant="ghost" size="icon" onClick={() => removeToken(t.id)} title="Remove token"><Trash2 className="size-4 text-destructive" /></Button>
+                </div>
               </div>
             ))}
           </div>
