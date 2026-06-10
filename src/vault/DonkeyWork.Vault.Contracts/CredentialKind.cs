@@ -22,6 +22,12 @@ public enum CredentialKind
     [JsonStringEnumMemberName("http_basic")]
     HttpBasic,
 
+    /// <summary>A username + password login that is NOT sent as HTTP Basic (e.g. an OAuth
+    /// ROPC password grant, a DSM/query-param login, a DB user) — username is metadata,
+    /// the secret is the password; no header is assembled.</summary>
+    [JsonStringEnumMemberName("username_password")]
+    UsernamePassword,
+
     /// <summary>SSH login: username + host (base_url = <c>ssh://host:port</c>); secret is the password or key.</summary>
     [JsonStringEnumMemberName("ssh")]
     Ssh,
@@ -38,6 +44,7 @@ public static class CredentialKindExtensions
     {
         CredentialKind.HeaderApiKey => "header_api_key",
         CredentialKind.HttpBasic => "http_basic",
+        CredentialKind.UsernamePassword => "username_password",
         CredentialKind.Ssh => "ssh",
         CredentialKind.ConnectionString => "connection_string",
         _ => "opaque",
@@ -47,6 +54,7 @@ public static class CredentialKindExtensions
     {
         "header_api_key" => CredentialKind.HeaderApiKey,
         "http_basic" => CredentialKind.HttpBasic,
+        "username_password" => CredentialKind.UsernamePassword,
         "ssh" => CredentialKind.Ssh,
         "connection_string" => CredentialKind.ConnectionString,
         _ => CredentialKind.Opaque,

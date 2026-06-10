@@ -92,6 +92,7 @@ to know how to use the secret. Set it on `create`; it defaults to `opaque`.
 | `opaque` (default) | secret returned verbatim — HMAC secrets, tokens with no header, anything bespoke | `--secret` |
 | `header_api_key` | sent as `"<header>: <prefix><secret>"` | `--header` (default Authorization), `--prefix` |
 | `http_basic` | `Authorization: Basic base64(username:secret)` | `--username` (secret is the password) |
+| `username_password` | a username+password login **not** sent as HTTP Basic (OAuth ROPC, DSM/query-param, DB user) | `--username` (secret is the password) |
 | `ssh` | SSH login | `--username`, `--base-url ssh://host:port` (secret = password or key) |
 | `connection_string` | the whole DSN is the secret; returned verbatim | `--base-url` optional |
 
@@ -135,7 +136,7 @@ the Acme API" → `acme-api`). The **NAME** is the identifier you pass to `shape
 
 | Field | Meaning / how to apply |
 |---|---|
-| `kind`       | How to use the secret: `opaque` / `header_api_key` / `http_basic` / `ssh` / `connection_string` (see the kinds table above). |
+| `kind`       | How to use the secret: `opaque` / `header_api_key` / `http_basic` / `username_password` / `ssh` / `connection_string` (see the kinds table above). |
 | `base_url`   | The host the secret is for — build your request URL from this. |
 | `header`     | The HTTP header to put the secret in (e.g. `Authorization`, `x-api-key`). |
 | `prefix`     | Goes **immediately before** the secret in that header (e.g. `Bearer ` → `Authorization: Bearer <secret>`). Often empty. |
