@@ -139,18 +139,18 @@ export function CredentialsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={form.open} onOpenChange={(o) => setForm({ ...form, open: o, item: o ? form.item : undefined })}>
+      <Dialog open={form.open} onOpenChange={(o) => { if (!o) setForm({ open: false, scheme: 'header' }) }}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
             <DialogTitle>{form.item ? (form.view ? form.item.name : `Edit ${form.item.name}`) : (formScheme === 'basic' ? 'Add username + password' : 'Add an API key / token')}</DialogTitle>
-            <DialogDescription>{form.view ? 'Read-only view — choose Edit to make changes.' : 'Self-describing — description / host / docs help agents discover how to use it.'}</DialogDescription>
+            <DialogDescription>{form.view ? 'Read-only view of this credential.' : 'Self-describing — description / host / docs help agents discover how to use it.'}</DialogDescription>
           </DialogHeader>
           <StoreKey
             key={`${form.item?.id ?? 'new'}-${formScheme}-${form.view ? 'view' : 'edit'}`}
             initial={form.item}
             scheme={formScheme}
             readOnly={!!form.view}
-            onEdit={() => setForm({ ...form, view: false })}
+            onClose={() => setForm({ open: false, scheme: 'header' })}
             onStored={() => { load(); setForm({ open: false, scheme: 'header' }) }}
           />
         </DialogContent>
@@ -254,7 +254,10 @@ function RevealButton({ title, load }: { title: string; load: () => Promise<stri
 
 type Scheme = 'header' | 'basic'
 
-function StoreKey({ initial, scheme, readOnly = false, onEdit, onStored }: { initial?: ApiKeyItem; scheme: Scheme; readOnly?: boolean; onEdit?: () => void; onStored: () => void }) {
+function StoreKey({ initial, scheme, readOnly = false, onClose, onStored }: { initial?: ApiKeyItem; scheme: Scheme; readOnly?: boolean; onClose?: () => void; onStored: () => void }) {
+  // Read-only view is always opened with a stored credential. Guarding here keeps a stray render
+  // with no `initial` (e.g. the brief frame as the dialog clears its item on close) from throwing.
+  const view = readOnly && !!initial
   // The scheme is fixed for the lifetime of the dialog — chosen from the + dropdown when adding,
   // or derived from the stored credential when editing. The parent remounts this on a scheme change.
   const [k, setK] = useState({
@@ -291,10 +294,10 @@ function StoreKey({ initial, scheme, readOnly = false, onEdit, onStored }: { ini
         {basic ? (
           <>
             <div><Label className={lbl}>Username{readOnly ? '' : ' *'}</Label><Input value={k.username} readOnly={readOnly} className={ro} onChange={(e) => set({ username: e.target.value })} placeholder="e.g. admin" /></div>
-            <div className="sm:col-span-2"><Label className={lbl}>Password</Label>{readOnly ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} />}</div>
+            <div className="sm:col-span-2"><Label className={lbl}>Password</Label>{view ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} />}</div>
           </>
         ) : (
-          <div><Label className={lbl}>Secret</Label>{readOnly ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : '*'} />}</div>
+          <div><Label className={lbl}>Secret</Label>{view ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : '*'} />}</div>
         )}
 
         <div className="sm:col-span-2"><Label className={lbl}>Description</Label><Textarea {...fieldProps(k.description)} rows={3} value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="what this credential is for" /></div>
@@ -312,7 +315,7 @@ function StoreKey({ initial, scheme, readOnly = false, onEdit, onStored }: { ini
 
         {msg && <p className="text-sm text-destructive sm:col-span-2">{msg}</p>}
         {readOnly ? (
-          <div className="flex justify-end sm:col-span-2"><Button onClick={onEdit}><Pencil className="size-4" /> Edit</Button></div>
+          <div className="flex justify-end sm:col-span-2"><Button variant="outline" onClick={onClose}>Close</Button></div>
         ) : (
           <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || (!editing && !k.secret) || (basic && !k.username.trim())}>{editing ? 'Save changes' : 'Save key'}</Button></div>
         )}
