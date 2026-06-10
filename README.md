@@ -82,7 +82,7 @@ Using the hosted vault:
    ```bash
    dwvault credentials list                          # what's stored + how to use each
    curl -H "Authorization: Bearer $(dwvault credentials get grafana)" https://grafana.example/api/health
-   TOKEN=$(dwvault oauth token microsoft)            # live, auto-refreshed OAuth token
+   TOKEN=$(dwvault oauth get microsoft)            # live, auto-refreshed OAuth token
    ```
 
 The CLI defaults to the hosted vault (`https://vault.donkeywork.dev`). Point it elsewhere with
@@ -156,7 +156,7 @@ dwvault credentials create <name> --secret <v> \
 
 # oauth — live access tokens (auto-refreshed)
 dwvault oauth list                       # connected providers (provider/account/expiry/scopes)
-dwvault oauth token <provider> [--account <a>]   # a valid access token to stdout
+dwvault oauth get <provider> [--account <a>]   # a valid access token to stdout
 
 # keys — scoped access keys for scripts/agents
 dwvault keys list                        # id/name/scopes/enabled/prefix/last-used
@@ -174,7 +174,7 @@ prefix and base URL a credential needs, then `get` (or `header`) it only at call
 curl -H "$(dwvault credentials header grafana)" https://grafana.example.com/api/health
 
 # OAuth (auto-refreshed) access token:
-TOKEN=$(dwvault oauth token microsoft) && \
+TOKEN=$(dwvault oauth get microsoft) && \
   curl -H "Authorization: Bearer $TOKEN" https://graph.microsoft.com/v1.0/me
 ```
 
@@ -215,9 +215,15 @@ dwvault credentials get grafana          # works (vault:read)
 dwvault credentials create x --secret y  # denied (needs vault:readwrite)
 ```
 
-> **Wiring up an agent?** [`examples/skills/credential-manager/`](examples/skills/credential-manager/SKILL.md)
-> is a ready-to-use Claude Code skill that drives the CLI (discover → `shape` → use) with the
-> secret-handling guardrails baked in. Copy it into your agent's skills directory.
+> **Wiring up an agent?** The CLI bundles a ready-to-use Claude Code skill
+> ([`src/cli/skill/SKILL.md`](src/cli/skill/SKILL.md)) that drives the CLI (discover →
+> `shape` → use) with the secret-handling guardrails baked in. Install it straight from
+> the binary:
+>
+> ```bash
+> mkdir -p ~/.claude/skills/credential-manager
+> dwvault skill > ~/.claude/skills/credential-manager/SKILL.md
+> ```
 
 ## The web console
 
@@ -289,9 +295,8 @@ dwvault --addr https://vault.example.com auth login
 ```
 src/vault/      The vault service (.NET): Api (REST + OAuth + SPA host), Core, Persistence, Contracts
 src/portal/     frontend/ — the Vite + React + Tailwind console (built into the vault's wwwroot)
-src/cli/        dwvault — the Go credential CLI
+src/cli/        dwvault — the Go credential CLI (bundles the agent skill: `dwvault skill`)
 api/            openapi.json (the REST contract) + oapi-codegen config
-examples/       reusable examples, e.g. examples/skills/credential-manager (agent skill)
 test/           integration tests
 tools/          maintenance utilities (e.g. importer)
 Dockerfile.vault, install.sh

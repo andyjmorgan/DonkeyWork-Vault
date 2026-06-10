@@ -95,7 +95,12 @@ func main() {
 
 	// `credentials` is the canonical group; `creds` stays as a hidden alias so existing scripts and
 	// agents that shell out keep working without surfacing the shorthand in help.
-	creds := &cobra.Command{Use: "credentials", Aliases: []string{"creds"}, Short: "Manage and retrieve API-key credentials"}
+	creds := &cobra.Command{
+		Use:     "credentials",
+		Aliases: []string{"creds"},
+		Short:   "Manage and retrieve API-key credentials",
+		Long:    "Manage and retrieve API-key credentials.\n\nEvery credential has a kind that tags how the secret is used:\n\n" + kindHelp,
+	}
 	creds.AddCommand(cmdList(), cmdGet(), cmdHeader(), cmdShape(), cmdCreate(), cmdCredDelete())
 
 	oauth := &cobra.Command{Use: "oauth", Short: "Retrieve OAuth access tokens"}
@@ -104,7 +109,7 @@ func main() {
 	keys := &cobra.Command{Use: "keys", Short: "Manage access keys (scoped auth credentials)"}
 	keys.AddCommand(cmdKeysList(), cmdKeysCreate(), cmdKeysSetEnabled(true), cmdKeysSetEnabled(false), cmdKeysDelete())
 
-	root.AddCommand(creds, oauth, keys, authCmd(), cmdUpdate(), cmdUpdateCheckHidden())
+	root.AddCommand(creds, oauth, keys, authCmd(), cmdSkill(), cmdUpdate(), cmdUpdateCheckHidden())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
@@ -233,9 +238,12 @@ func cmdHeader() *cobra.Command {
 func cmdOAuthToken() *cobra.Command {
 	var account string
 	c := &cobra.Command{
-		Use:   "token <provider>",
-		Short: "Print a valid OAuth access token to stdout (auto-refreshed)",
-		Args:  cobra.ExactArgs(1),
+		Use: "get <provider>",
+		// `token` was the original verb; keep it as a hidden alias so existing scripts
+		// and agent skills that shell out keep working.
+		Aliases: []string{"token"},
+		Short:   "Print a valid OAuth access token to stdout (auto-refreshed)",
+		Args:    cobra.ExactArgs(1),
 		RunE: func(_ *cobra.Command, args []string) error {
 			client, err := newClient()
 			if err != nil {
@@ -298,13 +306,7 @@ func cmdCreate() *cobra.Command {
 		Use:   "create <name>",
 		Short: "Store a self-describing credential (set --kind for ssh/connection_string/etc.)",
 		Long: "Store a self-describing credential. --kind tags how the secret is used (default\n" +
-			"opaque); the vault returns it on discovery so an agent knows what it is:\n\n" +
-			"  opaque (default)   — the secret is returned verbatim (HMAC secrets, DSNs, …).\n" +
-			"  header_api_key     — sent as \"<header>: <prefix><secret>\" (--header/--prefix).\n" +
-			"  http_basic         — Authorization: Basic base64(username:secret) (--username).\n" +
-			"  username_password  — a username+password login NOT sent as Basic (ROPC, DSM, DB).\n" +
-			"  ssh                — SSH login: --username + --base-url ssh://host:port.\n" +
-			"  connection_string  — the whole DSN is the secret.",
+			"opaque); the vault returns it on discovery so an agent knows what it is:\n\n" + kindHelp,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if secret == "" {
@@ -403,6 +405,15 @@ func cmdCredDelete() *cobra.Command {
 		},
 	}
 }
+
+// kindHelp is the one-line-per-kind reference shared by `credentials --help`
+// and `credentials create --help`.
+const kindHelp = "  opaque (default)   — the secret is returned verbatim (HMAC secrets, DSNs, …).\n" +
+	"  header_api_key     — sent as \"<header>: <prefix><secret>\" (--header/--prefix).\n" +
+	"  http_basic         — Authorization: Basic base64(username:secret) (--username).\n" +
+	"  username_password  — a username+password login NOT sent as Basic (ROPC, DSM, DB).\n" +
+	"  ssh                — SSH login: --username + --base-url ssh://host:port.\n" +
+	"  connection_string  — the whole DSN is the secret."
 
 // validKind reports whether k is one of the supported credential kinds.
 func validKind(k string) bool {
