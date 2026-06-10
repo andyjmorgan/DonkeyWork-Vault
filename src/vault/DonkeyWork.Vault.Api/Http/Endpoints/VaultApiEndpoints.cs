@@ -142,16 +142,18 @@ public static class VaultApiEndpoints
 
     private static void MapManifests(RouteGroupBuilder api)
     {
+        // The caller's added providers (DB rows).
         api.MapGet("/manifests", async (ManifestResolver m, CancellationToken ct) =>
         {
             var items = await m.ListOAuthAsync(ct);
-            var customKeys = await m.ListCustomOAuthKeysAsync(ct);
-            return TypedResults.Ok(items
-                .Select(x => ToOAuthManifestDto(x, builtin: m.IsOAuthBuiltin(x.Key), overridden: customKeys.Contains(x.Key)))
-                .ToList());
+            return TypedResults.Ok(items.Select(x => ToOAuthManifestDto(x, template: false)).ToList());
         });
 
-        // A built-in slug is permitted here — it stores a per-user overlay of that template.
+        // The library of templates available to add (embedded YAML — never resolved against directly).
+        api.MapGet("/manifests/templates", (ManifestResolver m) =>
+            TypedResults.Ok(m.ListTemplates().Select(x => ToOAuthManifestDto(x, template: true)).ToList()));
+
+        // Add or edit one of the caller's providers (full self-contained manifest copied in).
         api.MapPost("/manifests/oauth", async Task<Results<Ok<KeyResponse>, BadRequest<ErrorResponse>>> (
             UpsertOAuthManifestRequest dto, ManifestResolver m, CancellationToken ct) =>
         {
@@ -172,7 +174,7 @@ public static class VaultApiEndpoints
             try
             {
                 var m = await discovery.DiscoverAsync(dto.Url ?? "", ct);
-                return TypedResults.Ok(ToOAuthManifestDto(m, builtin: false));
+                return TypedResults.Ok(ToOAuthManifestDto(m, template: false));
             }
             catch (Exception ex)
             {
@@ -315,15 +317,15 @@ public static class VaultApiEndpoints
     private static AccessKeyDto ToAccessKeyDto(StoredAccessKey k) => new(
         k.Id, k.Name, k.Description, k.Scopes, k.Enabled, k.Prefix, k.CreatedAt, k.LastUsedAt);
 
-    private static OAuthManifestDto ToOAuthManifestDto(OAuthManifest m, bool builtin, bool overridden = false) => new(
-        m.Id, m.Key, m.Name, m.IconUrl, m.DocsUrl, builtin, overridden, m.AuthorizationEndpoint, m.TokenEndpoint, m.UserinfoEndpoint,
+    private static OAuthManifestDto ToOAuthManifestDto(OAuthManifest m, bool template) => new(
+        m.Id, m.ParentId, m.Key, m.Name, m.IconUrl, m.DocsUrl, template, m.AuthorizationEndpoint, m.TokenEndpoint, m.UserinfoEndpoint,
         m.ScopeDelimiter, m.DefaultScopes,
         m.Scopes.Select(s => new OAuthScopeDto(s.Value, s.Description, s.Category, s.Sensitive)).ToList(),
         m.AuthorizeParams);
 
     private static OAuthManifest FromOAuthManifestDto(UpsertOAuthManifestRequest dto) => new()
     {
-        Key = dto.Key, Name = dto.Name ?? "", IconUrl = dto.IconUrl ?? "", DocsUrl = dto.DocsUrl ?? "",
+        Key = dto.Key, ParentId = dto.ParentId, Name = dto.Name ?? "", IconUrl = dto.IconUrl ?? "", DocsUrl = dto.DocsUrl ?? "",
         AuthorizationEndpoint = dto.AuthorizationEndpoint ?? "", TokenEndpoint = dto.TokenEndpoint ?? "",
         UserinfoEndpoint = dto.UserinfoEndpoint ?? "", ScopeDelimiter = string.IsNullOrEmpty(dto.ScopeDelimiter) ? " " : dto.ScopeDelimiter,
         DefaultScopes = dto.DefaultScopes ?? [],

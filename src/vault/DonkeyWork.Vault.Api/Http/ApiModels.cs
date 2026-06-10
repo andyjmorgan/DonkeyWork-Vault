@@ -93,12 +93,12 @@ public sealed record OAuthScopeDto(string Value, string Description, string Cate
 
 public sealed record OAuthManifestDto(
     Guid Id,
+    Guid ParentId,
     string Key,
     string Name,
     string IconUrl,
     string DocsUrl,
-    bool Builtin,
-    bool Overridden,
+    bool Template,
     string AuthorizationEndpoint,
     string TokenEndpoint,
     string UserinfoEndpoint,
@@ -109,6 +109,7 @@ public sealed record OAuthManifestDto(
 
 public sealed record UpsertOAuthManifestRequest(
     string Key,
+    Guid ParentId,
     string? Name,
     string? IconUrl,
     string? DocsUrl,

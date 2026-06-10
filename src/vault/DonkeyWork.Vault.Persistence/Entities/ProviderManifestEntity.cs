@@ -13,10 +13,13 @@ public sealed class ProviderManifestEntity : BaseEntity
     public string Kind { get; set; } = string.Empty;   // "apikey" | "oauth"
     public string Key { get; set; } = string.Empty;    // the slug / handle (per-user unique)
 
-    /// <summary>Stable provider identity. For a custom provider it is the provider's own id; for an
-    /// overlay of a built-in it is the built-in template's static catalog GUID. Configs/tokens link
-    /// to this, never to <see cref="BaseEntity.Id"/>, so a slug rename or overlay reset never orphans.</summary>
+    /// <summary>Stable provider identity that configs/tokens link to (the provider's own id), so a
+    /// slug rename never orphans. Distinct from <see cref="BaseEntity.Id"/> for historical continuity.</summary>
     public Guid ProviderId { get; set; }
+
+    /// <summary>Historical breadcrumb: the library (YAML) template this provider was copied from, or
+    /// <see cref="Guid.Empty"/> for a hand-authored custom provider. Never read for resolution.</summary>
+    public Guid ParentId { get; set; }
 
     public string DocumentJson { get; set; } = string.Empty;
 }

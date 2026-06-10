@@ -201,16 +201,16 @@ type OAuthConfigDto struct {
 type OAuthManifestDto struct {
 	AuthorizationEndpoint string             `json:"authorizationEndpoint"`
 	AuthorizeParams       map[string]string  `json:"authorizeParams"`
-	Builtin               bool               `json:"builtin"`
 	DefaultScopes         []string           `json:"defaultScopes"`
 	DocsUrl               string             `json:"docsUrl"`
 	IconUrl               string             `json:"iconUrl"`
 	Id                    openapi_types.UUID `json:"id"`
 	Key                   string             `json:"key"`
 	Name                  string             `json:"name"`
-	Overridden            bool               `json:"overridden"`
+	ParentId              openapi_types.UUID `json:"parentId"`
 	ScopeDelimiter        string             `json:"scopeDelimiter"`
 	Scopes                []OAuthScopeDto    `json:"scopes"`
+	Template              bool               `json:"template"`
 	TokenEndpoint         string             `json:"tokenEndpoint"`
 	UserinfoEndpoint      string             `json:"userinfoEndpoint"`
 }
@@ -270,6 +270,7 @@ type UpsertOAuthManifestRequest struct {
 	IconUrl               *string            `json:"iconUrl"`
 	Key                   string             `json:"key"`
 	Name                  *string            `json:"name"`
+	ParentId              openapi_types.UUID `json:"parentId"`
 	ScopeDelimiter        *string            `json:"scopeDelimiter"`
 	Scopes                *[]OAuthScopeDto   `json:"scopes"`
 	TokenEndpoint         *string            `json:"tokenEndpoint"`
@@ -449,6 +450,9 @@ type ClientInterface interface {
 	PostApiV1ManifestsOauthDiscoverWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PostApiV1ManifestsOauthDiscover(ctx context.Context, body PostApiV1ManifestsOauthDiscoverJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiV1ManifestsTemplates request
+	GetApiV1ManifestsTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteApiV1ManifestsKindKey request
 	DeleteApiV1ManifestsKindKey(ctx context.Context, kind string, key string, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -710,6 +714,18 @@ func (c *Client) PostApiV1ManifestsOauthDiscoverWithBody(ctx context.Context, co
 
 func (c *Client) PostApiV1ManifestsOauthDiscover(ctx context.Context, body PostApiV1ManifestsOauthDiscoverJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPostApiV1ManifestsOauthDiscoverRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiV1ManifestsTemplates(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiV1ManifestsTemplatesRequest(c.Server)
 	if err != nil {
 		return nil, err
 	}
@@ -1517,6 +1533,33 @@ func NewPostApiV1ManifestsOauthDiscoverRequestWithBody(server string, contentTyp
 	return req, nil
 }
 
+// NewGetApiV1ManifestsTemplatesRequest generates requests for GetApiV1ManifestsTemplates
+func NewGetApiV1ManifestsTemplatesRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/manifests/templates")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteApiV1ManifestsKindKeyRequest generates requests for DeleteApiV1ManifestsKindKey
 func NewDeleteApiV1ManifestsKindKeyRequest(server string, kind string, key string) (*http.Request, error) {
 	var err error
@@ -1957,6 +2000,9 @@ type ClientWithResponsesInterface interface {
 
 	PostApiV1ManifestsOauthDiscoverWithResponse(ctx context.Context, body PostApiV1ManifestsOauthDiscoverJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1ManifestsOauthDiscoverResponse, error)
 
+	// GetApiV1ManifestsTemplatesWithResponse request
+	GetApiV1ManifestsTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1ManifestsTemplatesResponse, error)
+
 	// DeleteApiV1ManifestsKindKeyWithResponse request
 	DeleteApiV1ManifestsKindKeyWithResponse(ctx context.Context, kind string, key string, reqEditors ...RequestEditorFn) (*DeleteApiV1ManifestsKindKeyResponse, error)
 
@@ -2312,6 +2358,28 @@ func (r PostApiV1ManifestsOauthDiscoverResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PostApiV1ManifestsOauthDiscoverResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiV1ManifestsTemplatesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]OAuthManifestDto
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiV1ManifestsTemplatesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiV1ManifestsTemplatesResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2688,6 +2756,15 @@ func (c *ClientWithResponses) PostApiV1ManifestsOauthDiscoverWithResponse(ctx co
 		return nil, err
 	}
 	return ParsePostApiV1ManifestsOauthDiscoverResponse(rsp)
+}
+
+// GetApiV1ManifestsTemplatesWithResponse request returning *GetApiV1ManifestsTemplatesResponse
+func (c *ClientWithResponses) GetApiV1ManifestsTemplatesWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1ManifestsTemplatesResponse, error) {
+	rsp, err := c.GetApiV1ManifestsTemplates(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiV1ManifestsTemplatesResponse(rsp)
 }
 
 // DeleteApiV1ManifestsKindKeyWithResponse request returning *DeleteApiV1ManifestsKindKeyResponse
@@ -3161,6 +3238,32 @@ func ParsePostApiV1ManifestsOauthDiscoverResponse(rsp *http.Response) (*PostApiV
 			return nil, err
 		}
 		response.JSON400 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetApiV1ManifestsTemplatesResponse parses an HTTP response from a GetApiV1ManifestsTemplatesWithResponse call
+func ParseGetApiV1ManifestsTemplatesResponse(rsp *http.Response) (*GetApiV1ManifestsTemplatesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiV1ManifestsTemplatesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []OAuthManifestDto
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
 
 	}
 

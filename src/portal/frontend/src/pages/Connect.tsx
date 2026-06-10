@@ -48,7 +48,7 @@ export function ConnectPage() {
                       <ProviderIcon src={p.iconUrl} name={p.name} />
                       <div className="min-w-0">
                         <div className="truncate font-medium">{p.name}</div>
-                        <div className="text-xs text-muted-foreground">{p.builtin ? 'built-in' : 'custom'}</div>
+                        <div className="text-xs text-muted-foreground">{p.key}</div>
                       </div>
                     </div>
                     {st === 'connected' ? <Badge variant="secondary" className="w-fit text-success">● Connected</Badge>
