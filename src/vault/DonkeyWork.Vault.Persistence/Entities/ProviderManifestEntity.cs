@@ -11,6 +11,12 @@ namespace DonkeyWork.Vault.Persistence.Entities;
 public sealed class ProviderManifestEntity : BaseEntity
 {
     public string Kind { get; set; } = string.Empty;   // "apikey" | "oauth"
-    public string Key { get; set; } = string.Empty;
+    public string Key { get; set; } = string.Empty;    // the slug / handle (per-user unique)
+
+    /// <summary>Stable provider identity. For a custom provider it is the provider's own id; for an
+    /// overlay of a built-in it is the built-in template's static catalog GUID. Configs/tokens link
+    /// to this, never to <see cref="BaseEntity.Id"/>, so a slug rename or overlay reset never orphans.</summary>
+    public Guid ProviderId { get; set; }
+
     public string DocumentJson { get; set; } = string.Empty;
 }

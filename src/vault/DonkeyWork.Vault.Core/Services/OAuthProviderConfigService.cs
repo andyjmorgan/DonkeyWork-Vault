@@ -3,6 +3,7 @@ using DonkeyWork.Vault.Contracts;
 using DonkeyWork.Vault.Contracts.Audit;
 using DonkeyWork.Vault.Core.Audit;
 using DonkeyWork.Vault.Core.Crypto;
+using DonkeyWork.Vault.Core.Manifests;
 using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
@@ -20,7 +21,7 @@ public interface IOAuthProviderConfigService
 }
 
 public sealed class OAuthProviderConfigService(
-    VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller, AuditEmitter audit) : IOAuthProviderConfigService
+    VaultDbContext db, IEnvelopeCipher cipher, IVaultCallerContext caller, AuditEmitter audit, ManifestResolver manifests) : IOAuthProviderConfigService
 {
     public async Task<IReadOnlyList<OAuthConfigSummary>> ListAsync(CancellationToken ct)
     {
@@ -33,7 +34,10 @@ public sealed class OAuthProviderConfigService(
 
     public async Task<Guid> UpsertAsync(string provider, string clientId, string? clientSecret, IReadOnlyList<string> scopes, string? redirectUri, CancellationToken ct)
     {
-        var row = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderKey == provider, ct);
+        // Credentials belong to the stable provider identity, not the (renameable) slug.
+        var providerId = await manifests.ResolveProviderIdAsync(provider, caller.UserId, ct)
+            ?? throw new CredentialValidationException($"unknown provider '{provider}'. Save the provider first.");
+        var row = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderId == providerId, ct);
         var scopesJson = JsonSerializer.Serialize(scopes);
         var isNew = row is null;
         if (row is null)
@@ -46,6 +50,7 @@ public sealed class OAuthProviderConfigService(
             {
                 UserId = caller.UserId,
                 TenantId = caller.TenantId,
+                ProviderId = providerId,
                 ProviderKey = provider,
                 ClientIdCipher = cipher.EncryptString(clientId),
                 ClientSecretCipher = cipher.EncryptString(clientSecret),
@@ -56,6 +61,7 @@ public sealed class OAuthProviderConfigService(
         }
         else
         {
+            row.ProviderKey = provider;   // keep the display slug current across a rename
             row.ClientIdCipher = cipher.EncryptString(clientId);
             if (!string.IsNullOrEmpty(clientSecret))
             {

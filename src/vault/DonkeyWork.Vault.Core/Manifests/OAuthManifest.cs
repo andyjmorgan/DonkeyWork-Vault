@@ -14,6 +14,10 @@ public sealed class OAuthScopeDef
 
 public sealed class OAuthManifest
 {
+    /// <summary>Stable provider identity. For built-ins this is the static GUID baked into the YAML
+    /// template (a catalog id, not a DB key); for custom providers it is the DB row's id.</summary>
+    public Guid Id { get; set; }
+
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;
     public string IconUrl { get; set; } = string.Empty;
@@ -49,6 +53,7 @@ public sealed class OAuthManifestLoader
 
         var asm = typeof(OAuthManifestLoader).Assembly;
         var dict = new Dictionary<string, OAuthManifest>(StringComparer.OrdinalIgnoreCase);
+        var byId = new Dictionary<Guid, OAuthManifest>();
 
         foreach (var resource in asm.GetManifestResourceNames()
                      .Where(n => n.Contains(".Embedded.oauth.") && n.EndsWith(".yaml", StringComparison.OrdinalIgnoreCase)))
@@ -61,13 +66,28 @@ public sealed class OAuthManifestLoader
             {
                 throw new InvalidOperationException($"OAuth manifest '{resource}' missing key/token_endpoint.");
             }
+            // The static id is this provider's stable identity that configs/tokens link to; a missing
+            // or duplicated id silently corrupts those links, so fail fast at startup.
+            if (m.Id == Guid.Empty)
+            {
+                throw new InvalidOperationException($"OAuth manifest '{resource}' missing a stable 'id' GUID.");
+            }
+            if (!byId.TryAdd(m.Id, m))
+            {
+                throw new InvalidOperationException($"OAuth manifest '{resource}' reuses id {m.Id}, already used by '{byId[m.Id].Key}'.");
+            }
             dict[m.Key] = m;
         }
 
         _manifests = dict;
+        _byId = byId;
     }
+
+    private readonly IReadOnlyDictionary<Guid, OAuthManifest> _byId;
 
     public IReadOnlyList<OAuthManifest> All => _manifests.Values.OrderBy(m => m.Key, StringComparer.Ordinal).ToList();
 
     public OAuthManifest? Get(string key) => _manifests.TryGetValue(key, out var m) ? m : null;
+
+    public OAuthManifest? Get(Guid id) => _byId.TryGetValue(id, out var m) ? m : null;
 }

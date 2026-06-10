@@ -602,6 +602,10 @@
           "iconUrl": {
             "type": "string"
           },
+          "id": {
+            "format": "uuid",
+            "type": "string"
+          },
           "key": {
             "type": "string"
           },
@@ -628,6 +632,7 @@
           }
         },
         "required": [
+          "id",
           "key",
           "name",
           "iconUrl",
@@ -894,17 +899,9 @@
         ]
       }
     },
-    "/api/oauth/{provider}/callback": {
+    "/api/oauth/callback": {
       "get": {
         "parameters": [
-          {
-            "in": "path",
-            "name": "provider",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          },
           {
             "in": "query",
             "name": "code",
@@ -1331,6 +1328,16 @@
               }
             },
             "description": "OK"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
           }
         },
         "tags": [

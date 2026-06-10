@@ -16,7 +16,8 @@ public sealed class OAuthProviderConfigConfiguration : IEntityTypeConfiguration<
         b.Property(x => x.ClientSecretCipher).HasColumnType("bytea").IsRequired();
         b.Property(x => x.ScopesJson).HasColumnType("jsonb");
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
-        b.HasIndex(x => new { x.UserId, x.ProviderKey }).IsUnique();
+        // Identity, not the (renameable) slug, is the uniqueness + lookup key.
+        b.HasIndex(x => new { x.UserId, x.ProviderId }).IsUnique();
     }
 }
 
@@ -33,7 +34,7 @@ public sealed class OAuthTokenConfiguration : IEntityTypeConfiguration<OAuthToke
         b.Property(x => x.RefreshTokenCipher).HasColumnType("bytea").IsRequired();
         b.Property(x => x.ScopesJson).HasColumnType("jsonb");
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
-        b.HasIndex(x => new { x.UserId, x.ProviderKey, x.Account }).IsUnique();
+        b.HasIndex(x => new { x.UserId, x.ProviderId, x.Account }).IsUnique();
         b.HasIndex(x => x.ExpiresAt);
     }
 }

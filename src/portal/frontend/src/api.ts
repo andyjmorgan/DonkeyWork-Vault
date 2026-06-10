@@ -21,7 +21,7 @@ async function authed(path: string, init: RequestInit = {}) {
 
 export interface OAuthScope { value: string; description?: string; category?: string; sensitive?: boolean }
 export interface OAuthProvider {
-  key: string; name: string; iconUrl?: string; docsUrl?: string; builtin?: boolean; overridden?: boolean
+  id?: string; key: string; name: string; iconUrl?: string; docsUrl?: string; builtin?: boolean; overridden?: boolean
   authorizationEndpoint: string; tokenEndpoint: string
   userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]; scopes?: OAuthScope[]
   authorizeParams?: Record<string, string>

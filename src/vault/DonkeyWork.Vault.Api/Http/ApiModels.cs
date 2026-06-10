@@ -92,6 +92,7 @@ public sealed record AccessKeyEnabledResponse(Guid Id, bool Enabled);
 public sealed record OAuthScopeDto(string Value, string Description, string Category, bool Sensitive);
 
 public sealed record OAuthManifestDto(
+    Guid Id,
     string Key,
     string Name,
     string IconUrl,

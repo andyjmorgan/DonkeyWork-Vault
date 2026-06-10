@@ -39,7 +39,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/oauth/{provider}/callback": {
+    "/api/oauth/callback": {
         parameters: {
             query?: never;
             header?: never;
@@ -54,9 +54,7 @@ export interface paths {
                     error?: string;
                 };
                 header?: never;
-                path: {
-                    provider: string;
-                };
+                path?: never;
                 cookie?: never;
             };
             requestBody?: never;
@@ -523,6 +521,15 @@ export interface paths {
                     };
                     content: {
                         "application/json": components["schemas"]["KeyResponse"];
+                    };
+                };
+                /** @description Bad Request */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ErrorResponse"];
                     };
                 };
             };
@@ -1102,6 +1109,8 @@ export interface components {
             defaultScopes: string[];
             docsUrl: string;
             iconUrl: string;
+            /** Format: uuid */
+            id: string;
             key: string;
             name: string;
             overridden: boolean;

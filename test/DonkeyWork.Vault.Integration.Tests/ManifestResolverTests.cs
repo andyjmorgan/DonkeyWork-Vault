@@ -43,22 +43,22 @@ public sealed class ManifestResolverTests : IAsyncLifetime
     };
 
     [Fact]
-    public async Task Upsert_OnBuiltinKey_CreatesPerUserOverride()
+    public async Task Customizing_Builtin_StoresOverlay_InheritsEndpoints_OverridesScopes()
     {
         var builtin = _builtins.All[0]; // e.g. "github" / "google" / "microsoft"
         var alice = Guid.NewGuid();
         var (db, resolver) = await BuildAsync(new FixedCaller(alice));
         await using var _ = db;
 
-        // Forking a built-in template into a private override is allowed and wins for that user.
-        var fork = Custom(builtin.Key); // distinct endpoints from the template
-        await resolver.UpsertOAuthAsync(fork, default);
+        // Customize: only default scopes are edited; endpoints are NOT supplied (overlay semantics).
+        await resolver.UpsertOAuthAsync(new OAuthManifest { Key = builtin.Key, DefaultScopes = ["custom.scope"] }, default);
 
-        Assert.Equal(fork.TokenEndpoint, (await resolver.GetOAuthAsync(builtin.Key, alice, default))!.TokenEndpoint);
-        Assert.Equal(fork.TokenEndpoint, (await resolver.ListOAuthAsync(default)).Single(m => m.Key == builtin.Key).TokenEndpoint);
+        var resolved = await resolver.GetOAuthAsync(builtin.Key, alice, default);
+        Assert.NotNull(resolved);
+        Assert.Equal(builtin.Id, resolved!.Id);                       // identity = the catalog GUID
+        Assert.Equal(builtin.TokenEndpoint, resolved.TokenEndpoint);  // unedited fields inherit from the template
+        Assert.Equal(["custom.scope"], resolved.DefaultScopes);       // edited field overrides
         Assert.Contains(builtin.Key, await resolver.ListCustomOAuthKeysAsync(default));
-
-        // Exactly one override row was written for this owner.
         Assert.Equal(1, await db.ProviderManifests.IgnoreQueryFilters().CountAsync());
     }
 
