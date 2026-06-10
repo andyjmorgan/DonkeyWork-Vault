@@ -581,6 +581,12 @@
           "authorizationEndpoint": {
             "type": "string"
           },
+          "authorizeParams": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
           "builtin": {
             "type": "boolean"
           },
@@ -633,7 +639,8 @@
           "userinfoEndpoint",
           "scopeDelimiter",
           "defaultScopes",
-          "scopes"
+          "scopes",
+          "authorizeParams"
         ],
         "type": "object"
       },
@@ -796,6 +803,13 @@
             "nullable": true,
             "type": "string"
           },
+          "authorizeParams": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "nullable": true,
+            "type": "object"
+          },
           "defaultScopes": {
             "items": {
               "type": "string"
@@ -848,7 +862,8 @@
           "userinfoEndpoint",
           "scopeDelimiter",
           "defaultScopes",
-          "scopes"
+          "scopes",
+          "authorizeParams"
         ],
         "type": "object"
       }

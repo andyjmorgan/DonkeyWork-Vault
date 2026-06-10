@@ -68,10 +68,11 @@ public sealed class OAuthFlowService(
             ["code_challenge"] = PkceUtility.Challenge(verifier),
             ["code_challenge_method"] = "S256",
         };
-        if (provider == "google")
+        // Provider-specific authorize params come from the manifest (YAML template or custom override),
+        // e.g. Google's access_type=offline / prompt=consent or Dropbox's token_access_type=offline.
+        foreach (var (k, v) in manifest.AuthorizeParams)
         {
-            q["access_type"] = "offline";
-            q["prompt"] = "consent";
+            q[k] = v;
         }
 
         var url = manifest.AuthorizationEndpoint + "?" +

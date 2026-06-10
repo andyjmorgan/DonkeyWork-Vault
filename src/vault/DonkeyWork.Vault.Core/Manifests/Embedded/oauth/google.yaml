@@ -7,6 +7,10 @@ token_endpoint: https://oauth2.googleapis.com/token
 userinfo_endpoint: https://www.googleapis.com/oauth2/v3/userinfo
 scope_delimiter: " "
 default_scopes: [openid, email, profile]
+# Required for Google to return a refresh_token (and to re-prompt so one is always issued).
+authorize_params:
+  access_type: offline
+  prompt: consent
 scopes:
   - { value: openid, description: Sign you in, category: Identity }
   - { value: email, description: Your email address, category: Identity }

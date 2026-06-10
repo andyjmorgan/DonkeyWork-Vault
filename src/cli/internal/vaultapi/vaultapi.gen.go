@@ -199,18 +199,19 @@ type OAuthConfigDto struct {
 
 // OAuthManifestDto defines model for OAuthManifestDto.
 type OAuthManifestDto struct {
-	AuthorizationEndpoint string          `json:"authorizationEndpoint"`
-	Builtin               bool            `json:"builtin"`
-	DefaultScopes         []string        `json:"defaultScopes"`
-	DocsUrl               string          `json:"docsUrl"`
-	IconUrl               string          `json:"iconUrl"`
-	Key                   string          `json:"key"`
-	Name                  string          `json:"name"`
-	Overridden            bool            `json:"overridden"`
-	ScopeDelimiter        string          `json:"scopeDelimiter"`
-	Scopes                []OAuthScopeDto `json:"scopes"`
-	TokenEndpoint         string          `json:"tokenEndpoint"`
-	UserinfoEndpoint      string          `json:"userinfoEndpoint"`
+	AuthorizationEndpoint string            `json:"authorizationEndpoint"`
+	AuthorizeParams       map[string]string `json:"authorizeParams"`
+	Builtin               bool              `json:"builtin"`
+	DefaultScopes         []string          `json:"defaultScopes"`
+	DocsUrl               string            `json:"docsUrl"`
+	IconUrl               string            `json:"iconUrl"`
+	Key                   string            `json:"key"`
+	Name                  string            `json:"name"`
+	Overridden            bool              `json:"overridden"`
+	ScopeDelimiter        string            `json:"scopeDelimiter"`
+	Scopes                []OAuthScopeDto   `json:"scopes"`
+	TokenEndpoint         string            `json:"tokenEndpoint"`
+	UserinfoEndpoint      string            `json:"userinfoEndpoint"`
 }
 
 // OAuthScopeDto defines model for OAuthScopeDto.
@@ -261,16 +262,17 @@ type UpsertOAuthConfigRequest struct {
 
 // UpsertOAuthManifestRequest defines model for UpsertOAuthManifestRequest.
 type UpsertOAuthManifestRequest struct {
-	AuthorizationEndpoint *string          `json:"authorizationEndpoint"`
-	DefaultScopes         *[]string        `json:"defaultScopes"`
-	DocsUrl               *string          `json:"docsUrl"`
-	IconUrl               *string          `json:"iconUrl"`
-	Key                   string           `json:"key"`
-	Name                  *string          `json:"name"`
-	ScopeDelimiter        *string          `json:"scopeDelimiter"`
-	Scopes                *[]OAuthScopeDto `json:"scopes"`
-	TokenEndpoint         *string          `json:"tokenEndpoint"`
-	UserinfoEndpoint      *string          `json:"userinfoEndpoint"`
+	AuthorizationEndpoint *string            `json:"authorizationEndpoint"`
+	AuthorizeParams       *map[string]string `json:"authorizeParams"`
+	DefaultScopes         *[]string          `json:"defaultScopes"`
+	DocsUrl               *string            `json:"docsUrl"`
+	IconUrl               *string            `json:"iconUrl"`
+	Key                   string             `json:"key"`
+	Name                  *string            `json:"name"`
+	ScopeDelimiter        *string            `json:"scopeDelimiter"`
+	Scopes                *[]OAuthScopeDto   `json:"scopes"`
+	TokenEndpoint         *string            `json:"tokenEndpoint"`
+	UserinfoEndpoint      *string            `json:"userinfoEndpoint"`
 }
 
 // GetApiOauthProviderCallbackParams defines parameters for GetApiOauthProviderCallback.

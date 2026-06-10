@@ -24,6 +24,7 @@ export interface OAuthProvider {
   key: string; name: string; iconUrl?: string; docsUrl?: string; builtin?: boolean; overridden?: boolean
   authorizationEndpoint: string; tokenEndpoint: string
   userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]; scopes?: OAuthScope[]
+  authorizeParams?: Record<string, string>
 }
 export type CredentialKind = 'opaque' | 'header_api_key' | 'http_basic' | 'username_password' | 'ssh' | 'connection_string'
 export interface ApiKeyItem { id: string; name: string; description?: string; baseUrl?: string; docsUrl?: string; header?: string; prefix?: string; username?: string; kind: CredentialKind; createdAt: string; lastUsedAt: string }

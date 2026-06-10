@@ -311,7 +311,8 @@ public static class VaultApiEndpoints
     private static OAuthManifestDto ToOAuthManifestDto(OAuthManifest m, bool builtin, bool overridden = false) => new(
         m.Key, m.Name, m.IconUrl, m.DocsUrl, builtin, overridden, m.AuthorizationEndpoint, m.TokenEndpoint, m.UserinfoEndpoint,
         m.ScopeDelimiter, m.DefaultScopes,
-        m.Scopes.Select(s => new OAuthScopeDto(s.Value, s.Description, s.Category, s.Sensitive)).ToList());
+        m.Scopes.Select(s => new OAuthScopeDto(s.Value, s.Description, s.Category, s.Sensitive)).ToList(),
+        m.AuthorizeParams);
 
     private static OAuthManifest FromOAuthManifestDto(UpsertOAuthManifestRequest dto) => new()
     {
@@ -320,6 +321,7 @@ public static class VaultApiEndpoints
         UserinfoEndpoint = dto.UserinfoEndpoint ?? "", ScopeDelimiter = string.IsNullOrEmpty(dto.ScopeDelimiter) ? " " : dto.ScopeDelimiter,
         DefaultScopes = dto.DefaultScopes ?? [],
         Scopes = (dto.Scopes ?? []).Select(s => new OAuthScopeDef { Value = s.Value, Description = s.Description, Category = s.Category, Sensitive = s.Sensitive }).ToList(),
+        AuthorizeParams = dto.AuthorizeParams ?? [],
     };
 
     private static OAuthConfigDto ToOAuthConfigDto(OAuthConfigSummary i) => new(

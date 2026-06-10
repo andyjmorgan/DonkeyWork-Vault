@@ -111,6 +111,8 @@ function OAuthEditor({ value, config, builtin, onClose, onSaved }: {
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [redirect, setRedirect] = useState(config?.redirectUri || '')
+  const [aprows, setAprows] = useState<{ key: string; value: string }[]>(
+    Object.entries(value.authorizeParams || {}).map(([key, val]) => ({ key, value: val })))
   const [msg, setMsg] = useState<string>()
   const set = (patch: Partial<OAuthProvider>) => setM((cur) => ({ ...cur, ...patch }))
   const redirectHint = `https://vault.donkeywork.dev/api/oauth/${m.key}/callback`
@@ -136,6 +138,10 @@ function OAuthEditor({ value, config, builtin, onClose, onSaved }: {
   const setRow = (i: number, patch: Partial<OAuthScope>) => setRows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)))
   const delRow = (i: number) => setRows((r) => r.filter((_, j) => j !== i))
 
+  const addAp = () => setAprows((r) => [...r, { key: '', value: '' }])
+  const setAp = (i: number, patch: Partial<{ key: string; value: string }>) => setAprows((r) => r.map((x, j) => (j === i ? { ...x, ...patch } : x)))
+  const delAp = (i: number) => setAprows((r) => r.filter((_, j) => j !== i))
+
   const removeCredentials = async () => {
     if (!config) return
     setMsg(undefined)
@@ -151,8 +157,9 @@ function OAuthEditor({ value, config, builtin, onClose, onSaved }: {
     // Preserve the template/existing default selection (filtered to surviving scopes); a brand-new
     // provider with no defaults defaults to selecting everything it defines.
     const defaultScopes = m.defaultScopes?.length ? m.defaultScopes.filter((v) => values.includes(v)) : values
+    const authorizeParams = Object.fromEntries(aprows.filter((p) => p.key.trim()).map((p) => [p.key.trim(), p.value]))
     try {
-      await api.upsertOAuthProvider({ ...m, scopeDelimiter: m.scopeDelimiter || ' ', defaultScopes, scopes })
+      await api.upsertOAuthProvider({ ...m, scopeDelimiter: m.scopeDelimiter || ' ', defaultScopes, scopes, authorizeParams })
       if (clientId.trim()) {
         await api.upsertOAuthConfig({ provider: m.key, clientId: clientId.trim(), clientSecret: clientSecret || undefined, scopes: defaultScopes, redirectUri: redirect || undefined })
       }
@@ -162,7 +169,7 @@ function OAuthEditor({ value, config, builtin, onClose, onSaved }: {
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-xl">
+      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>{builtin ? `Customize ${m.key}` : value.key ? `Edit ${value.key}` : 'New custom OAuth provider'}</DialogTitle>
           <DialogDescription>
@@ -227,6 +234,22 @@ function OAuthEditor({ value, config, builtin, onClose, onSaved }: {
                   </label>
                   <Button variant="ghost" size="icon" onClick={() => delRow(i)}><Trash2 className="size-4 text-destructive" /></Button>
                 </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="space-y-2 border-t border-border pt-3">
+            <div className="flex items-center justify-between">
+              <div className="text-xs font-medium text-muted-foreground">Authorization parameters</div>
+              <Button variant="outline" size="sm" onClick={addAp}><Plus className="size-4" /> Add parameter</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Extra query params on the authorize URL — e.g. <code className="text-accent">token_access_type=offline</code> (Dropbox) or <code className="text-accent">access_type=offline</code> (Google) to be issued a refresh token.</p>
+            {aprows.map((p, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input value={p.key} onChange={(e) => setAp(i, { key: e.target.value })} placeholder="param (e.g. token_access_type)" className="flex-1" />
+                <span className="text-muted-foreground">=</span>
+                <Input value={p.value} onChange={(e) => setAp(i, { value: e.target.value })} placeholder="value (e.g. offline)" className="flex-1" />
+                <Button variant="ghost" size="icon" onClick={() => delAp(i)}><Trash2 className="size-4 text-destructive" /></Button>
               </div>
             ))}
           </div>
