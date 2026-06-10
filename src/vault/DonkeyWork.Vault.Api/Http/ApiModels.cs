@@ -97,6 +97,7 @@ public sealed record OAuthManifestDto(
     string IconUrl,
     string DocsUrl,
     bool Builtin,
+    bool Overridden,
     string AuthorizationEndpoint,
     string TokenEndpoint,
     string UserinfoEndpoint,

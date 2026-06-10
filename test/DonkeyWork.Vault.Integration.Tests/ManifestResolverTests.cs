@@ -1,7 +1,6 @@
 using DonkeyWork.Vault.Contracts;
 using DonkeyWork.Vault.Core.Manifests;
 using DonkeyWork.Vault.Persistence;
-using DonkeyWork.Vault.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 using Testcontainers.PostgreSql;
 using Xunit;
@@ -44,16 +43,23 @@ public sealed class ManifestResolverTests : IAsyncLifetime
     };
 
     [Fact]
-    public async Task Upsert_OnBuiltinKey_IsRejected()
+    public async Task Upsert_OnBuiltinKey_CreatesPerUserOverride()
     {
-        var builtinKey = _builtins.All[0].Key; // e.g. "github" / "google" / "microsoft"
-        var (db, resolver) = await BuildAsync(new FixedCaller(Guid.NewGuid()));
+        var builtin = _builtins.All[0]; // e.g. "github" / "google" / "microsoft"
+        var alice = Guid.NewGuid();
+        var (db, resolver) = await BuildAsync(new FixedCaller(alice));
         await using var _ = db;
 
-        await Assert.ThrowsAsync<BuiltinManifestException>(() => resolver.UpsertOAuthAsync(Custom(builtinKey), default));
+        // Forking a built-in template into a private override is allowed and wins for that user.
+        var fork = Custom(builtin.Key); // distinct endpoints from the template
+        await resolver.UpsertOAuthAsync(fork, default);
 
-        // Nothing was written.
-        Assert.Equal(0, await db.ProviderManifests.IgnoreQueryFilters().CountAsync());
+        Assert.Equal(fork.TokenEndpoint, (await resolver.GetOAuthAsync(builtin.Key, alice, default))!.TokenEndpoint);
+        Assert.Equal(fork.TokenEndpoint, (await resolver.ListOAuthAsync(default)).Single(m => m.Key == builtin.Key).TokenEndpoint);
+        Assert.Contains(builtin.Key, await resolver.ListCustomOAuthKeysAsync(default));
+
+        // Exactly one override row was written for this owner.
+        Assert.Equal(1, await db.ProviderManifests.IgnoreQueryFilters().CountAsync());
     }
 
     [Fact]
@@ -105,31 +111,28 @@ public sealed class ManifestResolverTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task Builtin_AlwaysWins_OverAStaleCustomRow()
+    public async Task BuiltinTemplate_IsFallback_AndOverrideIsPerOwner()
     {
         var builtin = _builtins.All[0];
         var alice = Guid.NewGuid();
+        var bob = Guid.NewGuid();
 
-        var (db, resolver) = await BuildAsync(new FixedCaller(alice));
-        await using var _ = db;
-
-        // Inject a stale row that reuses a built-in key, bypassing the upsert guard.
-        db.ProviderManifests.Add(new ProviderManifestEntity
+        // Alice forks the built-in; Bob leaves it untouched.
+        var (dbA, resolverA) = await BuildAsync(new FixedCaller(alice));
+        await using (dbA)
         {
-            Kind = ManifestResolver.OAuthKind,
-            Key = builtin.Key,
-            UserId = alice,
-            DocumentJson = """{"key":"tampered","token_endpoint":"https://evil.example/token"}""",
-        });
-        await db.SaveChangesAsync();
+            await resolverA.UpsertOAuthAsync(Custom(builtin.Key), default);
+        }
 
-        // Keyed lookup returns the immutable built-in, not the tampered row.
-        var resolved = await resolver.GetOAuthAsync(builtin.Key, alice, default);
-        Assert.NotNull(resolved);
-        Assert.Equal(builtin.TokenEndpoint, resolved!.TokenEndpoint);
-
-        // The list never lets a custom row shadow the built-in either.
-        var listed = await resolver.ListOAuthAsync(default);
-        Assert.Equal(builtin.TokenEndpoint, listed.Single(m => m.Key == builtin.Key).TokenEndpoint);
+        var (dbB, resolverB) = await BuildAsync(new FixedCaller(bob));
+        await using (dbB)
+        {
+            // Bob has no override → resolves the built-in template (the fallback), in lookup and list.
+            var resolved = await resolverB.GetOAuthAsync(builtin.Key, bob, default);
+            Assert.NotNull(resolved);
+            Assert.Equal(builtin.TokenEndpoint, resolved!.TokenEndpoint);
+            Assert.Equal(builtin.TokenEndpoint, (await resolverB.ListOAuthAsync(default)).Single(m => m.Key == builtin.Key).TokenEndpoint);
+            Assert.DoesNotContain(builtin.Key, await resolverB.ListCustomOAuthKeysAsync(default));
+        }
     }
 }

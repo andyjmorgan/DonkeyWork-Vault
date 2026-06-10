@@ -525,15 +525,6 @@ export interface paths {
                         "application/json": components["schemas"]["KeyResponse"];
                     };
                 };
-                /** @description Conflict */
-                409: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": components["schemas"]["ErrorResponse"];
-                    };
-                };
             };
         };
         delete?: never;
@@ -812,6 +803,48 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/oauth/tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description No Content */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not Found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/oauth/{provider}/connect": {
         parameters: {
             query?: never;
@@ -821,7 +854,9 @@ export interface paths {
         };
         get: {
             parameters: {
-                query?: never;
+                query?: {
+                    scopes?: string;
+                };
                 header?: never;
                 path: {
                     provider: string;
@@ -1066,6 +1101,7 @@ export interface components {
             iconUrl: string;
             key: string;
             name: string;
+            overridden: boolean;
             scopeDelimiter: string;
             scopes: components["schemas"]["OAuthScopeDto"][];
             tokenEndpoint: string;

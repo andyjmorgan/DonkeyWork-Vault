@@ -21,6 +21,7 @@ public interface IOAuthTokenService
 {
     Task<OAuthAccessToken?> GetAccessTokenAsync(string provider, string? account, CancellationToken ct);
     Task<IReadOnlyList<OAuthTokenSummary>> ListAsync(CancellationToken ct);
+    Task<bool> DeleteAsync(Guid id, CancellationToken ct);
 }
 
 public sealed class OAuthTokenService(
@@ -40,6 +41,21 @@ public sealed class OAuthTokenService(
                 t.Id, t.ProviderKey, t.Account, t.ExpiresAt, t.LastRefreshedAt,
                 t.ScopesJson == null ? new List<string>() : JsonSerializer.Deserialize<List<string>>(t.ScopesJson)!))
             .ToListAsync(ct);
+
+    /// <summary>Removes one of the caller's connected tokens (the global query filter scopes to the caller).</summary>
+    public async Task<bool> DeleteAsync(Guid id, CancellationToken ct)
+    {
+        var token = await db.OAuthTokens.FirstOrDefaultAsync(t => t.Id == id, ct);
+        if (token is null)
+        {
+            return false;
+        }
+        db.OAuthTokens.Remove(token);
+        await db.SaveChangesAsync(ct);
+        audit.Emit(AuditEventType.TokenRemoved, AuditOutcome.Success,
+            targetKind: "oauth_token", targetProvider: token.ProviderKey, targetAccount: token.Account);
+        return true;
+    }
 
     public async Task<OAuthAccessToken?> GetAccessTokenAsync(string provider, string? account, CancellationToken ct)
     {

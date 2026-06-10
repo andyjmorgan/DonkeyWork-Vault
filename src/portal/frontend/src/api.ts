@@ -21,7 +21,7 @@ async function authed(path: string, init: RequestInit = {}) {
 
 export interface OAuthScope { value: string; description?: string; category?: string; sensitive?: boolean }
 export interface OAuthProvider {
-  key: string; name: string; iconUrl?: string; docsUrl?: string; builtin?: boolean
+  key: string; name: string; iconUrl?: string; docsUrl?: string; builtin?: boolean; overridden?: boolean
   authorizationEndpoint: string; tokenEndpoint: string
   userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]; scopes?: OAuthScope[]
 }
@@ -47,6 +47,7 @@ export const api = {
   deleteApiKey: (id: string) => authed(`/api-keys/${id}`, { method: 'DELETE' }),
   revealApiKey: (name: string) => authed(`/api-keys/${encodeURIComponent(name)}/reveal`) as Promise<{ secret: string }>,
   oauthTokens: () => authed('/oauth/tokens') as Promise<OAuthTokenItem[]>,
+  deleteOAuthToken: (id: string) => authed(`/oauth/tokens/${id}`, { method: 'DELETE' }),
   revealOAuthToken: (provider: string, account?: string) =>
     authed(`/oauth/${provider}/token${account ? `?account=${encodeURIComponent(account)}` : ''}`) as Promise<{ accessToken: string; expiresAt: string }>,
 
@@ -71,7 +72,8 @@ export const api = {
   upsertOAuthConfig: (c: { provider: string; clientId: string; clientSecret?: string; scopes?: string[]; redirectUri?: string }) =>
     authed('/oauth/configs', { method: 'POST', body: JSON.stringify(c) }),
   deleteOAuthConfig: (id: string) => authed(`/oauth/configs/${id}`, { method: 'DELETE' }),
-  connect: (provider: string) => authed(`/oauth/${provider}/connect`) as Promise<{ authorizeUrl: string }>,
+  connect: (provider: string, scopes?: string[]) =>
+    authed(`/oauth/${provider}/connect${scopes?.length ? `?scopes=${encodeURIComponent(scopes.join(' '))}` : ''}`) as Promise<{ authorizeUrl: string }>,
 
   // audit trail (admin-only; same JWT as the other admin pages)
   audit: (q: AuditQuery = {}) => {
