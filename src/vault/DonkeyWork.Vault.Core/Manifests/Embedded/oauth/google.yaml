@@ -1,7 +1,7 @@
 id: b8cca12c-7524-4523-9190-81409cf25682
 key: google
 name: Google
-icon_url: https://s3.donkeywork.dev/provider-icons/google.svg
+icon_url: https://s3.donkeywork.dev/provider-icons/google-color.svg
 docs_url: https://developers.google.com/identity/protocols/oauth2/scopes
 authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
 token_endpoint: https://oauth2.googleapis.com/token
