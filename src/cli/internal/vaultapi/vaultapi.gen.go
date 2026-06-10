@@ -199,19 +199,20 @@ type OAuthConfigDto struct {
 
 // OAuthManifestDto defines model for OAuthManifestDto.
 type OAuthManifestDto struct {
-	AuthorizationEndpoint string            `json:"authorizationEndpoint"`
-	AuthorizeParams       map[string]string `json:"authorizeParams"`
-	Builtin               bool              `json:"builtin"`
-	DefaultScopes         []string          `json:"defaultScopes"`
-	DocsUrl               string            `json:"docsUrl"`
-	IconUrl               string            `json:"iconUrl"`
-	Key                   string            `json:"key"`
-	Name                  string            `json:"name"`
-	Overridden            bool              `json:"overridden"`
-	ScopeDelimiter        string            `json:"scopeDelimiter"`
-	Scopes                []OAuthScopeDto   `json:"scopes"`
-	TokenEndpoint         string            `json:"tokenEndpoint"`
-	UserinfoEndpoint      string            `json:"userinfoEndpoint"`
+	AuthorizationEndpoint string             `json:"authorizationEndpoint"`
+	AuthorizeParams       map[string]string  `json:"authorizeParams"`
+	Builtin               bool               `json:"builtin"`
+	DefaultScopes         []string           `json:"defaultScopes"`
+	DocsUrl               string             `json:"docsUrl"`
+	IconUrl               string             `json:"iconUrl"`
+	Id                    openapi_types.UUID `json:"id"`
+	Key                   string             `json:"key"`
+	Name                  string             `json:"name"`
+	Overridden            bool               `json:"overridden"`
+	ScopeDelimiter        string             `json:"scopeDelimiter"`
+	Scopes                []OAuthScopeDto    `json:"scopes"`
+	TokenEndpoint         string             `json:"tokenEndpoint"`
+	UserinfoEndpoint      string             `json:"userinfoEndpoint"`
 }
 
 // OAuthScopeDto defines model for OAuthScopeDto.
@@ -275,8 +276,8 @@ type UpsertOAuthManifestRequest struct {
 	UserinfoEndpoint      *string            `json:"userinfoEndpoint"`
 }
 
-// GetApiOauthProviderCallbackParams defines parameters for GetApiOauthProviderCallback.
-type GetApiOauthProviderCallbackParams struct {
+// GetApiOauthCallbackParams defines parameters for GetApiOauthCallback.
+type GetApiOauthCallbackParams struct {
 	Code  *string `form:"code,omitempty" json:"code,omitempty"`
 	State *string `form:"state,omitempty" json:"state,omitempty"`
 	Error *string `form:"error,omitempty" json:"error,omitempty"`
@@ -397,8 +398,8 @@ type ClientInterface interface {
 	// GetApiConfig request
 	GetApiConfig(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// GetApiOauthProviderCallback request
-	GetApiOauthProviderCallback(ctx context.Context, provider string, params *GetApiOauthProviderCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// GetApiOauthCallback request
+	GetApiOauthCallback(ctx context.Context, params *GetApiOauthCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiV1AccessKeys request
 	GetApiV1AccessKeys(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -491,8 +492,8 @@ func (c *Client) GetApiConfig(ctx context.Context, reqEditors ...RequestEditorFn
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetApiOauthProviderCallback(ctx context.Context, provider string, params *GetApiOauthProviderCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiOauthProviderCallbackRequest(c.Server, provider, params)
+func (c *Client) GetApiOauthCallback(ctx context.Context, params *GetApiOauthCallbackParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiOauthCallbackRequest(c.Server, params)
 	if err != nil {
 		return nil, err
 	}
@@ -866,23 +867,16 @@ func NewGetApiConfigRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewGetApiOauthProviderCallbackRequest generates requests for GetApiOauthProviderCallback
-func NewGetApiOauthProviderCallbackRequest(server string, provider string, params *GetApiOauthProviderCallbackParams) (*http.Request, error) {
+// NewGetApiOauthCallbackRequest generates requests for GetApiOauthCallback
+func NewGetApiOauthCallbackRequest(server string, params *GetApiOauthCallbackParams) (*http.Request, error) {
 	var err error
-
-	var pathParam0 string
-
-	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "provider", runtime.ParamLocationPath, provider)
-	if err != nil {
-		return nil, err
-	}
 
 	serverURL, err := url.Parse(server)
 	if err != nil {
 		return nil, err
 	}
 
-	operationPath := fmt.Sprintf("/api/oauth/%s/callback", pathParam0)
+	operationPath := fmt.Sprintf("/api/oauth/callback")
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -1911,8 +1905,8 @@ type ClientWithResponsesInterface interface {
 	// GetApiConfigWithResponse request
 	GetApiConfigWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiConfigResponse, error)
 
-	// GetApiOauthProviderCallbackWithResponse request
-	GetApiOauthProviderCallbackWithResponse(ctx context.Context, provider string, params *GetApiOauthProviderCallbackParams, reqEditors ...RequestEditorFn) (*GetApiOauthProviderCallbackResponse, error)
+	// GetApiOauthCallbackWithResponse request
+	GetApiOauthCallbackWithResponse(ctx context.Context, params *GetApiOauthCallbackParams, reqEditors ...RequestEditorFn) (*GetApiOauthCallbackResponse, error)
 
 	// GetApiV1AccessKeysWithResponse request
 	GetApiV1AccessKeysWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1AccessKeysResponse, error)
@@ -2015,13 +2009,13 @@ func (r GetApiConfigResponse) StatusCode() int {
 	return 0
 }
 
-type GetApiOauthProviderCallbackResponse struct {
+type GetApiOauthCallbackResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 }
 
 // Status returns HTTPResponse.Status
-func (r GetApiOauthProviderCallbackResponse) Status() string {
+func (r GetApiOauthCallbackResponse) Status() string {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.Status
 	}
@@ -2029,7 +2023,7 @@ func (r GetApiOauthProviderCallbackResponse) Status() string {
 }
 
 // StatusCode returns HTTPResponse.StatusCode
-func (r GetApiOauthProviderCallbackResponse) StatusCode() int {
+func (r GetApiOauthCallbackResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2282,6 +2276,7 @@ type PostApiV1ManifestsOauthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *KeyResponse
+	JSON400      *ErrorResponse
 }
 
 // Status returns HTTPResponse.Status
@@ -2529,13 +2524,13 @@ func (c *ClientWithResponses) GetApiConfigWithResponse(ctx context.Context, reqE
 	return ParseGetApiConfigResponse(rsp)
 }
 
-// GetApiOauthProviderCallbackWithResponse request returning *GetApiOauthProviderCallbackResponse
-func (c *ClientWithResponses) GetApiOauthProviderCallbackWithResponse(ctx context.Context, provider string, params *GetApiOauthProviderCallbackParams, reqEditors ...RequestEditorFn) (*GetApiOauthProviderCallbackResponse, error) {
-	rsp, err := c.GetApiOauthProviderCallback(ctx, provider, params, reqEditors...)
+// GetApiOauthCallbackWithResponse request returning *GetApiOauthCallbackResponse
+func (c *ClientWithResponses) GetApiOauthCallbackWithResponse(ctx context.Context, params *GetApiOauthCallbackParams, reqEditors ...RequestEditorFn) (*GetApiOauthCallbackResponse, error) {
+	rsp, err := c.GetApiOauthCallback(ctx, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
-	return ParseGetApiOauthProviderCallbackResponse(rsp)
+	return ParseGetApiOauthCallbackResponse(rsp)
 }
 
 // GetApiV1AccessKeysWithResponse request returning *GetApiV1AccessKeysResponse
@@ -2810,15 +2805,15 @@ func ParseGetApiConfigResponse(rsp *http.Response) (*GetApiConfigResponse, error
 	return response, nil
 }
 
-// ParseGetApiOauthProviderCallbackResponse parses an HTTP response from a GetApiOauthProviderCallbackWithResponse call
-func ParseGetApiOauthProviderCallbackResponse(rsp *http.Response) (*GetApiOauthProviderCallbackResponse, error) {
+// ParseGetApiOauthCallbackResponse parses an HTTP response from a GetApiOauthCallbackWithResponse call
+func ParseGetApiOauthCallbackResponse(rsp *http.Response) (*GetApiOauthCallbackResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
 	defer func() { _ = rsp.Body.Close() }()
 	if err != nil {
 		return nil, err
 	}
 
-	response := &GetApiOauthProviderCallbackResponse{
+	response := &GetApiOauthCallbackResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}
@@ -3126,6 +3121,13 @@ func ParsePostApiV1ManifestsOauthResponse(rsp *http.Response) (*PostApiV1Manifes
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 400:
+		var dest ErrorResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON400 = &dest
 
 	}
 

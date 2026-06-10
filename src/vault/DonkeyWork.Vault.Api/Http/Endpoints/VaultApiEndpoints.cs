@@ -151,12 +151,19 @@ public static class VaultApiEndpoints
                 .ToList());
         });
 
-        // A built-in key is permitted here — it stores a per-user override that wins for that user only.
-        api.MapPost("/manifests/oauth", async Task<Ok<KeyResponse>> (
+        // A built-in slug is permitted here — it stores a per-user overlay of that template.
+        api.MapPost("/manifests/oauth", async Task<Results<Ok<KeyResponse>, BadRequest<ErrorResponse>>> (
             UpsertOAuthManifestRequest dto, ManifestResolver m, CancellationToken ct) =>
         {
-            await m.UpsertOAuthAsync(FromOAuthManifestDto(dto), ct);
-            return TypedResults.Ok(new KeyResponse(dto.Key));
+            try
+            {
+                await m.UpsertOAuthAsync(FromOAuthManifestDto(dto), ct);
+                return TypedResults.Ok(new KeyResponse(dto.Key));
+            }
+            catch (ArgumentException ex)
+            {
+                return TypedResults.BadRequest(new ErrorResponse(ex.Message));
+            }
         });
 
         api.MapPost("/manifests/oauth/discover", async Task<Results<Ok<OAuthManifestDto>, BadRequest<ErrorResponse>>> (
@@ -273,8 +280,8 @@ public static class VaultApiEndpoints
 
     private static void MapAnonymous(WebApplication app, AppConfigResponse appConfig, string publicBaseUrl)
     {
-        // Public OAuth callback — identity derived from the state row, not the caller.
-        app.MapGet("/api/oauth/{provider}/callback", async (string provider, string? code, string? state, string? error, IOAuthFlowService f, CancellationToken ct) =>
+        // Public OAuth callback — one static route; provider + owner come from the state row.
+        app.MapGet("/api/oauth/callback", async (string? code, string? state, string? error, IOAuthFlowService f, CancellationToken ct) =>
         {
             if (!string.IsNullOrEmpty(error))
             {
@@ -286,7 +293,7 @@ public static class VaultApiEndpoints
             }
             try
             {
-                var r = await f.CompleteAsync(provider, code, state, ct);
+                var r = await f.CompleteAsync(code, state, ct);
                 return Results.Redirect($"/?connected={Uri.EscapeDataString(r.Provider)}");
             }
             catch (OAuthAuthorizationException ex)
@@ -309,7 +316,7 @@ public static class VaultApiEndpoints
         k.Id, k.Name, k.Description, k.Scopes, k.Enabled, k.Prefix, k.CreatedAt, k.LastUsedAt);
 
     private static OAuthManifestDto ToOAuthManifestDto(OAuthManifest m, bool builtin, bool overridden = false) => new(
-        m.Key, m.Name, m.IconUrl, m.DocsUrl, builtin, overridden, m.AuthorizationEndpoint, m.TokenEndpoint, m.UserinfoEndpoint,
+        m.Id, m.Key, m.Name, m.IconUrl, m.DocsUrl, builtin, overridden, m.AuthorizationEndpoint, m.TokenEndpoint, m.UserinfoEndpoint,
         m.ScopeDelimiter, m.DefaultScopes,
         m.Scopes.Select(s => new OAuthScopeDto(s.Value, s.Description, s.Category, s.Sensitive)).ToList(),
         m.AuthorizeParams);

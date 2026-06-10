@@ -15,8 +15,9 @@ public sealed class ProviderManifestConfiguration : IEntityTypeConfiguration<Pro
         b.Property(x => x.Key).HasMaxLength(100).IsRequired();
         b.Property(x => x.DocumentJson).HasColumnType("jsonb").IsRequired();
         b.Property(x => x.CreatedAt).HasDefaultValueSql("now()");
-        // Custom manifests are per-user; a key is unique within an owner, not globally.
+        // Custom manifests are per-user; a slug is unique within an owner, not globally.
         b.HasIndex(x => new { x.UserId, x.Kind, x.Key }).IsUnique();
+        b.HasIndex(x => new { x.UserId, x.ProviderId });
     }
 }
 

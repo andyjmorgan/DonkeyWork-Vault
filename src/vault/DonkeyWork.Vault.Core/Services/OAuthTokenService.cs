@@ -59,7 +59,17 @@ public sealed class OAuthTokenService(
 
     public async Task<OAuthAccessToken?> GetAccessTokenAsync(string provider, string? account, CancellationToken ct)
     {
-        var query = db.OAuthTokens.Where(t => t.ProviderKey == provider);
+        // Resolve the slug to its stable identity; tokens/configs are keyed by that, not the slug.
+        var providerId = await manifests.ResolveProviderIdAsync(provider, caller.UserId, ct);
+        if (providerId is null)
+        {
+            audit.Emit(AuditEventType.TokenAccessed, AuditOutcome.Failure,
+                targetKind: "oauth_token", targetProvider: provider, targetAccount: account,
+                detail: "unknown provider");
+            return null;
+        }
+
+        var query = db.OAuthTokens.Where(t => t.ProviderId == providerId);
         if (!string.IsNullOrEmpty(account))
         {
             query = query.Where(t => t.Account == account);
@@ -88,9 +98,9 @@ public sealed class OAuthTokenService(
             return new OAuthAccessToken(cipher.DecryptToString(token.AccessTokenCipher), token.ExpiresAt, scopes);
         }
 
-        // Needs refresh — load the provider app config + manifest.
+        // Needs refresh — load the provider app config + manifest (both keyed by identity).
         var manifest = await manifests.GetOAuthAsync(provider, token.UserId, ct);
-        var config = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderKey == provider, ct);
+        var config = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderId == providerId, ct);
         if (manifest is null || config is null || token.RefreshTokenCipher.Length == 0)
         {
             // Can't refresh; return what we have.

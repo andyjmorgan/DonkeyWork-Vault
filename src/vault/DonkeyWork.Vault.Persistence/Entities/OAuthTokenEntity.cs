@@ -6,6 +6,10 @@ namespace DonkeyWork.Vault.Persistence.Entities;
 /// </summary>
 public sealed class OAuthTokenEntity : BaseEntity
 {
+    /// <summary>Stable provider identity (built-in catalog GUID or custom provider id) this token
+    /// belongs to; survives a slug rename.</summary>
+    public Guid ProviderId { get; set; }
+
     public string ProviderKey { get; set; } = string.Empty;
     public string Account { get; set; } = string.Empty;   // external user id / email
     public byte[] AccessTokenCipher { get; set; } = [];

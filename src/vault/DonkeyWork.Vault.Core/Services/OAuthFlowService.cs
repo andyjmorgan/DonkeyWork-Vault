@@ -20,7 +20,7 @@ public sealed class OAuthAuthorizationException(string message) : Exception(mess
 public interface IOAuthFlowService
 {
     Task<BeginAuthResult> BeginAsync(string provider, IReadOnlyList<string>? scopes, string publicBaseUrl, CancellationToken ct);
-    Task<CompleteAuthResult> CompleteAsync(string provider, string code, string state, CancellationToken ct);
+    Task<CompleteAuthResult> CompleteAsync(string code, string state, CancellationToken ct);
 }
 
 public sealed class OAuthFlowService(
@@ -36,7 +36,7 @@ public sealed class OAuthFlowService(
     {
         var manifest = await manifests.GetOAuthAsync(provider, caller.UserId, ct)
             ?? throw new OAuthAuthorizationException($"unknown OAuth provider '{provider}'.");
-        var config = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderKey == provider, ct)
+        var config = await db.OAuthProviderConfigs.FirstOrDefaultAsync(c => c.ProviderId == manifest.Id, ct)
             ?? throw new OAuthAuthorizationException($"no OAuth app config for '{provider}'. Add client_id/secret first.");
 
         var clientId = cipher.DecryptToString(config.ClientIdCipher);
@@ -56,7 +56,9 @@ public sealed class OAuthFlowService(
 
         var verifier = PkceUtility.GenerateVerifier();
         var state = PkceUtility.RandomState();
-        var redirectUri = $"{publicBaseUrl.TrimEnd('/')}/api/oauth/{provider}/callback";
+        // Static, provider-agnostic callback — the state row carries the provider, so the registered
+        // redirect URI is one constant URL per app and survives a slug rename.
+        var redirectUri = $"{publicBaseUrl.TrimEnd('/')}/api/oauth/callback";
 
         db.OAuthStates.Add(new OAuthStateEntity
         {
@@ -112,37 +114,45 @@ public sealed class OAuthFlowService(
         return (kept, dropped);
     }
 
-    public async Task<CompleteAuthResult> CompleteAsync(string provider, string code, string state, CancellationToken ct)
+    public async Task<CompleteAuthResult> CompleteAsync(string code, string state, CancellationToken ct)
     {
         try
         {
-            return await CompleteCoreAsync(provider, code, state, ct);
+            return await CompleteCoreAsync(code, state, ct);
         }
         catch (Exception ex)
         {
-            // A failed anonymous callback is security-relevant; record it. Identity is unknown
-            // here (no caller, possibly no valid state), so it falls back to the ambient context.
-            // ex.Message is status-only (no provider body) by construction above.
+            // A failed anonymous callback is security-relevant; record it. The provider is unknown
+            // here (the state may be invalid). ex.Message is status-only (no provider body).
             audit.Emit(AuditEventType.TokenAdded, AuditOutcome.Failure,
-                targetKind: "oauth_token", targetProvider: provider, detail: ex.Message);
+                targetKind: "oauth_token", detail: ex.Message);
             throw;
         }
     }
 
-    private async Task<CompleteAuthResult> CompleteCoreAsync(string provider, string code, string state, CancellationToken ct)
+    private async Task<CompleteAuthResult> CompleteCoreAsync(string code, string state, CancellationToken ct)
     {
-        // State is a standalone (non-user-scoped) row; readable in the anonymous callback.
+        // State is a standalone (non-user-scoped) row; readable in the anonymous callback. Identity
+        // (provider + owner) comes entirely from the state row — the URL no longer carries it.
         var stateRow = await db.OAuthStates.FirstOrDefaultAsync(s => s.State == state, ct)
             ?? throw new OAuthAuthorizationException("invalid or expired state.");
-        if (stateRow.Provider != provider || stateRow.ExpiresAt < DateTimeOffset.UtcNow)
+        var provider = stateRow.Provider;
+        if (stateRow.ExpiresAt < DateTimeOffset.UtcNow)
         {
             throw new OAuthAuthorizationException("invalid or expired state.");
+        }
+
+        // Atomic claim: exactly one callback may consume a state row. A concurrent duplicate (or a
+        // replay) deletes zero rows and is rejected before any token exchange.
+        if (await db.OAuthStates.Where(s => s.Id == stateRow.Id).ExecuteDeleteAsync(ct) == 0)
+        {
+            throw new OAuthAuthorizationException("state already used.");
         }
 
         var manifest = await manifests.GetOAuthAsync(provider, stateRow.OwnerUserId, ct)
             ?? throw new OAuthAuthorizationException($"unknown OAuth provider '{provider}'.");
         var config = await db.OAuthProviderConfigs.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(c => c.UserId == stateRow.OwnerUserId && c.ProviderKey == provider, ct)
+            .FirstOrDefaultAsync(c => c.UserId == stateRow.OwnerUserId && c.ProviderId == manifest.Id, ct)
             ?? throw new OAuthAuthorizationException($"no OAuth app config for '{provider}'.");
 
         var form = new Dictionary<string, string>
@@ -179,13 +189,14 @@ public sealed class OAuthFlowService(
         var account = await FetchAccountAsync(client, manifest, accessToken, ct);
 
         var existing = await db.OAuthTokens.IgnoreQueryFilters()
-            .FirstOrDefaultAsync(t => t.UserId == stateRow.OwnerUserId && t.ProviderKey == provider && t.Account == account, ct);
+            .FirstOrDefaultAsync(t => t.UserId == stateRow.OwnerUserId && t.ProviderId == manifest.Id && t.Account == account, ct);
         if (existing is null)
         {
             db.OAuthTokens.Add(new OAuthTokenEntity
             {
                 UserId = stateRow.OwnerUserId,
                 TenantId = stateRow.OwnerTenantId,
+                ProviderId = manifest.Id,
                 ProviderKey = provider,
                 Account = account,
                 AccessTokenCipher = cipher.EncryptString(accessToken),
@@ -207,7 +218,7 @@ public sealed class OAuthFlowService(
             existing.LastRefreshedAt = DateTimeOffset.UtcNow;
         }
 
-        db.OAuthStates.Remove(stateRow);
+        // The state row was already claimed (deleted) atomically above.
         await db.SaveChangesAsync(ct);
 
         // Anonymous callback: identity comes from the state row, and there is no access key, so the
