@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { Plug, Trash2, ExternalLink } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Button } from '../ui/components/button'
@@ -15,6 +16,8 @@ export function ConnectPage() {
   const [configs, setConfigs] = useState<OAuthConfigItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
   const [selected, setSelected] = useState<string>()
+  const [flash, setFlash] = useState<string>()
+  const [params, setParams] = useSearchParams()
 
   const load = () => {
     api.oauthProviders().then(setProviders).catch(() => {})
@@ -22,6 +25,15 @@ export function ConnectPage() {
     api.oauthTokens().then(setTokens).catch(() => {})
   }
   useEffect(() => { load() }, [])
+
+  // The OAuth callback redirects back to /oauthconnect with the outcome.
+  useEffect(() => {
+    const connected = params.get('connected')
+    const error = params.get('oauth_error')
+    if (connected) setFlash(`Connected ${connected}`)
+    else if (error) setFlash(`OAuth error: ${error}`)
+    if (connected || error) { params.delete('connected'); params.delete('oauth_error'); setParams(params, { replace: true }) }
+  }, [params, setParams])
 
   const statusOf = (key: string) =>
     tokens.some((t) => t.provider === key) ? 'connected'
@@ -31,6 +43,9 @@ export function ConnectPage() {
 
   return (
     <>
+      {flash && (
+        <div className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent">{flash}</div>
+      )}
       <Card>
         <CardHeader><CardTitle>Connect a provider</CardTitle><CardDescription>Pick a provider, choose the scopes you want, then connect. Credentials and scopes are set on the Providers tab.</CardDescription></CardHeader>
         <CardContent>

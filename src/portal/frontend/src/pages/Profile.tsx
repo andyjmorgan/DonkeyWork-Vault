@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { useOutletContext } from 'react-router-dom'
 import { Trash2, Plus, KeyRound, ShieldAlert } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
@@ -21,7 +22,8 @@ const SCOPES: { value: AccessScope; label: string; hint: string }[] = [
   { value: 'vault:audit', label: 'vault:audit', hint: 'Read the audit trail.' },
 ]
 
-export function ProfilePage({ me }: { me: Me | null }) {
+export function ProfilePage() {
+  const { me } = useOutletContext<{ me: Me | null }>()
   const [keys, setKeys] = useState<AccessKey[]>([])
   const [err, setErr] = useState<string>()
   const [open, setOpen] = useState(false)

@@ -1,36 +1,39 @@
 import { useEffect, useState } from 'react'
+import { Routes, Route, Navigate, Outlet } from 'react-router-dom'
 import { AppLayout } from './components/AppLayout'
-import type { Tab } from './components/Sidebar'
+import { isAuthed } from './auth'
 import { api, type Me } from './api'
+import { LandingPage } from './pages/Landing'
 import { CredentialsPage } from './pages/Credentials'
 import { ProvidersPage } from './pages/Providers'
 import { ConnectPage } from './pages/Connect'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
 
-export function App() {
-  const [tab, setTab] = useState<Tab>('credentials')
+// The signed-in shell: gated, loads the caller, and renders the app chrome around the active route.
+function AppShell() {
   const [me, setMe] = useState<Me | null>(null)
-  const [flash, setFlash] = useState<string>()
-
   useEffect(() => { api.me().then(setMe).catch(() => {}) }, [])
-
-  useEffect(() => {
-    const p = new URLSearchParams(location.search)
-    if (p.get('connected')) { setTab('connect'); setFlash(`Connected ${p.get('connected')}`); history.replaceState({}, '', '/') }
-    else if (p.get('oauth_error')) { setTab('connect'); setFlash(`OAuth error: ${p.get('oauth_error')}`); history.replaceState({}, '', '/') }
-  }, [])
-
+  if (!isAuthed()) return <Navigate to="/" replace />
   return (
-    <AppLayout me={me} active={tab} onSelect={setTab}>
-      {flash && (
-        <div className="rounded-xl border border-accent/30 bg-accent/10 px-4 py-2 text-sm text-accent">{flash}</div>
-      )}
-      {tab === 'credentials' && <CredentialsPage />}
-      {tab === 'providers' && <ProvidersPage />}
-      {tab === 'connect' && <ConnectPage />}
-      {tab === 'audit' && <AuditPage />}
-      {tab === 'profile' && <ProfilePage me={me} />}
+    <AppLayout me={me}>
+      <Outlet context={{ me }} />
     </AppLayout>
+  )
+}
+
+export function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<LandingPage />} />
+      <Route element={<AppShell />}>
+        <Route path="/credentials" element={<CredentialsPage />} />
+        <Route path="/providers" element={<ProvidersPage />} />
+        <Route path="/oauthconnect" element={<ConnectPage />} />
+        <Route path="/audit" element={<AuditPage />} />
+        <Route path="/profile" element={<ProfilePage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
   )
 }
