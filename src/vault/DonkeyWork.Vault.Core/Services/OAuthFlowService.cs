@@ -8,6 +8,7 @@ using DonkeyWork.Vault.Core.OAuth;
 using DonkeyWork.Vault.Persistence;
 using DonkeyWork.Vault.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace DonkeyWork.Vault.Core.Services;
 
@@ -28,7 +29,8 @@ public sealed class OAuthFlowService(
     ManifestResolver manifests,
     IVaultCallerContext caller,
     IHttpClientFactory httpFactory,
-    AuditEmitter audit) : IOAuthFlowService
+    AuditEmitter audit,
+    ILogger<OAuthFlowService> logger) : IOAuthFlowService
 {
     public async Task<BeginAuthResult> BeginAsync(string provider, IReadOnlyList<string>? scopes, string publicBaseUrl, CancellationToken ct)
     {
@@ -41,6 +43,16 @@ public sealed class OAuthFlowService(
         var scopeList = scopes is { Count: > 0 }
             ? scopes
             : (config.ScopesJson is not null ? JsonSerializer.Deserialize<List<string>>(config.ScopesJson)! : manifest.DefaultScopes);
+
+        // Allowlist: only scopes the provider actually declares (catalog ∪ defaults) may reach the
+        // authorize URL, so a stray stored scope (e.g. a bogus "offline") can never be forwarded.
+        var (kept, dropped) = FilterScopesToCatalog(manifest, scopeList);
+        if (dropped.Count > 0)
+        {
+            logger.LogWarning("Dropped {Count} scope(s) not in the {Provider} catalog: {Dropped}",
+                dropped.Count, provider, string.Join(", ", dropped));
+        }
+        scopeList = kept;
 
         var verifier = PkceUtility.GenerateVerifier();
         var state = PkceUtility.RandomState();
@@ -78,6 +90,26 @@ public sealed class OAuthFlowService(
         var url = manifest.AuthorizationEndpoint + "?" +
             string.Join("&", q.Select(kv => $"{Uri.EscapeDataString(kv.Key)}={Uri.EscapeDataString(kv.Value)}"));
         return new BeginAuthResult(url, state);
+    }
+
+    /// <summary>
+    /// Restricts requested scopes to what the provider declares (catalog values ∪ default scopes),
+    /// returning the kept set (original order preserved) and the dropped set. When the provider
+    /// declares neither, nothing can be validated against, so the request passes through unfiltered.
+    /// </summary>
+    public static (IReadOnlyList<string> Kept, IReadOnlyList<string> Dropped) FilterScopesToCatalog(
+        OAuthManifest manifest, IReadOnlyList<string> requested)
+    {
+        var allowed = manifest.Scopes.Select(s => s.Value)
+            .Concat(manifest.DefaultScopes)
+            .ToHashSet(StringComparer.Ordinal);
+        if (allowed.Count == 0)
+        {
+            return (requested, []);
+        }
+        var kept = requested.Where(allowed.Contains).ToList();
+        var dropped = requested.Where(s => !allowed.Contains(s)).ToList();
+        return (kept, dropped);
     }
 
     public async Task<CompleteAuthResult> CompleteAsync(string provider, string code, string state, CancellationToken ct)
