@@ -206,6 +206,7 @@ type OAuthManifestDto struct {
 	IconUrl               string          `json:"iconUrl"`
 	Key                   string          `json:"key"`
 	Name                  string          `json:"name"`
+	Overridden            bool            `json:"overridden"`
 	ScopeDelimiter        string          `json:"scopeDelimiter"`
 	Scopes                []OAuthScopeDto `json:"scopes"`
 	TokenEndpoint         string          `json:"tokenEndpoint"`
@@ -288,6 +289,11 @@ type GetApiV1AuditParams struct {
 	UserId  *openapi_types.UUID `form:"userId,omitempty" json:"userId,omitempty"`
 	Since   *time.Time          `form:"since,omitempty" json:"since,omitempty"`
 	Until   *time.Time          `form:"until,omitempty" json:"until,omitempty"`
+}
+
+// GetApiV1OauthProviderConnectParams defines parameters for GetApiV1OauthProviderConnect.
+type GetApiV1OauthProviderConnectParams struct {
+	Scopes *string `form:"scopes,omitempty" json:"scopes,omitempty"`
 }
 
 // GetApiV1OauthProviderTokenParams defines parameters for GetApiV1OauthProviderToken.
@@ -461,8 +467,11 @@ type ClientInterface interface {
 	// GetApiV1OauthTokens request
 	GetApiV1OauthTokens(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// DeleteApiV1OauthTokensId request
+	DeleteApiV1OauthTokensId(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetApiV1OauthProviderConnect request
-	GetApiV1OauthProviderConnect(ctx context.Context, provider string, reqEditors ...RequestEditorFn) (*http.Response, error)
+	GetApiV1OauthProviderConnect(ctx context.Context, provider string, params *GetApiV1OauthProviderConnectParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetApiV1OauthProviderToken request
 	GetApiV1OauthProviderToken(ctx context.Context, provider string, params *GetApiV1OauthProviderTokenParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -792,8 +801,20 @@ func (c *Client) GetApiV1OauthTokens(ctx context.Context, reqEditors ...RequestE
 	return c.Client.Do(req)
 }
 
-func (c *Client) GetApiV1OauthProviderConnect(ctx context.Context, provider string, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewGetApiV1OauthProviderConnectRequest(c.Server, provider)
+func (c *Client) DeleteApiV1OauthTokensId(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiV1OauthTokensIdRequest(c.Server, id)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiV1OauthProviderConnect(ctx context.Context, provider string, params *GetApiV1OauthProviderConnectParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiV1OauthProviderConnectRequest(c.Server, provider, params)
 	if err != nil {
 		return nil, err
 	}
@@ -1696,8 +1717,42 @@ func NewGetApiV1OauthTokensRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
+// NewDeleteApiV1OauthTokensIdRequest generates requests for DeleteApiV1OauthTokensId
+func NewDeleteApiV1OauthTokensIdRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/oauth/tokens/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetApiV1OauthProviderConnectRequest generates requests for GetApiV1OauthProviderConnect
-func NewGetApiV1OauthProviderConnectRequest(server string, provider string) (*http.Request, error) {
+func NewGetApiV1OauthProviderConnectRequest(server string, provider string, params *GetApiV1OauthProviderConnectParams) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -1720,6 +1775,28 @@ func NewGetApiV1OauthProviderConnectRequest(server string, provider string) (*ht
 	queryURL, err := serverURL.Parse(operationPath)
 	if err != nil {
 		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Scopes != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "scopes", runtime.ParamLocationQuery, *params.Scopes); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
 	}
 
 	req, err := http.NewRequest("GET", queryURL.String(), nil)
@@ -1904,8 +1981,11 @@ type ClientWithResponsesInterface interface {
 	// GetApiV1OauthTokensWithResponse request
 	GetApiV1OauthTokensWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1OauthTokensResponse, error)
 
+	// DeleteApiV1OauthTokensIdWithResponse request
+	DeleteApiV1OauthTokensIdWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteApiV1OauthTokensIdResponse, error)
+
 	// GetApiV1OauthProviderConnectWithResponse request
-	GetApiV1OauthProviderConnectWithResponse(ctx context.Context, provider string, reqEditors ...RequestEditorFn) (*GetApiV1OauthProviderConnectResponse, error)
+	GetApiV1OauthProviderConnectWithResponse(ctx context.Context, provider string, params *GetApiV1OauthProviderConnectParams, reqEditors ...RequestEditorFn) (*GetApiV1OauthProviderConnectResponse, error)
 
 	// GetApiV1OauthProviderTokenWithResponse request
 	GetApiV1OauthProviderTokenWithResponse(ctx context.Context, provider string, params *GetApiV1OauthProviderTokenParams, reqEditors ...RequestEditorFn) (*GetApiV1OauthProviderTokenResponse, error)
@@ -2200,7 +2280,6 @@ type PostApiV1ManifestsOauthResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
 	JSON200      *KeyResponse
-	JSON409      *ErrorResponse
 }
 
 // Status returns HTTPResponse.Status
@@ -2367,6 +2446,27 @@ func (r GetApiV1OauthTokensResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r GetApiV1OauthTokensResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteApiV1OauthTokensIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiV1OauthTokensIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiV1OauthTokensIdResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -2655,9 +2755,18 @@ func (c *ClientWithResponses) GetApiV1OauthTokensWithResponse(ctx context.Contex
 	return ParseGetApiV1OauthTokensResponse(rsp)
 }
 
+// DeleteApiV1OauthTokensIdWithResponse request returning *DeleteApiV1OauthTokensIdResponse
+func (c *ClientWithResponses) DeleteApiV1OauthTokensIdWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteApiV1OauthTokensIdResponse, error) {
+	rsp, err := c.DeleteApiV1OauthTokensId(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiV1OauthTokensIdResponse(rsp)
+}
+
 // GetApiV1OauthProviderConnectWithResponse request returning *GetApiV1OauthProviderConnectResponse
-func (c *ClientWithResponses) GetApiV1OauthProviderConnectWithResponse(ctx context.Context, provider string, reqEditors ...RequestEditorFn) (*GetApiV1OauthProviderConnectResponse, error) {
-	rsp, err := c.GetApiV1OauthProviderConnect(ctx, provider, reqEditors...)
+func (c *ClientWithResponses) GetApiV1OauthProviderConnectWithResponse(ctx context.Context, provider string, params *GetApiV1OauthProviderConnectParams, reqEditors ...RequestEditorFn) (*GetApiV1OauthProviderConnectResponse, error) {
+	rsp, err := c.GetApiV1OauthProviderConnect(ctx, provider, params, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
@@ -3016,13 +3125,6 @@ func ParsePostApiV1ManifestsOauthResponse(rsp *http.Response) (*PostApiV1Manifes
 		}
 		response.JSON200 = &dest
 
-	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
-		var dest ErrorResponse
-		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
-			return nil, err
-		}
-		response.JSON409 = &dest
-
 	}
 
 	return response, nil
@@ -3199,6 +3301,22 @@ func ParseGetApiV1OauthTokensResponse(rsp *http.Response) (*GetApiV1OauthTokensR
 		}
 		response.JSON200 = &dest
 
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiV1OauthTokensIdResponse parses an HTTP response from a DeleteApiV1OauthTokensIdWithResponse call
+func ParseDeleteApiV1OauthTokensIdResponse(rsp *http.Response) (*DeleteApiV1OauthTokensIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiV1OauthTokensIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
 	}
 
 	return response, nil
