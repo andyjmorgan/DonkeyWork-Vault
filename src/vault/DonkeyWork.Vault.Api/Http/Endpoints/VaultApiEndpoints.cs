@@ -287,20 +287,20 @@ public static class VaultApiEndpoints
         {
             if (!string.IsNullOrEmpty(error))
             {
-                return Results.Redirect($"/?oauth_error={Uri.EscapeDataString(error)}");
+                return Results.Redirect($"/oauthconnect?oauth_error={Uri.EscapeDataString(error)}");
             }
             if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
             {
-                return Results.Redirect("/?oauth_error=missing_code");
+                return Results.Redirect("/oauthconnect?oauth_error=missing_code");
             }
             try
             {
                 var r = await f.CompleteAsync(code, state, ct);
-                return Results.Redirect($"/?connected={Uri.EscapeDataString(r.Provider)}");
+                return Results.Redirect($"/oauthconnect?connected={Uri.EscapeDataString(r.Provider)}");
             }
             catch (OAuthAuthorizationException ex)
             {
-                return Results.Redirect($"/?oauth_error={Uri.EscapeDataString(ex.Message)}");
+                return Results.Redirect($"/oauthconnect?oauth_error={Uri.EscapeDataString(ex.Message)}");
             }
         }).AllowAnonymous();
 

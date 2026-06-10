@@ -1,18 +1,20 @@
 import { useState } from 'react'
+import { Link, useNavigate } from 'react-router-dom'
 import { Github, Moon, Sun, User, LogOut, Menu } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import {
   DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator,
 } from '../ui/components/dropdown-menu'
 import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '../ui/components/sheet'
-import { NavList, type Tab } from './Sidebar'
+import { NavList } from './Sidebar'
 import { logout } from '../auth'
 import { getTheme, toggleTheme } from '../theme'
 import type { Me } from '../api'
 
-export function Header({ me, active, onSelect }: { me: Me | null; active: Tab; onSelect: (t: Tab) => void }) {
+export function Header({ me }: { me: Me | null }) {
   const [theme, setTheme] = useState(getTheme())
   const [navOpen, setNavOpen] = useState(false)
+  const navigate = useNavigate()
   return (
     <header className="flex h-14 items-center justify-between border-b border-border px-4">
       <div className="flex items-center gap-2 font-semibold">
@@ -25,11 +27,13 @@ export function Header({ me, active, onSelect }: { me: Me | null; active: Tab; o
             <SheetHeader className="mb-2 px-1">
               <SheetTitle className="text-sm">Menu</SheetTitle>
             </SheetHeader>
-            <NavList active={active} onSelect={(t) => { onSelect(t); setNavOpen(false) }} />
+            <NavList onNavigate={() => setNavOpen(false)} />
           </SheetContent>
         </Sheet>
-        <img src="/donkeywork.png" alt="DonkeyWork" className="h-8 w-8 shrink-0" />
-        <span>DonkeyWork <span className="text-accent">Vault</span></span>
+        <Link to="/" className="flex items-center gap-2">
+          <img src="/donkeywork.png" alt="DonkeyWork" className="h-8 w-8 shrink-0" />
+          <span>DonkeyWork <span className="text-accent">Vault</span></span>
+        </Link>
       </div>
       <div className="flex items-center gap-1">
         <Button variant="ghost" size="icon" asChild aria-label="GitHub">
@@ -45,7 +49,7 @@ export function Header({ me, active, onSelect }: { me: Me | null; active: Tab; o
           <DropdownMenuContent align="end" className="w-56">
             <DropdownMenuLabel>{me?.name || me?.email || 'Signed in'}</DropdownMenuLabel>
             <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => onSelect('profile')}>
+            <DropdownMenuItem onClick={() => navigate('/profile')}>
               <User className="mr-2 size-4" /> Profile &amp; API keys
             </DropdownMenuItem>
             <DropdownMenuItem onClick={() => logout()}>
