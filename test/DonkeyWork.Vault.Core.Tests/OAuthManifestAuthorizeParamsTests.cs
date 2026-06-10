@@ -23,4 +23,15 @@ public class OAuthManifestAuthorizeParamsTests
         Assert.Equal("offline", dropbox!.AuthorizeParams.GetValueOrDefault("token_access_type"));
         Assert.NotEqual(System.Guid.Empty, dropbox.Id);
     }
+
+    [Fact]
+    public void Box_Template_HasEndpointsAndScopes()
+    {
+        var box = new OAuthManifestLoader().Get("box");
+        Assert.NotNull(box);
+        Assert.NotEqual(System.Guid.Empty, box!.Id);
+        Assert.Equal("https://account.box.com/api/oauth2/authorize", box.AuthorizationEndpoint);
+        Assert.Equal("https://api.box.com/oauth2/token", box.TokenEndpoint);
+        Assert.Contains(box.Scopes, s => s.Value == "root_readwrite");
+    }
 }
