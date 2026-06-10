@@ -1095,6 +1095,9 @@ export interface components {
         };
         OAuthManifestDto: {
             authorizationEndpoint: string;
+            authorizeParams: {
+                [key: string]: string;
+            };
             builtin: boolean;
             defaultScopes: string[];
             docsUrl: string;
@@ -1148,6 +1151,9 @@ export interface components {
         };
         UpsertOAuthManifestRequest: {
             authorizationEndpoint: string | null;
+            authorizeParams: {
+                [key: string]: string;
+            } | null;
             defaultScopes: string[] | null;
             docsUrl: string | null;
             iconUrl: string | null;

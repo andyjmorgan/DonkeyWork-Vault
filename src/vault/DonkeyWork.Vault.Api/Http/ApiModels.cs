@@ -103,7 +103,8 @@ public sealed record OAuthManifestDto(
     string UserinfoEndpoint,
     string ScopeDelimiter,
     IReadOnlyList<string> DefaultScopes,
-    IReadOnlyList<OAuthScopeDto> Scopes);
+    IReadOnlyList<OAuthScopeDto> Scopes,
+    IReadOnlyDictionary<string, string> AuthorizeParams);
 
 public sealed record UpsertOAuthManifestRequest(
     string Key,
@@ -115,7 +116,8 @@ public sealed record UpsertOAuthManifestRequest(
     string? UserinfoEndpoint,
     string? ScopeDelimiter,
     List<string>? DefaultScopes,
-    List<OAuthScopeDto>? Scopes);
+    List<OAuthScopeDto>? Scopes,
+    Dictionary<string, string>? AuthorizeParams);
 
 public sealed record DiscoverOidcRequest(string? Url);
 

@@ -26,6 +26,13 @@ public sealed class OAuthManifest
 
     /// <summary>Curated, described scopes for a "pick your access" UI. Empty for discovered providers.</summary>
     public List<OAuthScopeDef> Scopes { get; set; } = new();
+
+    /// <summary>
+    /// Extra query parameters appended to the authorization URL, e.g. Google's
+    /// <c>access_type=offline</c>/<c>prompt=consent</c> or Dropbox's <c>token_access_type=offline</c>
+    /// (required to be issued a refresh token). Declared in YAML templates and editable per provider.
+    /// </summary>
+    public Dictionary<string, string> AuthorizeParams { get; set; } = new();
 }
 
 /// <summary>Loads + validates the embedded OAuth provider catalog at construction.</summary>
