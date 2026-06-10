@@ -35,8 +35,8 @@ public sealed class OAuthDiscoveryService(IHttpClientFactory httpFactory)
         var issuer = S("issuer");
         if (!string.IsNullOrEmpty(issuer) && Uri.TryCreate(issuer, UriKind.Absolute, out var iu))
         {
-            m.Name = iu.Host;
-            m.Key = iu.Host.Split('.')[0];
+            m.Name = NormalizeHost(iu.Host);
+            m.Key = KeyFromHost(iu.Host);
         }
 
         if (r.TryGetProperty("scopes_supported", out var ss) && ss.ValueKind == JsonValueKind.Array)
@@ -55,5 +55,28 @@ public sealed class OAuthDiscoveryService(IHttpClientFactory httpFactory)
         }
 
         return m;
+    }
+
+    /// <summary>Host without a leading <c>www.</c>, lower-cased (e.g. <c>www.dropbox.com</c> → <c>dropbox.com</c>).</summary>
+    public static string NormalizeHost(string host)
+    {
+        var h = host.Trim().TrimEnd('.').ToLowerInvariant();
+        return h.StartsWith("www.", StringComparison.Ordinal) ? h["www.".Length..] : h;
+    }
+
+    /// <summary>
+    /// Derives a short provider key from an issuer host: the registrable label, i.e. the
+    /// second-to-last label after dropping a leading <c>www.</c> — <c>www.dropbox.com</c> → <c>dropbox</c>,
+    /// <c>accounts.google.com</c> → <c>google</c>. Single-label hosts return as-is. (A user can edit it.)
+    /// </summary>
+    public static string KeyFromHost(string host)
+    {
+        var labels = NormalizeHost(host).Split('.', StringSplitOptions.RemoveEmptyEntries);
+        return labels.Length switch
+        {
+            0 => string.Empty,
+            1 => labels[0],
+            _ => labels[^2],
+        };
     }
 }
