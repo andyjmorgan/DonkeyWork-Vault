@@ -14,9 +14,13 @@ public sealed class OAuthScopeDef
 
 public sealed class OAuthManifest
 {
-    /// <summary>Stable provider identity. For built-ins this is the static GUID baked into the YAML
-    /// template (a catalog id, not a DB key); for custom providers it is the DB row's id.</summary>
+    /// <summary>Stable provider identity that configs/tokens link to — the DB row's own id once added,
+    /// or the static catalog GUID for a library template before it's copied into a row.</summary>
     public Guid Id { get; set; }
+
+    /// <summary>Historical breadcrumb only: the library template this provider was copied from
+    /// (<see cref="Guid.Empty"/> for a hand-authored custom provider). Never used to resolve or rebuild.</summary>
+    public Guid ParentId { get; set; }
 
     public string Key { get; set; } = string.Empty;
     public string Name { get; set; } = string.Empty;

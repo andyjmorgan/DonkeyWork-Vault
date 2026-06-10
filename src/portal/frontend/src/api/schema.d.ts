@@ -588,6 +588,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/manifests/templates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description OK */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["OAuthManifestDto"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/manifests/{kind}/{key}": {
         parameters: {
             query?: never;
@@ -1105,7 +1140,6 @@ export interface components {
             authorizeParams: {
                 [key: string]: string;
             };
-            builtin: boolean;
             defaultScopes: string[];
             docsUrl: string;
             iconUrl: string;
@@ -1113,9 +1147,11 @@ export interface components {
             id: string;
             key: string;
             name: string;
-            overridden: boolean;
+            /** Format: uuid */
+            parentId: string;
             scopeDelimiter: string;
             scopes: components["schemas"]["OAuthScopeDto"][];
+            template: boolean;
             tokenEndpoint: string;
             userinfoEndpoint: string;
         };
@@ -1168,6 +1204,8 @@ export interface components {
             iconUrl: string | null;
             key: string;
             name: string | null;
+            /** Format: uuid */
+            parentId: string;
             scopeDelimiter: string | null;
             scopes: components["schemas"]["OAuthScopeDto"][] | null;
             tokenEndpoint: string | null;

@@ -587,9 +587,6 @@
             },
             "type": "object"
           },
-          "builtin": {
-            "type": "boolean"
-          },
           "defaultScopes": {
             "items": {
               "type": "string"
@@ -612,8 +609,9 @@
           "name": {
             "type": "string"
           },
-          "overridden": {
-            "type": "boolean"
+          "parentId": {
+            "format": "uuid",
+            "type": "string"
           },
           "scopeDelimiter": {
             "type": "string"
@@ -624,6 +622,9 @@
             },
             "type": "array"
           },
+          "template": {
+            "type": "boolean"
+          },
           "tokenEndpoint": {
             "type": "string"
           },
@@ -633,12 +634,12 @@
         },
         "required": [
           "id",
+          "parentId",
           "key",
           "name",
           "iconUrl",
           "docsUrl",
-          "builtin",
-          "overridden",
+          "template",
           "authorizationEndpoint",
           "tokenEndpoint",
           "userinfoEndpoint",
@@ -837,6 +838,10 @@
             "nullable": true,
             "type": "string"
           },
+          "parentId": {
+            "format": "uuid",
+            "type": "string"
+          },
           "scopeDelimiter": {
             "nullable": true,
             "type": "string"
@@ -859,6 +864,7 @@
         },
         "required": [
           "key",
+          "parentId",
           "name",
           "iconUrl",
           "docsUrl",
@@ -1377,6 +1383,28 @@
               }
             },
             "description": "Bad Request"
+          }
+        },
+        "tags": [
+          "DonkeyWork.Vault.Api"
+        ]
+      }
+    },
+    "/api/v1/manifests/templates": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/OAuthManifestDto"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
           }
         },
         "tags": [
