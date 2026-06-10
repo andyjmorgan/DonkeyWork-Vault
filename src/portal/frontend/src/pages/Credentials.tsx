@@ -19,6 +19,7 @@ const kindLabel: Record<CredentialKind, string> = {
   opaque: 'Opaque',
   header_api_key: 'Header API key',
   http_basic: 'HTTP Basic',
+  username_password: 'Username + password',
   ssh: 'SSH',
   connection_string: 'Connection string',
 }

@@ -302,6 +302,7 @@ func cmdCreate() *cobra.Command {
 			"  opaque (default)   — the secret is returned verbatim (HMAC secrets, DSNs, …).\n" +
 			"  header_api_key     — sent as \"<header>: <prefix><secret>\" (--header/--prefix).\n" +
 			"  http_basic         — Authorization: Basic base64(username:secret) (--username).\n" +
+			"  username_password  — a username+password login NOT sent as Basic (ROPC, DSM, DB).\n" +
 			"  ssh                — SSH login: --username + --base-url ssh://host:port.\n" +
 			"  connection_string  — the whole DSN is the secret.",
 		Args: cobra.ExactArgs(1),
@@ -310,7 +311,7 @@ func cmdCreate() *cobra.Command {
 				return fmt.Errorf("--secret is required")
 			}
 			if !validKind(kind) {
-				return fmt.Errorf("--kind %q is not one of: opaque, header_api_key, http_basic, ssh, connection_string", kind)
+				return fmt.Errorf("--kind %q is not one of: opaque, header_api_key, http_basic, username_password, ssh, connection_string", kind)
 			}
 			// username ⇒ HTTP Basic; --header/--prefix are meaningless then. Reject the ambiguous
 			// mix rather than silently ignoring them (mirrors the server's CredentialUsage rule).
@@ -356,7 +357,7 @@ func cmdCreate() *cobra.Command {
 	c.Flags().StringVar(&header, "header", "Authorization", "header name to send")
 	c.Flags().StringVar(&prefix, "prefix", "", "optional value prefix, e.g. 'Bearer '")
 	c.Flags().StringVar(&username, "username", "", "username ⇒ HTTP Basic auth (secret is the password)")
-	c.Flags().StringVar(&kind, "kind", "opaque", "credential kind: opaque|header_api_key|http_basic|ssh|connection_string")
+	c.Flags().StringVar(&kind, "kind", "opaque", "credential kind: opaque|header_api_key|http_basic|username_password|ssh|connection_string")
 	return c
 }
 
@@ -406,7 +407,7 @@ func cmdCredDelete() *cobra.Command {
 // validKind reports whether k is one of the supported credential kinds.
 func validKind(k string) bool {
 	switch k {
-	case "opaque", "header_api_key", "http_basic", "ssh", "connection_string":
+	case "opaque", "header_api_key", "http_basic", "username_password", "ssh", "connection_string":
 		return true
 	default:
 		return false

@@ -1011,7 +1011,7 @@ export interface components {
             name: string;
         };
         /** @enum {string} */
-        CredentialKind: "opaque" | "header_api_key" | "http_basic" | "ssh" | "connection_string";
+        CredentialKind: "opaque" | "header_api_key" | "http_basic" | "username_password" | "ssh" | "connection_string";
         CredentialShapeResponse: {
             baseUrl: string;
             description: string;

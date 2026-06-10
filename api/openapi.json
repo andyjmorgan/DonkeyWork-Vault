@@ -394,6 +394,7 @@
           "opaque",
           "header_api_key",
           "http_basic",
+          "username_password",
           "ssh",
           "connection_string"
         ],

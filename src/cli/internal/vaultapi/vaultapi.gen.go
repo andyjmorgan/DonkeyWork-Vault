@@ -25,6 +25,7 @@ const (
 	HttpBasic        CredentialKind = "http_basic"
 	Opaque           CredentialKind = "opaque"
 	Ssh              CredentialKind = "ssh"
+	UsernamePassword CredentialKind = "username_password"
 )
 
 // AccessKeyDto defines model for AccessKeyDto.
