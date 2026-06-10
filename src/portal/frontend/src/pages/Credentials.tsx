@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
+import { Textarea } from '../ui/components/textarea'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
@@ -44,7 +45,7 @@ export function CredentialsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
   const [err, setErr] = useState<string>()
-  const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; scheme: Scheme }>({ open: false, scheme: 'header' })
+  const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; scheme: Scheme; view?: boolean }>({ open: false, scheme: 'header' })
 
   const load = () => {
     api.apiKeys().then(setKeys).catch((e) => setErr(String(e)))
@@ -90,16 +91,16 @@ export function CredentialsPage() {
                   <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Kind</TableHead><TableHead>Auth</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>
                     {keys.map((k) => (
-                      <TableRow key={k.id}>
+                      <TableRow key={k.id} className="cursor-pointer" onClick={() => setForm({ open: true, item: k, scheme: 'header', view: true })}>
                         <TableCell>
                           <div className="font-medium">{k.name}</div>
                           {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
                         </TableCell>
                         <TableCell className="whitespace-nowrap"><Badge variant="secondary">{prettyKind(k.kind)}</Badge></TableCell>
                         <TableCell className="whitespace-nowrap text-muted-foreground">{k.username ? `Basic · ${k.username}` : `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}`}</TableCell>
-                        <TableCell className="max-w-[12rem] truncate text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer">{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
-                        <TableCell><RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
-                        <TableCell className="text-right">
+                        <TableCell className="max-w-[12rem] truncate text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
+                        <TableCell onClick={(e) => e.stopPropagation()}><RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
+                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
                           <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k })}><Pencil className="size-4" /></Button>
                           <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteApiKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
                         </TableCell>
@@ -111,13 +112,13 @@ export function CredentialsPage() {
               {/* Mobile: a card per key with a two-column detail grid. */}
               <div className="space-y-3 sm:hidden">
                 {keys.map((k) => (
-                  <div key={k.id} className="rounded-xl border border-border p-3">
+                  <div key={k.id} className="cursor-pointer rounded-xl border border-border p-3" onClick={() => setForm({ open: true, item: k, scheme: 'header', view: true })}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="font-medium">{k.name}</div>
                         {k.description && <div className="truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
                       </div>
-                      <div className="-mr-1 flex shrink-0">
+                      <div className="-mr-1 flex shrink-0" onClick={(e) => e.stopPropagation()}>
                         <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k })}><Pencil className="size-4" /></Button>
                         <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteApiKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
                       </div>
@@ -125,9 +126,9 @@ export function CredentialsPage() {
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
                       <Field label="Kind">{prettyKind(k.kind)}</Field>
                       <Field label="Auth">{k.username ? `Basic · ${k.username}` : (k.header ? `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}` : '—')}</Field>
-                      <Field label="Base URL">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer">{k.baseUrl || 'docs'}</a> : (k.baseUrl || '—')}</Field>
+                      <Field label="Base URL">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{k.baseUrl || 'docs'}</a> : (k.baseUrl || '—')}</Field>
                     </div>
-                    <div className="mt-2 flex items-center gap-2">
+                    <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                       <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Secret</span>
                       <RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} />
                     </div>
@@ -142,10 +143,17 @@ export function CredentialsPage() {
       <Dialog open={form.open} onOpenChange={(o) => setForm({ ...form, open: o, item: o ? form.item : undefined })}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{form.item ? `Edit ${form.item.name}` : (formScheme === 'basic' ? 'Add username + password' : 'Add an API key / token')}</DialogTitle>
-            <DialogDescription>Self-describing — description / host / docs help agents discover how to use it.</DialogDescription>
+            <DialogTitle>{form.item ? (form.view ? form.item.name : `Edit ${form.item.name}`) : (formScheme === 'basic' ? 'Add username + password' : 'Add an API key / token')}</DialogTitle>
+            <DialogDescription>{form.view ? 'Read-only view — choose Edit to make changes.' : 'Self-describing — description / host / docs help agents discover how to use it.'}</DialogDescription>
           </DialogHeader>
-          <StoreKey key={`${form.item?.id ?? 'new'}-${formScheme}`} initial={form.item} scheme={formScheme} onStored={() => { load(); setForm({ open: false, scheme: 'header' }) }} />
+          <StoreKey
+            key={`${form.item?.id ?? 'new'}-${formScheme}-${form.view ? 'view' : 'edit'}`}
+            initial={form.item}
+            scheme={formScheme}
+            readOnly={!!form.view}
+            onEdit={() => setForm({ ...form, view: false })}
+            onStored={() => { load(); setForm({ open: false, scheme: 'header' }) }}
+          />
         </DialogContent>
       </Dialog>
 
@@ -247,7 +255,7 @@ function RevealButton({ title, load }: { title: string; load: () => Promise<stri
 
 type Scheme = 'header' | 'basic'
 
-function StoreKey({ initial, scheme, onStored }: { initial?: ApiKeyItem; scheme: Scheme; onStored: () => void }) {
+function StoreKey({ initial, scheme, readOnly = false, onEdit, onStored }: { initial?: ApiKeyItem; scheme: Scheme; readOnly?: boolean; onEdit?: () => void; onStored: () => void }) {
   // The scheme is fixed for the lifetime of the dialog — chosen from the + dropdown when adding,
   // or derived from the stored credential when editing. The parent remounts this on a scheme change.
   const [k, setK] = useState({
@@ -259,6 +267,11 @@ function StoreKey({ initial, scheme, onStored }: { initial?: ApiKeyItem; scheme:
   const set = (patch: Partial<typeof k>) => setK({ ...k, ...patch })
   const editing = !!initial
   const basic = scheme === 'basic'
+
+  // In read-only view, fields render as muted, non-editable surfaces and the secret is fetched
+  // on demand via the reveal flow rather than shown as a blank password box.
+  const ro = readOnly ? 'cursor-default bg-muted/40 focus-visible:ring-0 focus-visible:border-input' : ''
+  const fieldProps = (value: string) => readOnly ? { value, readOnly: true, className: ro } : undefined
 
   const submit = async () => {
     setMsg(undefined)
@@ -274,33 +287,48 @@ function StoreKey({ initial, scheme, onStored }: { initial?: ApiKeyItem; scheme:
   return (
     <div className="grid gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
-        <div><Label className={lbl}>Name *</Label><Input value={k.name} readOnly={editing} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. grafana-prod" /></div>
+        <div><Label className={lbl}>Name{readOnly ? '' : ' *'}</Label><Input value={k.name} readOnly={editing || readOnly} className={ro} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. grafana-prod" /></div>
 
         {basic ? (
           <>
-            <div><Label className={lbl}>Username *</Label><Input value={k.username} onChange={(e) => set({ username: e.target.value })} placeholder="e.g. admin" /></div>
-            <div className="sm:col-span-2"><Label className={lbl}>Password {editing ? '' : '*'}</Label><Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} /></div>
+            <div><Label className={lbl}>Username{readOnly ? '' : ' *'}</Label><Input value={k.username} readOnly={readOnly} className={ro} onChange={(e) => set({ username: e.target.value })} placeholder="e.g. admin" /></div>
+            <div className="sm:col-span-2"><Label className={lbl}>Password</Label>{readOnly ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} />}</div>
           </>
         ) : (
-          <div><Label className={lbl}>Secret {editing ? '' : '*'}</Label><Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} /></div>
+          <div><Label className={lbl}>Secret</Label>{readOnly ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : '*'} />}</div>
         )}
 
-        <div className="sm:col-span-2"><Label className={lbl}>Description</Label><Input value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="what this credential is for" /></div>
-        <div><Label className={lbl}>Base URL / host</Label><Input value={k.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" /></div>
-        <div><Label className={lbl}>API docs link</Label><Input value={k.docsUrl} onChange={(e) => set({ docsUrl: e.target.value })} placeholder="https://docs.example.com" /></div>
+        <div className="sm:col-span-2"><Label className={lbl}>Description</Label><Textarea {...fieldProps(k.description)} rows={3} value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="what this credential is for" /></div>
+        <div><Label className={lbl}>Base URL / host</Label><Input value={k.baseUrl} readOnly={readOnly} className={ro} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" /></div>
+        <div><Label className={lbl}>API docs link</Label><Input value={k.docsUrl} readOnly={readOnly} className={ro} onChange={(e) => set({ docsUrl: e.target.value })} placeholder="https://docs.example.com" /></div>
 
         {basic ? (
           <p className="text-xs text-muted-foreground sm:col-span-2">Sent as <code>Authorization: Basic base64(username:password)</code> — header and prefix are handled for you.</p>
         ) : (
           <>
-            <div><Label className={lbl}>Header (optional)</Label><Input value={k.header} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
-            <div><Label className={lbl}>Prefix (optional)</Label><Input value={k.prefix} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " /></div>
+            <div><Label className={lbl}>Header (optional)</Label><Input value={k.header} readOnly={readOnly} className={ro} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
+            <div><Label className={lbl}>Prefix (optional)</Label><Input value={k.prefix} readOnly={readOnly} className={ro} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " /></div>
           </>
         )}
 
         {msg && <p className="text-sm text-destructive sm:col-span-2">{msg}</p>}
-        <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || (!editing && !k.secret) || (basic && !k.username.trim())}>{editing ? 'Save changes' : 'Save key'}</Button></div>
+        {readOnly ? (
+          <div className="flex justify-end sm:col-span-2"><Button onClick={onEdit}><Pencil className="size-4" /> Edit</Button></div>
+        ) : (
+          <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || (!editing && !k.secret) || (basic && !k.username.trim())}>{editing ? 'Save changes' : 'Save key'}</Button></div>
+        )}
       </div>
+    </div>
+  )
+}
+
+// The secret slot in the read-only view: a muted box with an inline reveal button, mirroring the
+// reveal-in-modal flow used in the credential table so a plaintext secret is fetched only on demand.
+function RevealField({ title, load }: { title: string; load: () => Promise<string> }) {
+  return (
+    <div className="flex min-h-10 items-center justify-between rounded-xl border border-input bg-muted/40 pl-3 pr-1">
+      <code className="text-sm text-muted-foreground">••••••••</code>
+      <RevealButton title={title} load={load} />
     </div>
   )
 }
