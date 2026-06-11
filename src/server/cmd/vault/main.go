@@ -110,7 +110,10 @@ func run() error {
 		Logger:       logger,
 		OIDC: httpapi.OIDCConfig{
 			Authority: cfg.OIDCAuthority, InternalAuthority: cfg.OIDCInternal, Audience: cfg.OIDCAudience,
-			ClientID: cfg.OIDCClientID, Scopes: cfg.OIDCScopes, RequireHTTPS: cfg.OIDCRequireHTTPS,
+			ClientID: cfg.OIDCClientID, Scopes: cfg.OIDCScopes,
+			WebClientID: cfg.OIDCWebClientID, CliClientID: cfg.OIDCCliClientID,
+			WebScopes: cfg.OIDCWebScopes, CliScopes: cfg.OIDCCliScopes,
+			RequireHTTPS: cfg.OIDCRequireHTTPS,
 		},
 		PublicBaseURL: cfg.PublicBaseURL,
 	}

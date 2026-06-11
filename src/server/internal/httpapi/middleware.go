@@ -91,6 +91,8 @@ func (s *Server) authenticateJWT(ctx context.Context, w http.ResponseWriter, raw
 		Email             string `json:"email"`
 		Name              string `json:"name"`
 		PreferredUsername string `json:"preferred_username"`
+		Azp               string `json:"azp"`
+		ClientID          string `json:"client_id"`
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid token claims.")
@@ -109,8 +111,14 @@ func (s *Server) authenticateJWT(ctx context.Context, w http.ResponseWriter, raw
 		name = claims.PreferredUsername
 	}
 	ctx = withIdentity(ctx, meIdentity{Email: emptyToNil(claims.Email), Name: emptyToNil(name)})
-	// A portal user is the trusted human/admin, so they carry the full scope set.
-	ctx = context.WithValue(ctx, scopesKey{}, map[string]bool{"vault:read": true, "vault:readwrite": true, "vault:audit": true})
+
+	// Scopes depend on the requesting OAuth client (web vs CLI), matching the C# scope mapper.
+	clientID := clientIDFromClaims(claims.Azp, claims.ClientID, idToken.Audience)
+	granted := map[string]bool{}
+	for _, sc := range vaultScopesFor(clientID, idToken.Audience, s.webClientID, s.cliClientID) {
+		granted[sc] = true
+	}
+	ctx = context.WithValue(ctx, scopesKey{}, granted)
 	return ctx, true
 }
 

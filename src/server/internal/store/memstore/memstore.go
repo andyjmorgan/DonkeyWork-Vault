@@ -17,7 +17,7 @@ import (
 
 // Mem is a goroutine-safe in-memory Store.
 type Mem struct {
-	mu        sync.Mutex
+	mu         sync.Mutex
 	accessKeys map[uuid.UUID]store.AccessKey
 	apiKeys    map[uuid.UUID]store.APIKey
 	configs    map[uuid.UUID]store.OAuthProviderConfig

@@ -27,6 +27,10 @@ type Config struct {
 	OIDCAudience     string
 	OIDCClientID     string
 	OIDCScopes       string
+	OIDCWebClientID  string
+	OIDCCliClientID  string
+	OIDCWebScopes    string
+	OIDCCliScopes    string
 	OIDCRequireHTTPS bool
 
 	TrustedProxies      []string
@@ -58,6 +62,10 @@ func Load() (*Config, error) {
 		OIDCAudience:        os.Getenv("VAULT_OIDC_AUDIENCE"),
 		OIDCClientID:        os.Getenv("VAULT_OIDC_CLIENT_ID"),
 		OIDCScopes:          getenv("VAULT_OIDC_SCOPES", "openid profile email"),
+		OIDCWebClientID:     os.Getenv("VAULT_OIDC_WEB_CLIENT_ID"),
+		OIDCCliClientID:     os.Getenv("VAULT_OIDC_CLI_CLIENT_ID"),
+		OIDCWebScopes:       os.Getenv("VAULT_OIDC_WEB_SCOPES"),
+		OIDCCliScopes:       os.Getenv("VAULT_OIDC_CLI_SCOPES"),
 		OIDCRequireHTTPS:    getenvBool("VAULT_OIDC_REQUIRE_HTTPS", true),
 		TrustedProxies:      splitList(getenv("VAULT_TRUSTED_PROXIES", "10.42.0.0/16,10.43.0.0/16,127.0.0.1/32,::1/128")),
 		AuditChannelCap:     getenvInt("VAULT_AUDIT_CHANNEL_CAPACITY", 8192),

@@ -34,10 +34,10 @@ func TestForwardedIPResolver(t *testing.T) {
 
 func TestStripPort(t *testing.T) {
 	cases := map[string]string{
-		"1.2.3.4:80":   "1.2.3.4",
-		"[::1]:443":    "::1",
-		"::1":          "::1",
-		"9.9.9.9":      "9.9.9.9",
+		"1.2.3.4:80": "1.2.3.4",
+		"[::1]:443":  "::1",
+		"::1":        "::1",
+		"9.9.9.9":    "9.9.9.9",
 	}
 	for in, want := range cases {
 		if got := stripPort(in); got != want {

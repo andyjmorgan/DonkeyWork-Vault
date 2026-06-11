@@ -24,10 +24,13 @@ type meResponse struct {
 }
 
 type appConfigResponse struct {
-	Authority   string `json:"authority"`
-	ClientID    string `json:"clientId"`
-	Scopes      string `json:"scopes"`
-	AuthEnabled bool   `json:"authEnabled"`
+	Authority            string `json:"authority"`
+	ClientID             string `json:"clientId"`
+	Scopes               string `json:"scopes"`
+	AuthEnabled          bool   `json:"authEnabled"`
+	CliClientID          string `json:"cliClientId"`
+	CliScopes            string `json:"cliScopes"`
+	RequireHTTPSMetadata bool   `json:"requireHttpsMetadata"`
 }
 
 type apiKeyDTO struct {

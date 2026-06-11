@@ -12,13 +12,40 @@ import (
 )
 
 // OIDCConfig configures interactive (human) JWT auth. Empty Authority disables JWT (access keys only).
+// Web vs CLI client ids let the scope mapper grant different scopes per requesting OAuth client.
 type OIDCConfig struct {
 	Authority         string
 	InternalAuthority string
 	Audience          string
-	ClientID          string
-	Scopes            string
+	ClientID          string // legacy web client id
+	Scopes            string // legacy web scopes
+	WebClientID       string
+	CliClientID       string
+	WebScopes         string
+	CliScopes         string
 	RequireHTTPS      bool
+}
+
+func firstNonEmpty(vals ...string) string {
+	for _, v := range vals {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+func (o OIDCConfig) effectiveWebClientID() string {
+	return firstNonEmpty(o.WebClientID, o.ClientID, o.Audience)
+}
+func (o OIDCConfig) effectiveCliClientID() string {
+	return firstNonEmpty(o.CliClientID, "donkeywork-vault-cli")
+}
+func (o OIDCConfig) effectiveWebScopes() string {
+	return firstNonEmpty(o.WebScopes, o.Scopes, "openid profile email")
+}
+func (o OIDCConfig) effectiveCliScopes() string {
+	return firstNonEmpty(o.CliScopes, "openid profile email offline_access")
 }
 
 // Deps are the constructed dependencies the server needs.
@@ -41,11 +68,13 @@ type Deps struct {
 
 // Server holds the transport dependencies and renders the HTTP handler.
 type Server struct {
-	deps      Deps
-	verifier  *oidc.IDTokenVerifier
-	authOn    bool
-	appConfig appConfigResponse
-	logger    *slog.Logger
+	deps        Deps
+	verifier    *oidc.IDTokenVerifier
+	authOn      bool
+	appConfig   appConfigResponse
+	webClientID string
+	cliClientID string
+	logger      *slog.Logger
 }
 
 // NewServer builds the server. When OIDC is configured it discovers the provider and builds a JWT
@@ -57,16 +86,17 @@ func NewServer(ctx context.Context, deps Deps) (*Server, error) {
 	}
 	s := &Server{deps: deps, logger: logger}
 
-	clientID := deps.OIDC.ClientID
-	if clientID == "" {
-		clientID = deps.OIDC.Audience
-	}
+	s.webClientID = deps.OIDC.effectiveWebClientID()
+	s.cliClientID = deps.OIDC.effectiveCliClientID()
 	s.authOn = deps.OIDC.Authority != ""
 	s.appConfig = appConfigResponse{
-		Authority:   deps.OIDC.Authority,
-		ClientID:    clientID,
-		Scopes:      deps.OIDC.Scopes,
-		AuthEnabled: s.authOn,
+		Authority:            deps.OIDC.Authority,
+		ClientID:             s.webClientID,
+		Scopes:               deps.OIDC.effectiveWebScopes(),
+		AuthEnabled:          s.authOn,
+		CliClientID:          s.cliClientID,
+		CliScopes:            deps.OIDC.effectiveCliScopes(),
+		RequireHTTPSMetadata: deps.OIDC.RequireHTTPS,
 	}
 
 	if s.authOn {

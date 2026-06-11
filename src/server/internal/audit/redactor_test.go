@@ -25,9 +25,9 @@ func TestRedactHeader(t *testing.T) {
 
 func TestRedactHeaders(t *testing.T) {
 	in := map[string][]string{
-		"User-Agent":    {"curl"},
-		"Authorization": {"secret"},
-		"":              {"x"},
+		"User-Agent":      {"curl"},
+		"Authorization":   {"secret"},
+		"":                {"x"},
 		"X-Forwarded-For": {"1.2.3.4"},
 	}
 	out := RedactHeaders(in)
