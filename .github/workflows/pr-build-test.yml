@@ -13,11 +13,8 @@ concurrency:
 
 jobs:
   build-test:
-    name: Build & Test (Go backend)
+    name: Build, Test & Coverage (Go)
     runs-on: [self-hosted, Linux, X64]
-    defaults:
-      run:
-        working-directory: src/server
     steps:
       - uses: actions/checkout@v4
 
@@ -25,17 +22,29 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: src/server/go.mod
-          cache-dependency-path: src/server/go.sum
+          cache-dependency-path: |
+            src/server/go.sum
+            src/cli/go.sum
 
       - name: gofmt
         run: |
-          out=$(gofmt -l .)
+          out=$(gofmt -l src/server src/cli)
           if [ -n "$out" ]; then echo "::error::gofmt needed on: $out"; exit 1; fi
 
-      - name: Build
+      - name: Build (server)
+        working-directory: src/server
         run: go build ./...
 
-      - name: Vet
+      - name: Vet (server)
+        working-directory: src/server
+        run: go vet ./...
+
+      - name: Build (cli)
+        working-directory: src/cli
+        run: go build ./...
+
+      - name: Vet (cli)
+        working-directory: src/cli
         run: go vet ./...
 
       - name: Start ephemeral Postgres
@@ -55,8 +64,12 @@ jobs:
           PORT=$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')
           echo "VAULT_TEST_DSN=postgres://vault:vault@127.0.0.1:${PORT}/vault_test?sslmode=disable" >> "$GITHUB_ENV"
 
-      - name: Test (unit + Postgres integration)
-        run: go test ./...
+      - name: Test + coverage gate (server + cli, ≥95%)
+        # Runs the full unit + Postgres-integration suite for both modules and fails if
+        # coverage of hand-written code drops below the threshold. Reuses the Postgres above
+        # via VAULT_TEST_DSN. See scripts/coverage.sh for the denominator (generated clients
+        # and main() entrypoints are excluded; //coverage:ignore drops unreachable branches).
+        run: bash scripts/coverage.sh all
 
       - name: Stop ephemeral Postgres
         if: always()

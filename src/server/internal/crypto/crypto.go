@@ -18,7 +18,12 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"io"
 )
+
+// randReader is the CSPRNG source for DEK and nonce generation. It is a package var so tests can
+// inject a failing reader to exercise the read-error paths; production reads from crypto/rand.
+var randReader io.Reader = rand.Reader
 
 const (
 	magic     = "DWV1"
@@ -57,21 +62,21 @@ func NewEnvelopeCipher(kek KekProvider) *EnvelopeCipher { return &EnvelopeCipher
 // Encrypt seals plaintext into a self-describing envelope blob.
 func (c *EnvelopeCipher) Encrypt(plaintext []byte) ([]byte, error) {
 	dek := make([]byte, dekSize)
-	if _, err := rand.Read(dek); err != nil {
+	if _, err := io.ReadFull(randReader, dek); err != nil {
 		return nil, err
 	}
 
 	block, err := aes.NewCipher(dek)
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore aes.NewCipher cannot fail on a 32-byte DEK
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore cipher.NewGCM cannot fail on a standard AES block
 	}
 
 	nonce := make([]byte, nonceSize)
-	if _, err := rand.Read(nonce); err != nil {
+	if _, err := io.ReadFull(randReader, nonce); err != nil {
 		return nil, err
 	}
 
@@ -148,11 +153,11 @@ func (c *EnvelopeCipher) Decrypt(blob []byte) ([]byte, error) {
 
 	block, err := aes.NewCipher(dek)
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore aes.NewCipher cannot fail on a 32-byte DEK
 	}
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore cipher.NewGCM cannot fail on a standard AES block
 	}
 	// Recombine ciphertext || tag for Go's Open.
 	sealed := make([]byte, 0, len(ct)+len(tag))

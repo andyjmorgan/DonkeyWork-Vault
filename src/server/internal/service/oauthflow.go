@@ -99,11 +99,11 @@ func (s *OAuthFlowService) Begin(ctx context.Context, provider string, scopes []
 
 	verifier, err := oauth.GenerateVerifier()
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore crypto/rand-backed GenerateVerifier does not fail and is not injectable here
 	}
 	state, err := oauth.RandomState()
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore crypto/rand-backed RandomState does not fail and is not injectable here
 	}
 	redirectURI := strings.TrimRight(publicBaseURL, "/") + "/api/oauth/callback"
 

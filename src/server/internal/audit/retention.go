@@ -40,10 +40,14 @@ func NewRetention(s store.Store, logger *slog.Logger, opts RetentionOptions) *Re
 	return &Retention{store: s, logger: logger, opts: opts}
 }
 
+// initialRetentionDelay is the startup settle time before the first sweep. It is a package var so
+// tests can shrink it; production keeps the one-minute default.
+var initialRetentionDelay = time.Minute
+
 // Run sweeps on an interval until ctx is cancelled. An initial delay lets startup settle.
 func (r *Retention) Run(ctx context.Context) {
 	select {
-	case <-time.After(time.Minute):
+	case <-time.After(initialRetentionDelay):
 	case <-ctx.Done():
 		return
 	}

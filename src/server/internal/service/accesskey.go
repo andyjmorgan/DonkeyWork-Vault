@@ -82,7 +82,7 @@ func (s *AccessKeyService) Create(ctx context.Context, name string, description 
 
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return nil, "", err
+		return nil, "", err //coverage:ignore crypto/rand.Read does not fail in practice and is not injectable here
 	}
 	secret := SecretPrefix + base64.RawURLEncoding.EncodeToString(raw)
 	prefix := secret

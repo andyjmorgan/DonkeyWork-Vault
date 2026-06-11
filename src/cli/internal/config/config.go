@@ -42,6 +42,10 @@ const (
 	fileName = "hosts.json"
 )
 
+// createTemp is os.CreateTemp, indirected only so tests can exercise Save's atomic-write
+// failure path (e.g. by handing back an already-closed file). Production never reassigns it.
+var createTemp = os.CreateTemp
+
 // Dir returns the dwvault config directory ($XDG_CONFIG_HOME/dwvault), the home for
 // hosts.json and other non-secret state files (e.g. the update-check cache).
 func Dir() (string, error) {
@@ -95,11 +99,11 @@ func Save(c *Config) error {
 	}
 	b, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
-		return err
+		return err //coverage:ignore Config always marshals
 	}
 	// Unique temp file (0600) in the same dir, renamed over the target — avoids a
 	// fixed-suffix race between concurrent invocations.
-	f, err := os.CreateTemp(filepath.Dir(p), ".tmp-*")
+	f, err := createTemp(filepath.Dir(p), ".tmp-*")
 	if err != nil {
 		return err
 	}
@@ -110,7 +114,7 @@ func Save(c *Config) error {
 		return err
 	}
 	if err := f.Close(); err != nil {
-		return err
+		return err //coverage:ignore Close error after a successful write not reproducible
 	}
 	return os.Rename(tmp, p)
 }
