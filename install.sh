@@ -97,8 +97,8 @@ else
   err "cannot write to $bindir; set DWVAULT_BIN_DIR to a writable directory"
 fi
 
-# macOS: prebuilt binaries aren't notarized yet; clear the curl-quarantine flag.
-[ "$os" = darwin ] && have xattr && xattr -d com.apple.quarantine "$bindir/dwvault" 2>/dev/null || true
+# macOS: binaries are signed with a Developer ID and notarized by Apple, so no
+# quarantine workaround is needed. (curl downloads aren't quarantined anyway.)
 
 say "Installed dwvault to $bindir/dwvault"
 

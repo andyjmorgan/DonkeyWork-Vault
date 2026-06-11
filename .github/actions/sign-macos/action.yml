@@ -1,0 +1,79 @@
+name: Sign and notarize macOS binaries
+description: >
+  Code-signs and notarizes the dwvault-darwin-* binaries from a Linux runner
+  using rcodesign (the Rust apple-codesign implementation). Operates in place on
+  the binaries in dist-dir, so run this AFTER build and BEFORE checksums.
+
+inputs:
+  p12-base64:
+    description: Base64-encoded Developer ID Application .p12.
+    required: true
+  p12-password:
+    description: Export password for the .p12.
+    required: true
+  notary-p8:
+    description: Raw contents of the App Store Connect API key (.p8).
+    required: true
+  issuer-id:
+    description: App Store Connect API issuer ID (not secret).
+    required: true
+  key-id:
+    description: App Store Connect API key ID (not secret).
+    required: true
+  dist-dir:
+    description: Directory containing the dwvault-darwin-* binaries.
+    required: false
+    default: dist
+  rcodesign-version:
+    description: rcodesign release to pin.
+    required: false
+    default: "0.29.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Install rcodesign
+      shell: bash
+      run: |
+        set -euo pipefail
+        ver="${{ inputs.rcodesign-version }}"
+        pkg="apple-codesign-${ver}-x86_64-unknown-linux-musl"
+        mkdir -p "$RUNNER_TEMP/bin"
+        curl -fsSL "https://github.com/indygreg/apple-platform-rs/releases/download/apple-codesign%2F${ver}/${pkg}.tar.gz" \
+          | tar xz --strip-components=1 -C "$RUNNER_TEMP/bin" "${pkg}/rcodesign"
+        echo "$RUNNER_TEMP/bin" >> "$GITHUB_PATH"
+        "$RUNNER_TEMP/bin/rcodesign" --version
+
+    - name: Sign & notarize darwin binaries
+      shell: bash
+      working-directory: ${{ inputs.dist-dir }}
+      env:
+        P12_B64:   ${{ inputs.p12-base64 }}
+        P12_PASS:  ${{ inputs.p12-password }}
+        NOTARY_P8: ${{ inputs.notary-p8 }}
+        ISSUER_ID: ${{ inputs.issuer-id }}
+        KEY_ID:    ${{ inputs.key-id }}
+      run: |
+        set -euo pipefail
+        umask 077
+        work="$(mktemp -d)"
+        trap 'rm -rf "$work"' EXIT
+
+        echo "$P12_B64" | base64 -d > "$work/devid.p12"
+        printf '%s' "$NOTARY_P8" > "$work/AuthKey.p8"
+        rcodesign encode-app-store-connect-api-key \
+          -o "$work/notary-key.json" "$ISSUER_ID" "$KEY_ID" "$work/AuthKey.p8"
+
+        for arch in arm64 amd64; do
+          bin="dwvault-darwin-$arch"
+          [ -f "$bin" ] || { echo "::error::missing $bin"; exit 1; }
+
+          rcodesign sign --for-notarization \
+            --code-signature-flags runtime \
+            --p12-file "$work/devid.p12" --p12-password "$P12_PASS" \
+            "$bin"
+
+          # A bare Mach-O can't be stapled, so submit a zip for notarization.
+          zip -qj "$work/$bin.zip" "$bin"
+          rcodesign notary-submit --api-key-file "$work/notary-key.json" --wait "$work/$bin.zip"
+        done
