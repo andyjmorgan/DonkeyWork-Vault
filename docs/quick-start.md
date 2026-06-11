@@ -1,0 +1,99 @@
+# Quick Start
+
+This guide gets you from an empty vault to a working CLI call.
+
+## 1. Sign in
+
+Open the hosted vault:
+
+```text
+https://vault.donkeywork.dev
+```
+
+For a self-hosted vault, open your own public URL instead.
+
+## 2. Add a Credential
+
+Go to **Credentials** and use the **+** button.
+
+Choose **API key / token** for header-based credentials such as bearer tokens, service tokens, or API keys.
+
+Choose **Username + password** for HTTP Basic credentials.
+
+Recommended fields:
+
+- **Name**: a short script-safe name, such as `grafana-prod` or `github-ci`.
+- **Secret**: the token, API key, password, DSN, or other secret value.
+- **Description**: what the credential unlocks and when it should be used.
+- **Base URL / host**: the service URL where the credential applies.
+- **API docs link**: provider documentation for callers and agents.
+- **Header**: commonly `Authorization`, `X-Api-Key`, or the provider-specific header.
+- **Prefix**: commonly `Bearer `, including the trailing space.
+
+## 3. Mint an Access Key
+
+Go to **Profile** and create an API key for the CLI or agent.
+
+Pick the least scope needed:
+
+| Scope | Use |
+|---|---|
+| `vault:read` | Read credentials and OAuth tokens. Best default for scripts. |
+| `vault:readwrite` | Create, update, and delete vault records. |
+| `vault:audit` | Read audit events. |
+
+The key value starts with `dwv_` and is shown once. Copy it immediately.
+
+## 4. Install the CLI
+
+Linux and macOS:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/andyjmorgan/DonkeyWork-Vault/main/install.sh | sh
+dwvault --version
+```
+
+## 5. Log In
+
+Hosted vault:
+
+```bash
+dwvault auth login
+```
+
+Self-hosted vault:
+
+```bash
+dwvault --addr https://vault.example.com auth login
+```
+
+Paste the `dwv_...` access key when prompted.
+
+## 6. Use a Credential
+
+List credentials:
+
+```bash
+dwvault credentials list
+```
+
+Inspect how a credential should be used:
+
+```bash
+dwvault credentials shape grafana-prod
+```
+
+Use a ready-made header with `curl`:
+
+```bash
+curl -H "$(dwvault credentials header grafana-prod)" https://grafana.example.com/api/health
+```
+
+Fetch only the raw secret:
+
+```bash
+TOKEN="$(dwvault credentials get grafana-prod)"
+```
+
+Do not echo secrets or paste them into logs. Prefer command substitution or environment variables scoped to the process that needs them.
+
