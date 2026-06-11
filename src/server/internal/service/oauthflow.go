@@ -312,7 +312,7 @@ func (s *OAuthFlowService) fetchAccount(ctx context.Context, m *manifests.Manife
 	if err != nil {
 		return "default"
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if !httpOK(resp.StatusCode) {
 		return "default"
 	}

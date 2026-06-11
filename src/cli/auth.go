@@ -70,7 +70,7 @@ func cmdAuthLogin() *cobra.Command {
 			if oauthMode && apiKeyMode {
 				return fmt.Errorf("--oauth and --api-key are mutually exclusive")
 			}
-			mode := "oauth"
+			var mode string
 			switch {
 			case oauthMode:
 				mode = "oauth"

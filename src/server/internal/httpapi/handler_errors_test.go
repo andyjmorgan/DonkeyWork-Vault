@@ -16,7 +16,7 @@ import (
 // in-memory store to fail. The JWT harness is used so authentication never touches the store and the
 // forced failure lands in the handler.
 func TestHandlerStoreErrors(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	webTok := func() string {
 		return makeJWT(t, map[string]any{"iss": testIssuer, "sub": uuid.NewString(), "aud": []string{"web"}, "azp": "web", "exp": time.Now().Add(time.Hour).Unix()})
 	}

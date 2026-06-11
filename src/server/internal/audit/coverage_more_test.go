@@ -34,10 +34,7 @@ func TestRetentionRunSweepsThenCancel(t *testing.T) {
 
 	// Wait for the first sweep to remove the old row, then cancel to exit the loop.
 	deadline := time.After(2 * time.Second)
-	for {
-		if ms.AuditCount() == 0 {
-			break
-		}
+	for ms.AuditCount() != 0 {
 		select {
 		case <-deadline:
 			t.Fatal("sweep did not run")

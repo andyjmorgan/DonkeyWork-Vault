@@ -1,3 +1,5 @@
+// Package oauthdevice implements the OAuth 2.0 device authorization grant (with PKCE)
+// used by the dwvault CLI to obtain and refresh tokens against an OIDC issuer.
 package oauthdevice
 
 import (
@@ -15,12 +17,14 @@ import (
 	"donkeywork.dev/vault-cli/internal/restclient"
 )
 
+// Discovery holds the subset of OIDC discovery metadata the device flow needs.
 type Discovery struct {
 	Issuer                      string `json:"issuer"`
 	DeviceAuthorizationEndpoint string `json:"device_authorization_endpoint"`
 	TokenEndpoint               string `json:"token_endpoint"`
 }
 
+// DeviceStart is the response from the device authorization endpoint plus the PKCE verifier.
 type DeviceStart struct {
 	DeviceCode              string `json:"device_code"`
 	UserCode                string `json:"user_code"`
@@ -31,6 +35,7 @@ type DeviceStart struct {
 	CodeVerifier            string `json:"-"`
 }
 
+// TokenResponse is the OAuth token endpoint response (success fields and error fields).
 type TokenResponse struct {
 	AccessToken      string `json:"access_token"`
 	RefreshToken     string `json:"refresh_token"`
@@ -42,12 +47,14 @@ type TokenResponse struct {
 	ErrorDescription string `json:"error_description"`
 }
 
+// Claims holds the identity fields decoded from an access token's payload.
 type Claims struct {
 	Subject           string
 	Email             string
 	PreferredUsername string
 }
 
+// Discover fetches the OIDC discovery document from authority and returns the device-flow metadata.
 func Discover(authority string) (*Discovery, error) {
 	u := strings.TrimRight(authority, "/") + "/.well-known/openid-configuration"
 	req, err := http.NewRequest(http.MethodGet, u, nil)
@@ -60,7 +67,7 @@ func Discover(authority string) (*Discovery, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("GET %s: %s", u, resp.Status)
@@ -75,6 +82,7 @@ func Discover(authority string) (*Discovery, error) {
 	return &d, nil
 }
 
+// Start begins the device authorization flow against d and returns the device/user codes.
 func Start(d *Discovery, clientID, scopes string) (*DeviceStart, error) {
 	verifier, challenge, err := pkce()
 	if err != nil {
@@ -103,6 +111,9 @@ func Start(d *Discovery, clientID, scopes string) (*DeviceStart, error) {
 	return &start, nil
 }
 
+// Poll repeatedly exchanges the device code for tokens until the user approves, the
+// request is denied, or the authorization expires. notify, if non-nil, is called before
+// each wait with the current poll interval.
 func Poll(d *Discovery, clientID string, start *DeviceStart, notify func(time.Duration)) (*TokenResponse, error) {
 	deadline := time.Now().Add(time.Duration(start.ExpiresIn) * time.Second)
 	interval := time.Duration(start.Interval) * time.Second
@@ -139,6 +150,7 @@ func Poll(d *Discovery, clientID string, start *DeviceStart, notify func(time.Du
 	}
 }
 
+// Refresh exchanges a refresh token for a new token set at tokenEndpoint.
 func Refresh(tokenEndpoint, clientID, refreshToken string) (*TokenResponse, error) {
 	return token(tokenEndpoint, map[string]string{
 		"grant_type":    "refresh_token",
@@ -147,6 +159,8 @@ func Refresh(tokenEndpoint, clientID, refreshToken string) (*TokenResponse, erro
 	})
 }
 
+// DecodeClaims extracts identity claims from an access token's payload without verifying
+// its signature. It returns a zero Claims if the token can't be parsed.
 func DecodeClaims(accessToken string) Claims {
 	parts := strings.Split(accessToken, ".")
 	if len(parts) < 2 {

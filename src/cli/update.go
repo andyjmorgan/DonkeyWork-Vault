@@ -166,8 +166,8 @@ func spawnBackgroundCheck() {
 	if err != nil {
 		return
 	}
-	defer devnull.Close()
-	c := exec.Command(exe, "__update-check")
+	defer func() { _ = devnull.Close() }()
+	c := exec.Command(exe, "__update-check") //nolint:gosec // G204: exe is os.Executable() (this binary's own path), not attacker-supplied
 	c.Stdin, c.Stdout, c.Stderr = devnull, devnull, devnull
 	c.SysProcAttr = &syscall.SysProcAttr{Setsid: true} // outlive the parent process
 	if err := c.Start(); err == nil {

@@ -32,21 +32,28 @@ const (
 type Source string
 
 const (
-	SourceEnv     Source = "env"
+	// SourceEnv means the key came from the environment variable.
+	SourceEnv Source = "env"
+	// SourceKeyring means the key came from the OS keyring.
 	SourceKeyring Source = "keyring"
-	SourceFile    Source = "file"
+	// SourceFile means the key came from the 0600 fallback file.
+	SourceFile Source = "file"
 )
 
 // ErrNotFound is returned when no credential exists for the host.
 var ErrNotFound = errors.New("no stored credential for host")
 
+// CredentialType distinguishes an API-key credential from an OAuth one.
 type CredentialType string
 
 const (
+	// TypeAPIKey is a static API-key credential.
 	TypeAPIKey CredentialType = "api_key"
-	TypeOAuth  CredentialType = "oauth"
+	// TypeOAuth is an OAuth credential (access/refresh tokens).
+	TypeOAuth CredentialType = "oauth"
 )
 
+// Credential is a stored credential for a host: either an API key or an OAuth token set.
 type Credential struct {
 	Type             CredentialType `json:"type"`
 	Secret           string         `json:"secret,omitempty"`
@@ -72,6 +79,8 @@ func Resolve(host string) (key string, src Source, err error) {
 	return c.Secret, src, nil
 }
 
+// ResolveCredential returns the full stored credential for host and where it came from,
+// honouring the env > keyring > file precedence.
 func ResolveCredential(host string) (*Credential, Source, error) {
 	if v := os.Getenv(envVar); v != "" {
 		return &Credential{Type: TypeAPIKey, Secret: v}, SourceEnv, nil
@@ -97,8 +106,10 @@ func Store(host, key string) (config.StoreKind, error) {
 	return StoreCredential(host, &Credential{Type: TypeAPIKey, Secret: key})
 }
 
+// StoreCredential persists c for host. It prefers the OS keyring; if that's unavailable
+// it falls back to a 0600 file. The chosen store is returned so callers can record it.
 func StoreCredential(host string, c *Credential) (config.StoreKind, error) {
-	b, err := json.Marshal(c)
+	b, err := json.Marshal(c) //nolint:gosec // G117: serializing the credential for storage is the intended behavior
 	if err != nil {
 		return "", err
 	}
@@ -106,13 +117,13 @@ func StoreCredential(host string, c *Credential) (config.StoreKind, error) {
 }
 
 func storeRaw(host, key string) (config.StoreKind, error) {
-	if err := keyring.Set(service, host, key); err == nil {
+	kerr := keyring.Set(service, host, key)
+	if kerr == nil {
 		_ = fileDelete(host) // drop any stale file copy once the keyring holds it
 		return config.StoreKeyring, nil
-	} else {
-		// Surface the fallback rather than silently writing the secret to disk.
-		fmt.Fprintf(os.Stderr, "dwvault: OS keyring unavailable (%v); storing secret in 0600 file fallback\n", err)
 	}
+	// Surface the fallback rather than silently writing the secret to disk.
+	_, _ = fmt.Fprintf(os.Stderr, "dwvault: OS keyring unavailable (%v); storing secret in 0600 file fallback\n", kerr)
 	if err := fileSet(host, key); err != nil {
 		return "", fmt.Errorf("no OS keyring available and file fallback failed: %w", err)
 	}
@@ -161,7 +172,7 @@ func fileLoad() (map[string]string, string, error) {
 	if err := checkPerms(p); err != nil {
 		return nil, p, err
 	}
-	b, err := os.ReadFile(p)
+	b, err := os.ReadFile(p) //nolint:gosec // G304: path is the program-controlled credentials file, not attacker-supplied
 	if os.IsNotExist(err) {
 		return map[string]string{}, p, nil
 	}
@@ -205,9 +216,9 @@ func writeFileAtomic(p string, b []byte) error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp) // no-op once the rename succeeds
+	defer func() { _ = os.Remove(tmp) }() // no-op once the rename succeeds
 	if _, err := f.Write(b); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {

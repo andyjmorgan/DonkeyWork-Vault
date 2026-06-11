@@ -1184,7 +1184,7 @@ func TestPostFormBadEndpoint(t *testing.T) {
 }
 
 func TestPostFormOK(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`ok`))
 	}))
 	defer srv.Close()

@@ -123,7 +123,7 @@ func (l *Log) Emit(ctx context.Context, p EmitParams) {
 		))
 	}
 	l.recordMetric(ctx, p)
-	l.Enqueue(e)
+	l.Enqueue(e) //nolint:contextcheck // audit sink intentionally detaches from the request ctx (fire-and-forget)
 }
 
 func (l *Log) recordMetric(ctx context.Context, p EmitParams) {

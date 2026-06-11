@@ -15,6 +15,7 @@ import (
 // they must not be reordered.
 type EventType int
 
+// Event type values. Stored as int and must not be reordered; EventUnknown is the zero value.
 const (
 	EventUnknown           EventType = 0
 	EventTokenAccessed     EventType = 1
@@ -65,6 +66,7 @@ func ParseEventType(s string) (EventType, bool) {
 // Outcome is whether the audited operation succeeded.
 type Outcome int
 
+// Outcome values. Stored as int; OutcomeSuccess is the zero value.
 const (
 	OutcomeSuccess Outcome = 0
 	OutcomeFailure Outcome = 1

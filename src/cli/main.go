@@ -138,9 +138,9 @@ func cmdList() *cobra.Command {
 				return apiError("list api keys", resp.Status(), resp.Body)
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "NAME\tDESCRIPTION\tBASE URL\tKIND")
+			_, _ = fmt.Fprintln(w, "NAME\tDESCRIPTION\tBASE URL\tKIND")
 			for _, k := range *resp.JSON200 {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%s\n",
 					k.Name, truncate(deref(k.Description), 60), deref(k.BaseUrl), string(k.Kind))
 			}
 			return w.Flush()
@@ -291,9 +291,9 @@ func cmdOAuthList() *cobra.Command {
 				return apiError("list oauth tokens", resp.Status(), resp.Body)
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "PROVIDER\tACCOUNT\tSTATUS\tSCOPES")
+			_, _ = fmt.Fprintln(w, "PROVIDER\tACCOUNT\tSTATUS\tSCOPES")
 			for _, t := range *resp.JSON200 {
-				fmt.Fprintf(w, "%s\t%s\tconnected\t%s\n", t.Provider, t.Account, strings.Join(t.Scopes, " "))
+				_, _ = fmt.Fprintf(w, "%s\t%s\tconnected\t%s\n", t.Provider, t.Account, strings.Join(t.Scopes, " "))
 			}
 			return w.Flush()
 		},
@@ -448,13 +448,13 @@ func cmdKeysList() *cobra.Command {
 				return apiError("list access keys", resp.Status(), resp.Body)
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "ID\tNAME\tSCOPES\tENABLED\tPREFIX\tLAST USED")
+			_, _ = fmt.Fprintln(w, "ID\tNAME\tSCOPES\tENABLED\tPREFIX\tLAST USED")
 			for _, k := range *resp.JSON200 {
 				last := "-"
 				if k.LastUsedAt != nil {
 					last = k.LastUsedAt.Format(time.RFC3339)
 				}
-				fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s…\t%s\n", k.Id, k.Name, strings.Join(k.Scopes, ","), k.Enabled, k.Prefix, last)
+				_, _ = fmt.Fprintf(w, "%s\t%s\t%s\t%t\t%s…\t%s\n", k.Id, k.Name, strings.Join(k.Scopes, ","), k.Enabled, k.Prefix, last)
 			}
 			return w.Flush()
 		},
@@ -580,12 +580,4 @@ func strPtr(s string) *string {
 		return nil
 	}
 	return &s
-}
-
-// fmtTime formats an optional timestamp for table output.
-func fmtTime(t *time.Time) string {
-	if t == nil {
-		return "no expiry"
-	}
-	return t.Format(time.RFC3339)
 }

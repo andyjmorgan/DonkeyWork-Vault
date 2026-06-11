@@ -110,7 +110,7 @@ func TestFileFallback(t *testing.T) {
 	}
 
 	// loosened perms ⇒ refuse to read
-	if err := os.Chmod(p, 0o644); err != nil {
+	if err := os.Chmod(p, 0o644); err != nil { //nolint:gosec // G302: test deliberately loosens perms to exercise the insecure-perms refusal
 		t.Fatalf("chmod: %v", err)
 	}
 	if _, _, err := Resolve(host); err == nil {

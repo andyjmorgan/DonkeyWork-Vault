@@ -15,14 +15,20 @@ import (
 
 // StoreKind records where a host's secret is kept.
 type StoreKind string
+
+// AuthType records how a host authenticates (API key or OAuth).
 type AuthType string
 
 const (
+	// StoreKeyring means the secret lives in the OS keyring.
 	StoreKeyring StoreKind = "keyring"
-	StoreFile    StoreKind = "file"
+	// StoreFile means the secret lives in a 0600 credentials file.
+	StoreFile StoreKind = "file"
 
+	// AuthAPIKey means the host authenticates with a static API key.
 	AuthAPIKey AuthType = "api_key"
-	AuthOAuth  AuthType = "oauth"
+	// AuthOAuth means the host authenticates with an OAuth token.
+	AuthOAuth AuthType = "oauth"
 )
 
 // Host is the non-secret record for one vault host.
@@ -71,7 +77,7 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, err
 	}
-	b, err := os.ReadFile(p)
+	b, err := os.ReadFile(p) //nolint:gosec // G304: path is the program-controlled config dir, not attacker-supplied
 	if os.IsNotExist(err) {
 		return &Config{Hosts: map[string]Host{}}, nil
 	}
@@ -108,9 +114,9 @@ func Save(c *Config) error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp) // no-op once the rename succeeds
+	defer func() { _ = os.Remove(tmp) }() // no-op once the rename succeeds
 	if _, err := f.Write(b); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {

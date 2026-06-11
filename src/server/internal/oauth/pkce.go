@@ -10,7 +10,7 @@ import (
 
 // randReader is the CSPRNG source for verifier/state generation. It is a package var so tests can
 // inject a failing reader to exercise the error path; production code reads from crypto/rand.
-var randReader io.Reader = rand.Reader
+var randReader = rand.Reader
 
 // GenerateVerifier returns a PKCE code verifier (43-char base64url of 32 random bytes).
 func GenerateVerifier() (string, error) { return randomBase64url(32) }

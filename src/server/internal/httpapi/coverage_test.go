@@ -109,13 +109,13 @@ func TestAuditFilterParams(t *testing.T) {
 
 // TestMeWithTenant drives handleMe's non-nil tenant branch via a JWT carrying a tenant_id claim.
 func TestMeWithTenant(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	tenant := uuid.NewString()
 	tok := makeJWT(t, map[string]any{
 		"iss": testIssuer, "sub": uuid.NewString(), "aud": []string{"web"}, "azp": "web",
 		"tenant_id": tenant, "email": "u@e.com", "name": "U", "exp": time.Now().Add(time.Hour).Unix(),
 	})
-	rec := bearer(h, t, "GET", "/api/v1/me", tok)
+	rec := bearer(h, t, "/api/v1/me", tok)
 	me := decode[meResponse](t, rec)
 	if me.TenantID != tenant {
 		t.Fatalf("tenant: got %q want %q", me.TenantID, tenant)
@@ -125,8 +125,8 @@ func TestMeWithTenant(t *testing.T) {
 // TestJWTMalformedBearerRejected covers authenticateJWT's Verify-failure branch (HTTP 401) for a
 // token that is not a well-formed JWT.
 func TestJWTMalformedBearerRejected(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
-	if rec := bearer(h, t, "GET", "/api/v1/me", "not.a.jwt"); rec.Code != http.StatusUnauthorized {
+	h := newJWTHarness(t)
+	if rec := bearer(h, t, "/api/v1/me", "not.a.jwt"); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("invalid bearer: want 401, got %d", rec.Code)
 	}
 }
@@ -394,7 +394,7 @@ func TestDeleteHandlersStoreError(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			h := newJWTHarness(t, "web", "cli")
+			h := newJWTHarness(t)
 			h.ms.FailNext = errFailDB
 			var body *bytes.Reader
 			if c.method == "PATCH" {

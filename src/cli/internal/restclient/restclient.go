@@ -29,12 +29,14 @@ func FetchMe(baseURL, apiKey string) (*Me, error) {
 	})
 }
 
+// FetchMeBearer validates a bearer token against baseURL and returns the caller identity.
 func FetchMeBearer(baseURL, token string) (*Me, error) {
 	return fetchMe(baseURL, func(req *http.Request) {
 		req.Header.Set("Authorization", "Bearer "+token)
 	})
 }
 
+// AppConfig is the vault's public client configuration, from GET /api/config.
 type AppConfig struct {
 	Authority            string `json:"authority"`
 	ClientID             string `json:"clientId"`
@@ -42,9 +44,10 @@ type AppConfig struct {
 	AuthEnabled          bool   `json:"authEnabled"`
 	CliClientID          string `json:"cliClientId"`
 	CliScopes            string `json:"cliScopes"`
-	RequireHttpsMetadata bool   `json:"requireHttpsMetadata"`
+	RequireHTTPSMetadata bool   `json:"requireHttpsMetadata"`
 }
 
+// FetchConfig retrieves the vault's public client configuration from baseURL.
 func FetchConfig(baseURL string) (*AppConfig, error) {
 	u := strings.TrimRight(baseURL, "/") + "/api/config"
 	req, err := http.NewRequest(http.MethodGet, u, nil)
@@ -57,7 +60,7 @@ func FetchConfig(baseURL string) (*AppConfig, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode/100 != 2 {
 		return nil, fmt.Errorf("GET %s: %s", u, resp.Status)
@@ -69,6 +72,8 @@ func FetchConfig(baseURL string) (*AppConfig, error) {
 	return &cfg, nil
 }
 
+// PostForm posts the given values as an application/x-www-form-urlencoded body to endpoint
+// and returns the response body and status code.
 func PostForm(endpoint string, values map[string]string) ([]byte, int, error) {
 	form := url.Values{}
 	for k, v := range values {
@@ -86,7 +91,7 @@ func PostForm(endpoint string, values map[string]string) ([]byte, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	return body, resp.StatusCode, nil
 }
@@ -105,7 +110,7 @@ func fetchMe(baseURL string, edit func(*http.Request)) (*Me, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 
 	switch {

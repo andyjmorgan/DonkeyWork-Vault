@@ -63,7 +63,6 @@ func TestBlobLayout(t *testing.T) {
 	}
 	o += kekIDLen
 	wrappedLen := int(binary.BigEndian.Uint16(blob[o:]))
-	o += 2
 	// wrappedDek = nonce(12) || tag(16) || ciphertext(32-byte DEK) = 60 bytes.
 	if wrappedLen != nonceSize+tagSize+dekSize {
 		t.Fatalf("unexpected wrapped DEK length: %d", wrappedLen)
@@ -96,7 +95,7 @@ func TestCrossDecrypt(t *testing.T) {
 	blob = append(blob, version)
 	blob = append(blob, byte(len(testKekID)))
 	blob = append(blob, testKekID...)
-	blob = binary.BigEndian.AppendUint16(blob, uint16(len(wrapped)))
+	blob = binary.BigEndian.AppendUint16(blob, uint16(len(wrapped))) //nolint:gosec // G115: wrapped is a 60-byte wrapped DEK, well within uint16.
 	blob = append(blob, wrapped...)
 	blob = append(blob, nonce...)
 	blob = append(blob, tag...)

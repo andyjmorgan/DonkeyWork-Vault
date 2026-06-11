@@ -152,7 +152,7 @@ func oauthServer(t *testing.T, tok oauthdevice.TokenResponse, tokenStatus int) *
 	mux.HandleFunc("/token", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(tokenStatus)
-		_ = json.NewEncoder(w).Encode(tok)
+		_ = json.NewEncoder(w).Encode(tok) //nolint:gosec // G117: encoding a test token fixture to the test server response is intended
 	})
 	return srv
 }
@@ -371,8 +371,8 @@ func TestNewClient_AttachesAuthHeader(t *testing.T) {
 	}))
 	t.Cleanup(vault.Close)
 
-	addr = vault.URL // httpBaseURL passes http:// URLs through verbatim
-	if _, err := credstore.StoreCredential(vault.URL, &credstore.Credential{
+	addr = vault.URL                                                         // httpBaseURL passes http:// URLs through verbatim
+	if _, err := credstore.StoreCredential(vault.URL, &credstore.Credential{ //nolint:gosec // G101: test fixture secret, not a real hardcoded credential
 		Type:   credstore.TypeAPIKey,
 		Secret: "dwv_newclient",
 	}); err != nil {

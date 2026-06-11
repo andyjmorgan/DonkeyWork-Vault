@@ -188,7 +188,7 @@ func (s *Server) handleListManifests(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) handleListTemplates(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleListTemplates(w http.ResponseWriter, _ *http.Request) {
 	items := s.deps.Resolver.ListTemplates()
 	out := make([]oauthManifestDTO, len(items))
 	for i, m := range items {

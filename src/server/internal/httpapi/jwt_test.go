@@ -46,7 +46,7 @@ func makeJWT(t *testing.T, claims map[string]any) string {
 	return hdr + "." + payload + ".sig"
 }
 
-func newJWTHarness(t *testing.T, webClient, cliClient string) *harness {
+func newJWTHarness(t *testing.T) *harness {
 	t.Helper()
 	h := newHarness(t)
 	// Rebuild the server with an injected verifier + auth on.
@@ -68,15 +68,15 @@ func newJWTHarness(t *testing.T, webClient, cliClient string) *harness {
 	srv, _ := NewServer(context.Background(), deps)
 	srv.verifier.Store(oidc.NewVerifier(testIssuer, fakeKeySet{}, &oidc.Config{SkipClientIDCheck: true}))
 	srv.authOn = true
-	srv.webClientID = webClient
-	srv.cliClientID = cliClient
+	srv.webClientID = "web"
+	srv.cliClientID = "cli"
 	h.h = srv.Handler()
 	return h
 }
 
-func bearer(h *harness, t *testing.T, method, path, token string) *httptest.ResponseRecorder {
+func bearer(h *harness, t *testing.T, path, token string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequest("GET", path, nil)
 	req.Header.Set("Authorization", "Bearer "+token)
 	rec := httptest.NewRecorder()
 	h.h.ServeHTTP(rec, req)
@@ -84,55 +84,55 @@ func bearer(h *harness, t *testing.T, method, path, token string) *httptest.Resp
 }
 
 func TestJWTWebUserFullScopes(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	tok := makeJWT(t, map[string]any{
 		"iss": testIssuer, "sub": uuid.NewString(), "aud": []string{"web"}, "azp": "web",
 		"email": "u@e.com", "name": "U", "exp": time.Now().Add(time.Hour).Unix(),
 	})
-	if rec := bearer(h, t, "GET", "/api/v1/me", tok); rec.Code != 200 {
+	if rec := bearer(h, t, "/api/v1/me", tok); rec.Code != 200 {
 		t.Fatalf("me %d body=%s", rec.Code, rec.Body)
 	}
 	// web user has vault:audit
-	if rec := bearer(h, t, "GET", "/api/v1/audit", tok); rec.Code != 200 {
+	if rec := bearer(h, t, "/api/v1/audit", tok); rec.Code != 200 {
 		t.Fatalf("audit %d", rec.Code)
 	}
 }
 
 func TestJWTCliUserLimitedScopes(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	tok := makeJWT(t, map[string]any{
 		"iss": testIssuer, "sub": uuid.NewString(), "aud": []string{"web"}, "azp": "cli",
 		"exp": time.Now().Add(time.Hour).Unix(),
 	})
 	// CLI can read
-	if rec := bearer(h, t, "GET", "/api/v1/api-keys", tok); rec.Code != 200 {
+	if rec := bearer(h, t, "/api/v1/api-keys", tok); rec.Code != 200 {
 		t.Fatalf("cli read %d", rec.Code)
 	}
 	// CLI lacks vault:audit
-	if rec := bearer(h, t, "GET", "/api/v1/audit", tok); rec.Code != http.StatusForbidden {
+	if rec := bearer(h, t, "/api/v1/audit", tok); rec.Code != http.StatusForbidden {
 		t.Fatalf("cli audit should be 403, got %d", rec.Code)
 	}
 }
 
 func TestJWTNonGUIDSubjectRejected(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	tok := makeJWT(t, map[string]any{"iss": testIssuer, "sub": "not-a-guid", "aud": []string{"web"}, "exp": time.Now().Add(time.Hour).Unix()})
-	if rec := bearer(h, t, "GET", "/api/v1/me", tok); rec.Code != http.StatusUnauthorized {
+	if rec := bearer(h, t, "/api/v1/me", tok); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("non-guid sub should be 401, got %d", rec.Code)
 	}
 }
 
 func TestJWTBadIssuerRejected(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	tok := makeJWT(t, map[string]any{"iss": "https://evil", "sub": uuid.NewString(), "aud": []string{"web"}, "exp": time.Now().Add(time.Hour).Unix()})
-	if rec := bearer(h, t, "GET", "/api/v1/me", tok); rec.Code != http.StatusUnauthorized {
+	if rec := bearer(h, t, "/api/v1/me", tok); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("bad issuer should be 401, got %d", rec.Code)
 	}
 }
 
 // Ensure the access-key path still wins when both could apply.
 func TestAccessKeyStillWorksWithVerifier(t *testing.T) {
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	hash := sha256.Sum256([]byte(h.secret))
 	_ = hash
 	if rec := h.do(t, "GET", "/api/v1/api-keys", nil, true); rec.Code != 200 {

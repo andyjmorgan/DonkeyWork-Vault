@@ -14,7 +14,7 @@ const (
 	// KindOpaque is the catch-all: the secret is opaque material, returned verbatim.
 	KindOpaque CredentialKind = "opaque"
 	// KindHeaderAPIKey is sent in an HTTP header: {header}: {prefix}{secret}.
-	KindHeaderAPIKey CredentialKind = "header_api_key"
+	KindHeaderAPIKey CredentialKind = "header_api_key" //nolint:gosec // G101: credential-kind label, not a secret value.
 	// KindHTTPBasic is HTTP Basic: Authorization: Basic base64(username:secret).
 	KindHTTPBasic CredentialKind = "http_basic"
 	// KindUsernamePassword is a username+password login that is NOT sent as HTTP Basic.
