@@ -1,3 +1,4 @@
+using DonkeyWork.Vault.Contracts;
 using DonkeyWork.Vault.Contracts.Audit;
 using DonkeyWork.Vault.Persistence;
 using Microsoft.EntityFrameworkCore;
@@ -42,11 +43,11 @@ public interface IAuditQueryService
 }
 
 /// <summary>
-/// Reads the append-only audit trail. The trail deliberately has no per-user query filter — auditing
-/// is an administrative, cross-user view — so access is gated by the <c>vault:audit</c> scope at the
-/// transport layer. Reading the trail is itself audited (<see cref="AuditEventType.AuditAccessed"/>).
+/// Reads the append-only audit trail for the ambient caller. The table deliberately has no global
+/// query filter because rows are append-only, so this service applies caller scoping explicitly.
+/// Reading the trail is itself audited (<see cref="AuditEventType.AuditAccessed"/>).
 /// </summary>
-public sealed class AuditQueryService(VaultDbContext db, AuditEmitter audit) : IAuditQueryService
+public sealed class AuditQueryService(VaultDbContext db, AuditEmitter audit, IVaultCallerContext caller) : IAuditQueryService
 {
     public const int MaxLimit = 200;
 
@@ -55,7 +56,9 @@ public sealed class AuditQueryService(VaultDbContext db, AuditEmitter audit) : I
         var limit = Math.Clamp(query.Limit, 1, MaxLimit);
         var offset = Math.Max(0, query.Offset);
 
-        var q = db.AuditLogs.AsNoTracking().AsQueryable();
+        var q = db.AuditLogs
+            .AsNoTracking()
+            .Where(a => a.UserId == caller.UserId && a.TenantId == caller.TenantId);
 
         if (query.Type is { } type)
         {
