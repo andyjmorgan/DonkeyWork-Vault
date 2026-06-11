@@ -108,7 +108,10 @@ export function LandingPage() {
 
       <footer className="border-t border-border">
         <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-2 px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:px-6">
-          <span>DonkeyWork Vault — self-hosted secrets &amp; OAuth for agents.</span>
+          <div className="text-center sm:text-left">
+            <div>DonkeyWork Vault — self-hosted secrets &amp; OAuth for agents.</div>
+            <div className="mt-1 text-[11px] text-muted-foreground/75">Fueled by caffeine and token spending addictions.</div>
+          </div>
           <a href={REPO} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground"><Github className="size-3.5" /> andyjmorgan/DonkeyWork-Vault</a>
         </div>
       </footer>
