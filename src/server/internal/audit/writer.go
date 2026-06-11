@@ -48,30 +48,50 @@ func (w *Writer) Run(ctx context.Context) {
 	ticker := time.NewTicker(w.opts.FlushInterval)
 	defer ticker.Stop()
 
-	flush := func() {
+	flush := func(c context.Context) {
 		if len(batch) == 0 {
 			return
 		}
-		w.persist(ctx, batch)
+		w.persist(c, batch)
 		batch = batch[:0]
+	}
+	// drainFlush persists the final batch on a fresh, bounded context so a shutdown that has already
+	// cancelled the run context can still flush buffered events rather than dropping them.
+	drainFlush := func() {
+		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		flush(c)
 	}
 
 	for {
 		select {
 		case e, ok := <-reader:
 			if !ok {
-				flush()
+				drainFlush()
 				return
 			}
 			batch = append(batch, e)
 			if len(batch) >= w.opts.BatchSize {
-				flush()
+				flush(ctx)
 			}
 		case <-ticker.C:
-			flush()
+			flush(ctx)
 		case <-ctx.Done():
-			flush()
-			return
+			// Shutdown: drain whatever is still buffered (non-blocking) before flushing, so a cancel
+			// that races a close never strands queued events.
+			for {
+				select {
+				case e, ok := <-reader:
+					if !ok {
+						drainFlush()
+						return
+					}
+					batch = append(batch, e)
+				default:
+					drainFlush()
+					return
+				}
+			}
 		}
 	}
 }
