@@ -291,9 +291,9 @@ func cmdOAuthList() *cobra.Command {
 				return apiError("list oauth tokens", resp.Status(), resp.Body)
 			}
 			w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(w, "PROVIDER\tACCOUNT\tEXPIRES\tSCOPES")
+			fmt.Fprintln(w, "PROVIDER\tACCOUNT\tSTATUS\tSCOPES")
 			for _, t := range *resp.JSON200 {
-				fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", t.Provider, t.Account, fmtTime(t.ExpiresAt), strings.Join(t.Scopes, " "))
+				fmt.Fprintf(w, "%s\t%s\tconnected\t%s\n", t.Provider, t.Account, strings.Join(t.Scopes, " "))
 			}
 			return w.Flush()
 		},
