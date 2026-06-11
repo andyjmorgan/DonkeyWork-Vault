@@ -35,25 +35,25 @@ Keep this value secret and backed up. If it is lost, encrypted secrets already s
 
 ## Configuration
 
-.NET configuration can be supplied with environment variables by replacing `:` with `__`.
+The service is configured entirely with environment variables.
 
-| Setting | Environment variable | Meaning |
-|---|---|---|
-| `Vault:Persistence:ConnectionString` | `Vault__Persistence__ConnectionString` | Postgres connection string. |
-| `Vault:Crypto:ActiveKekId` | `Vault__Crypto__ActiveKekId` | KEK id used for new secrets. |
-| `Vault:Crypto:Keks:<id>` | `Vault__Crypto__Keks__<id>` | Base64 32-byte key material. |
-| `Vault:PublicBaseUrl` | `Vault__PublicBaseUrl` | Public vault origin, used for OAuth callback URLs. |
-| `Vault:RunMigrationsOnStartup` | `Vault__RunMigrationsOnStartup` | Defaults to `true`. |
-| `Oidc:Authority` | `Oidc__Authority` | Public OIDC issuer URL. |
-| `Oidc:InternalAuthority` | `Oidc__InternalAuthority` | Optional in-cluster metadata/JWKS URL. |
-| `Oidc:WebClientId` | `Oidc__WebClientId` | Web app login client id. The legacy `Oidc:ClientId` still works and falls back to `Oidc:Audience`. |
-| `Oidc:CliClientId` | `Oidc__CliClientId` | CLI OAuth device-login client id. Defaults to `donkeywork-vault-cli`. |
-| `Oidc:Audience` | `Oidc__Audience` | Optional expected audience/client fallback. |
-| `Oidc:WebScopes` | `Oidc__WebScopes` | Web app login scopes. The legacy `Oidc:Scopes` still works. Defaults to `openid profile email`. |
-| `Oidc:CliScopes` | `Oidc__CliScopes` | CLI device-login scopes. Defaults to `openid profile email offline_access`. |
-| `Oidc:RequireHttpsMetadata` | `Oidc__RequireHttpsMetadata` | Defaults to `true`. |
+| Environment variable | Meaning |
+|---|---|
+| `VAULT_DSN` (or `DATABASE_URL`) | Postgres DSN, e.g. `postgres://vault:pass@postgres:5432/vault`. |
+| `VAULT_CRYPTO_ACTIVE_KEK_ID` | KEK id used for new secrets. |
+| `VAULT_CRYPTO_KEKS` | `id=base64[,id2=base64…]` — base64 32-byte key material per KEK id. |
+| `VAULT_PUBLIC_BASE_URL` | Public vault origin, used for OAuth callback URLs. |
+| `VAULT_RUN_MIGRATIONS` | Defaults to `true`. |
+| `VAULT_OIDC_AUTHORITY` | Public OIDC issuer URL. Leave blank to disable auth (local/dev only). |
+| `VAULT_OIDC_INTERNAL_AUTHORITY` | Optional in-cluster metadata/JWKS URL. |
+| `VAULT_OIDC_AUDIENCE` | Expected JWT audience. |
+| `VAULT_OIDC_WEB_CLIENT_ID` | SPA login client id. |
+| `VAULT_OIDC_CLI_CLIENT_ID` | CLI device-flow client id (default `donkeywork-vault-cli`). |
+| `VAULT_OIDC_WEB_SCOPES` | SPA login scopes. Defaults to `openid profile email`. |
+| `VAULT_OIDC_CLI_SCOPES` | CLI scopes. Defaults to `openid profile email offline_access`. |
+| `VAULT_OIDC_REQUIRE_HTTPS` | Defaults to `true`. |
 
-The deprecated `Keycloak:*` section is still honored as a fallback, but new deployments should use `Oidc:*`.
+Full reference: `src/server/internal/config/config.go`.
 
 ## Example Docker Compose
 
@@ -75,14 +75,15 @@ services:
     ports:
       - "8080:8080"
     environment:
-      Vault__Persistence__ConnectionString: Host=postgres;Port=5432;Database=vault;Username=vault;Password=change-me
-      Vault__Crypto__ActiveKekId: local_2026_06
-      Vault__Crypto__Keks__local_2026_06: replace-with-openssl-rand-base64-32-output
-      Vault__PublicBaseUrl: https://vault.example.com
-      Oidc__Authority: https://idp.example.com/realms/vault
-      Oidc__WebClientId: donkeywork-vault
-      Oidc__CliClientId: donkeywork-vault-cli
-      Oidc__WebScopes: openid profile email
+      VAULT_DSN: postgres://vault:change-me@postgres:5432/vault?sslmode=disable
+      VAULT_CRYPTO_ACTIVE_KEK_ID: local_2026_06
+      VAULT_CRYPTO_KEKS: local_2026_06=replace-with-openssl-rand-base64-32-output
+      VAULT_PUBLIC_BASE_URL: https://vault.example.com
+      VAULT_OIDC_AUTHORITY: https://idp.example.com/realms/vault
+      VAULT_OIDC_AUDIENCE: donkeywork-vault
+      VAULT_OIDC_WEB_CLIENT_ID: donkeywork-vault
+      VAULT_OIDC_CLI_CLIENT_ID: donkeywork-vault-cli
+      VAULT_OIDC_WEB_SCOPES: openid profile email
 
 volumes:
   postgres-data:
@@ -106,13 +107,13 @@ Register this post-logout redirect URL if your IdP requires one:
 https://vault.example.com/
 ```
 
-The web app uses Authorization Code with PKCE and requests `Oidc:WebScopes`.
+The web app uses Authorization Code with PKCE and requests `VAULT_OIDC_WEB_SCOPES`.
 
 ## CLI Device-Login Client
 
 The `dwvault` CLI signs in with the OAuth 2.0 Device Authorization Grant (with PKCE S256). Create a second public client in your IdP for it:
 
-1. Create a public client whose id matches `Oidc:CliClientId` (default `donkeywork-vault-cli`).
+1. Create a public client whose id matches `VAULT_OIDC_CLI_CLIENT_ID` (default `donkeywork-vault-cli`).
 2. Enable the Device Authorization Grant on the client.
 3. Allow and request the `offline_access` scope so refresh tokens survive long-running CLI use.
 4. Make sure CLI access tokens carry the vault's audience. In Keycloak, add an audience mapper or client scope for the vault client.
@@ -160,10 +161,10 @@ export VAULT_ADDR=https://vault.example.com
 
 ## Migrations
 
-By default, the vault runs EF Core migrations on startup:
+By default, the vault runs its embedded, idempotent SQL migrations on startup:
 
 ```text
-Vault:RunMigrationsOnStartup=true
+VAULT_RUN_MIGRATIONS=true
 ```
 
 Set it to `false` only if you run migrations separately as part of your deployment process.
@@ -173,8 +174,8 @@ Set it to `false` only if you run migrations separately as part of your deployme
 To rotate encryption keys:
 
 1. Generate a new base64 32-byte KEK.
-2. Add it under a new id in `Vault:Crypto:Keks`.
-3. Set `Vault:Crypto:ActiveKekId` to the new id.
+2. Add it under a new id in `VAULT_CRYPTO_KEKS` (comma-separated `id=base64` pairs).
+3. Set `VAULT_CRYPTO_ACTIVE_KEK_ID` to the new id.
 4. Keep all previous KEKs configured so existing rows can still be decrypted.
 
 New secrets use the active KEK. Existing ciphertext embeds the KEK id that was used when it was written.

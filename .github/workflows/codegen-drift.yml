@@ -1,17 +1,17 @@
 name: Codegen Drift
 
-# The .NET endpoints are the authoritative contract. This gate re-emits api/openapi.json from the
-# running service and regenerates the Go + TS clients, failing if any committed artifact is stale —
-# so an endpoint change can never land without its regenerated clients.
+# api/openapi.json is the hand-maintained, authoritative wire contract (originally emitted from
+# the retired .NET service; the Go server's contract test pins its route table to it). This gate
+# regenerates the Go + TS clients from the committed document and fails if any generated artifact
+# is stale — so a contract change can never land without its regenerated clients.
 on:
   pull_request:
     branches: [main]
     paths:
-      - 'src/vault/**'
+      - 'src/server/**'
       - 'api/**'
       - 'src/cli/internal/vaultapi/**'
       - 'src/portal/frontend/src/api/**'
-      - 'scripts/emit-openapi.sh'
       - 'scripts/gen-clients.sh'
       - '.github/workflows/codegen-drift.yml'
 
@@ -26,15 +26,8 @@ jobs:
   drift:
     name: OpenAPI + clients in sync
     runs-on: [self-hosted, Linux, X64]
-    env:
-      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
     steps:
       - uses: actions/checkout@v4
-
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -46,15 +39,6 @@ jobs:
         with:
           node-version: '22'
 
-      - name: Configure NuGet for local proxy
-        run: cp _nuget.config nuget.config
-
-      - name: Build vault
-        run: dotnet build src/vault/DonkeyWork.Vault.Api/DonkeyWork.Vault.Api.csproj -c Release
-
-      - name: Emit OpenAPI document
-        run: ./scripts/emit-openapi.sh
-
       - name: Regenerate Go + TS clients
         run: ./scripts/gen-clients.sh
 
@@ -64,6 +48,6 @@ jobs:
             api/openapi.json \
             src/cli/internal/vaultapi/vaultapi.gen.go \
             src/portal/frontend/src/api/schema.d.ts; then
-            echo "::error::OpenAPI / generated clients are stale. Run scripts/emit-openapi.sh && scripts/gen-clients.sh and commit the result."
+            echo "::error::Generated clients are stale. Run scripts/gen-clients.sh and commit the result."
             exit 1
           fi
