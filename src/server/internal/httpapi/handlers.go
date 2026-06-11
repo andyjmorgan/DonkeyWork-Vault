@@ -85,11 +85,11 @@ func (s *Server) handleRevealAPIKey(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	header, value := service.AssembleHeader(derefOr(secret.Header, ""), derefOr(secret.Prefix, ""), derefOr(secret.Username, ""), secret.Secret)
+	header, value := service.AssembleHeader(secret.Kind, derefOr(secret.Header, ""), derefOr(secret.Prefix, ""), derefOr(secret.Username, ""), secret.Secret)
 	writeJSON(w, http.StatusOK, revealAPIKeyResponse{
 		Secret: secret.Secret, Header: header, HeaderValue: value, Prefix: derefOr(secret.Prefix, ""),
 		BaseURL: derefOr(secret.BaseURL, ""), DocsURL: derefOr(secret.DocsURL, ""), Description: derefOr(secret.Description, ""),
-		Scheme: service.Scheme(derefOr(secret.Username, "")), Username: derefOr(secret.Username, ""), Kind: secret.Kind,
+		Scheme: service.Scheme(secret.Kind), Username: derefOr(secret.Username, ""), Kind: secret.Kind,
 	})
 }
 
@@ -104,7 +104,7 @@ func (s *Server) handleCredentialShape(w http.ResponseWriter, r *http.Request) {
 			writeJSON(w, http.StatusOK, credentialShapeResponse{
 				Header: service.HeaderName(derefOr(k.Header, "")), Prefix: derefOr(k.Prefix, ""),
 				BaseURL: derefOr(k.BaseURL, ""), DocsURL: derefOr(k.DocsURL, ""), Description: derefOr(k.Description, ""),
-				Scheme: service.Scheme(derefOr(k.Username, "")), Username: derefOr(k.Username, ""), Kind: k.Kind,
+				Scheme: service.Scheme(k.Kind), Username: derefOr(k.Username, ""), Kind: k.Kind,
 			})
 			return
 		}

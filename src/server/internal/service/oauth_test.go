@@ -211,19 +211,24 @@ func TestFilterScopesToCatalog(t *testing.T) {
 }
 
 func TestCredentialUsage(t *testing.T) {
-	if Scheme("") != "header" || Scheme("u") != "basic" {
+	// Only http_basic implies the Basic scheme; username-bearing ssh/username_password stay header.
+	if Scheme(contracts.KindHeaderAPIKey) != "header" || Scheme(contracts.KindHTTPBasic) != "basic" || Scheme(contracts.KindSSH) != "header" {
 		t.Fatal("scheme")
 	}
 	if HeaderName("") != "Authorization" || HeaderName("X") != "X" {
 		t.Fatal("header name")
 	}
-	n, v := AssembleHeader("X-Key", "tok-", "", "abc")
+	n, v := AssembleHeader(contracts.KindHeaderAPIKey, "X-Key", "tok-", "", "abc")
 	if n != "X-Key" || v != "tok-abc" {
 		t.Fatalf("assemble header: %s %s", n, v)
 	}
-	n, v = AssembleHeader("", "", "user", "pass")
+	n, v = AssembleHeader(contracts.KindHTTPBasic, "", "", "user", "pass")
 	if n != "Authorization" || !strings.HasPrefix(v, "Basic ") {
 		t.Fatalf("assemble basic: %s %s", n, v)
+	}
+	// A username on a non-basic kind (ssh) must NOT produce a Basic header.
+	if _, v := AssembleHeader(contracts.KindSSH, "", "", "root", "key"); strings.HasPrefix(v, "Basic ") {
+		t.Fatalf("ssh must not assemble Basic: %s", v)
 	}
 }
 

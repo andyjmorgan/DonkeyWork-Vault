@@ -312,14 +312,18 @@ func cmdCreate() *cobra.Command {
 			if secret == "" {
 				return fmt.Errorf("--secret is required")
 			}
+			// A bare --username with no explicit --kind is HTTP Basic — the historical default.
+			if username != "" && !cmd.Flags().Changed("kind") {
+				kind = "http_basic"
+			}
 			if !validKind(kind) {
 				return fmt.Errorf("--kind %q is not one of: opaque, header_api_key, http_basic, username_password, ssh, connection_string", kind)
 			}
-			// username ⇒ HTTP Basic; --header/--prefix are meaningless then. Reject the ambiguous
-			// mix rather than silently ignoring them (mirrors the server's CredentialUsage rule).
-			basic := username != ""
-			if basic && (cmd.Flags().Changed("header") || cmd.Flags().Changed("prefix")) {
-				return fmt.Errorf("--username makes this an HTTP Basic credential; --header/--prefix do not apply — drop one")
+			// --header/--prefix only apply to header_api_key; reject them on any other kind rather
+			// than silently ignoring (the kind discriminator is the source of truth server-side).
+			headerish := kind == "header_api_key"
+			if !headerish && (cmd.Flags().Changed("header") || cmd.Flags().Changed("prefix")) {
+				return fmt.Errorf("--header/--prefix only apply to --kind header_api_key")
 			}
 
 			client, err := newClient()
@@ -337,7 +341,7 @@ func cmdCreate() *cobra.Command {
 				Username:    strPtr(username),
 				Kind:        vaultapi.CredentialKind(kind),
 			}
-			if !basic {
+			if headerish {
 				body.Header = strPtr(header)
 				body.Prefix = strPtr(prefix)
 			}
@@ -358,7 +362,7 @@ func cmdCreate() *cobra.Command {
 	c.Flags().StringVar(&docs, "docs", "", "API documentation link")
 	c.Flags().StringVar(&header, "header", "Authorization", "header name to send")
 	c.Flags().StringVar(&prefix, "prefix", "", "optional value prefix, e.g. 'Bearer '")
-	c.Flags().StringVar(&username, "username", "", "username ⇒ HTTP Basic auth (secret is the password)")
+	c.Flags().StringVar(&username, "username", "", "login username; bare --username defaults --kind to http_basic (also used by username_password/ssh)")
 	c.Flags().StringVar(&kind, "kind", "opaque", "credential kind: opaque|header_api_key|http_basic|username_password|ssh|connection_string")
 	return c
 }

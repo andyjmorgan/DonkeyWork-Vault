@@ -33,8 +33,8 @@ func TestAPIKeyEditAndBasic(t *testing.T) {
 		t.Fatalf("edit keep secret: %+v %v", sec, err)
 	}
 
-	// basic auth: username set defaults header to Authorization
-	if _, err := svc.Create(ctx, CreateAPIKeyParams{Name: "b", Secret: strPtr("pw"), Username: strPtr("user")}); err != nil {
+	// http_basic: username set defaults header to Authorization
+	if _, err := svc.Create(ctx, CreateAPIKeyParams{Name: "b", Secret: strPtr("pw"), Username: strPtr("user"), Kind: contracts.KindHTTPBasic}); err != nil {
 		t.Fatal(err)
 	}
 	bsec, _ := svc.GetByName(ctx, "b")
@@ -42,18 +42,27 @@ func TestAPIKeyEditAndBasic(t *testing.T) {
 		t.Fatalf("basic: %+v", bsec)
 	}
 
-	// basic without password on create -> error
-	if _, err := svc.Create(ctx, CreateAPIKeyParams{Name: "c", Username: strPtr("user")}); err == nil {
-		t.Fatal("expected basic password required")
+	// ssh: a username-bearing login that is NOT Basic must not get an Authorization header stamped.
+	if _, err := svc.Create(ctx, CreateAPIKeyParams{Name: "s", Secret: strPtr("key"), Username: strPtr("root"), Kind: contracts.KindSSH}); err != nil {
+		t.Fatal(err)
+	}
+	ssec, _ := svc.GetByName(ctx, "s")
+	if ssec.Header != nil || deref(ssec.Username) != "root" || ssec.Kind != contracts.KindSSH {
+		t.Fatalf("ssh: %+v", ssec)
+	}
+
+	// username-bearing credential without a secret on create -> error
+	if _, err := svc.Create(ctx, CreateAPIKeyParams{Name: "c", Username: strPtr("user"), Kind: contracts.KindHTTPBasic}); err == nil {
+		t.Fatal("expected password required")
 	}
 
 	// reveal missing
 	if got, _ := svc.GetByName(ctx, "missing"); got != nil {
 		t.Fatal("missing reveal should be nil")
 	}
-	// list + delete
+	// list + delete (k, b, s created; c failed validation)
 	list, _ := svc.List(ctx)
-	if len(list) != 2 {
+	if len(list) != 3 {
 		t.Fatalf("list %d", len(list))
 	}
 	if ok, _ := svc.Delete(ctx, list[0].ID); !ok {

@@ -11,6 +11,8 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/trace"
+
+	"donkeywork.dev/vault-server/internal/contracts"
 )
 
 // tracer is the shared service tracer; spans are named "<entity>.<operation>".
@@ -36,8 +38,9 @@ type OAuthRefreshError struct{ Message string }
 
 func (e OAuthRefreshError) Error() string { return e.Message }
 
-// CredentialUsage is the single source of truth for how a stored credential is presented: presence
-// of a username means HTTP Basic, otherwise the secret is sent behind header/prefix.
+// CredentialUsage is the single source of truth for how a stored credential is presented: the kind
+// discriminator decides the scheme — http_basic emits an Authorization: Basic header, every other
+// kind sends the secret behind header/prefix (or, for login kinds like ssh, carries no HTTP header).
 type CredentialUsage struct{}
 
 const (
@@ -45,12 +48,14 @@ const (
 	schemeHeader = "header"
 )
 
-// Scheme returns the auth scheme implied by whether a username is present.
-func Scheme(username string) string {
-	if username == "" {
-		return schemeHeader
+// Scheme returns the auth scheme implied by the credential kind. Only http_basic assembles a Basic
+// Authorization header; every other kind (including username-bearing ssh/username_password) sends
+// the secret behind header/prefix.
+func Scheme(kind contracts.CredentialKind) string {
+	if kind == contracts.KindHTTPBasic {
+		return schemeBasic
 	}
-	return schemeBasic
+	return schemeHeader
 }
 
 // HeaderName returns the effective header name, defaulting to Authorization.
@@ -61,10 +66,10 @@ func HeaderName(header string) string {
 	return header
 }
 
-// AssembleHeader builds the ready-to-send HTTP header for a credential. For Basic it emits
-// Authorization: Basic base64(username:secret); otherwise {header}: {prefix}{secret}.
-func AssembleHeader(header, prefix, username, secret string) (name, value string) {
-	if username != "" {
+// AssembleHeader builds the ready-to-send HTTP header for a credential. For http_basic it emits
+// Authorization: Basic base64(username:secret); every other kind emits {header}: {prefix}{secret}.
+func AssembleHeader(kind contracts.CredentialKind, header, prefix, username, secret string) (name, value string) {
+	if kind == contracts.KindHTTPBasic {
 		token := base64.StdEncoding.EncodeToString([]byte(username + ":" + secret))
 		return HeaderName(header), "Basic " + token
 	}

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Plus, Pencil, Eye, KeyRound, UserRound } from 'lucide-react'
+import { Trash2, Plus, Pencil, Eye } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
 import { Button } from '../ui/components/button'
@@ -8,10 +8,10 @@ import { Textarea } from '../ui/components/textarea'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
-import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '../ui/components/dropdown-menu'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/components/select'
 import { CopyButton } from '../components/CopyButton'
 import { Field } from '../components/Field'
-import { api, type ApiKeyItem, type OAuthTokenItem, type CredentialKind } from '../api'
+import { api, type ApiKeyItem, type NewApiKey, type OAuthTokenItem, type CredentialKind } from '../api'
 
 const lbl = 'mb-1 block text-xs text-muted-foreground'
 
@@ -25,6 +25,32 @@ const kindLabel: Record<CredentialKind, string> = {
   connection_string: 'Connection string',
 }
 const prettyKind = (k: CredentialKind) => kindLabel[k] ?? k
+
+// Each credential shape needs a different field set. This config drives the add/edit form body so it
+// reflects the chosen kind, rather than the old binary header/basic switch.
+type FieldConf = {
+  username?: boolean      // show (and require) a username input
+  secretLabel: string     // label for the secret input
+  headerPrefix?: boolean  // show the Header + Prefix inputs (header_api_key only)
+  baseUrlLabel: string    // label for the base URL / host input
+  note?: string           // helper line rendered under the fields
+}
+const shapeConf: Record<CredentialKind, FieldConf> = {
+  opaque: { secretLabel: 'Secret', baseUrlLabel: 'Base URL / host' },
+  header_api_key: { secretLabel: 'Secret', headerPrefix: true, baseUrlLabel: 'Base URL' },
+  http_basic: { username: true, secretLabel: 'Password', baseUrlLabel: 'Base URL', note: 'Sent as Authorization: Basic base64(username:password) — header and prefix are handled for you.' },
+  username_password: { username: true, secretLabel: 'Password', baseUrlLabel: 'Base URL / host' },
+  ssh: { username: true, secretLabel: 'Password / private key', baseUrlLabel: 'Host' },
+  connection_string: { secretLabel: 'Connection string', baseUrlLabel: 'Base URL' },
+}
+
+// One-line "how it authenticates" summary for the list, keyed off kind so username-bearing shapes
+// (ssh, username_password) read sensibly instead of being mislabelled as Basic.
+const authSummary = (k: ApiKeyItem): string => {
+  if (k.username) return `${prettyKind(k.kind)} · ${k.username}`
+  if (k.header) return `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}`
+  return '—'
+}
 
 // Google-style OAuth scopes are full URLs (https://www.googleapis.com/auth/calendar) that overflow
 // the pill; show the meaningful tail. Short scopes (gist, Calendars.Read) are shown as-is.
@@ -45,7 +71,7 @@ export function CredentialsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
   const [err, setErr] = useState<string>()
-  const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; scheme: Scheme; view?: boolean }>({ open: false, scheme: 'header' })
+  const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; kind: CredentialKind; view?: boolean }>({ open: false, kind: 'header_api_key' })
 
   const load = () => {
     api.apiKeys().then(setKeys).catch((e) => setErr(String(e)))
@@ -53,9 +79,9 @@ export function CredentialsPage() {
   }
   useEffect(() => { load() }, [])
 
-  // When editing, the scheme is fixed by the stored credential (presence of a username ⇒ Basic);
-  // when adding, it's whatever the + dropdown picked.
-  const formScheme: Scheme = form.item ? (form.item.username ? 'basic' : 'header') : form.scheme
+  // When editing/viewing, the kind is fixed by the stored credential; when adding, it's the default
+  // the dialog opens with — the user changes it via the Kind selector inside the form.
+  const formKind: CredentialKind = form.item?.kind ?? form.kind
 
   return (
     <>
@@ -65,19 +91,7 @@ export function CredentialsPage() {
             <CardTitle>API keys</CardTitle>
             <CardDescription>What's stored and how to use each.</CardDescription>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button size="icon" variant="outline" aria-label="Add credential"><Plus className="size-4" /></Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setForm({ open: true, scheme: 'header' })}>
-                <KeyRound className="size-4" /> API key / token
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setForm({ open: true, scheme: 'basic' })}>
-                <UserRound className="size-4" /> Username + password
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button size="icon" variant="outline" aria-label="Add credential" onClick={() => setForm({ open: true, kind: 'header_api_key' })}><Plus className="size-4" /></Button>
         </CardHeader>
         <CardContent>
           {err && <p className="text-sm text-destructive">{err}</p>}
@@ -91,17 +105,17 @@ export function CredentialsPage() {
                   <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Kind</TableHead><TableHead>Auth</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>
                     {keys.map((k) => (
-                      <TableRow key={k.id} className="cursor-pointer" onClick={() => setForm({ open: true, item: k, scheme: 'header', view: true })}>
+                      <TableRow key={k.id} className="cursor-pointer" onClick={() => setForm({ open: true, item: k, kind: k.kind, view: true })}>
                         <TableCell>
                           <div className="font-medium">{k.name}</div>
                           {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
                         </TableCell>
                         <TableCell className="whitespace-nowrap"><Badge variant="secondary">{prettyKind(k.kind)}</Badge></TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">{k.username ? `Basic · ${k.username}` : `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}`}</TableCell>
+                        <TableCell className="whitespace-nowrap text-muted-foreground">{authSummary(k)}</TableCell>
                         <TableCell className="max-w-[12rem] truncate text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}><RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k })}><Pencil className="size-4" /></Button>
+                          <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k, kind: k.kind })}><Pencil className="size-4" /></Button>
                           <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteApiKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
                         </TableCell>
                       </TableRow>
@@ -112,20 +126,20 @@ export function CredentialsPage() {
               {/* Mobile: a card per key with a two-column detail grid. */}
               <div className="space-y-3 sm:hidden">
                 {keys.map((k) => (
-                  <div key={k.id} className="cursor-pointer rounded-xl border border-border p-3" onClick={() => setForm({ open: true, item: k, scheme: 'header', view: true })}>
+                  <div key={k.id} className="cursor-pointer rounded-xl border border-border p-3" onClick={() => setForm({ open: true, item: k, kind: k.kind, view: true })}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="font-medium">{k.name}</div>
                         {k.description && <div className="truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
                       </div>
                       <div className="-mr-1 flex shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k })}><Pencil className="size-4" /></Button>
+                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k, kind: k.kind })}><Pencil className="size-4" /></Button>
                         <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteApiKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
                       </div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
                       <Field label="Kind">{prettyKind(k.kind)}</Field>
-                      <Field label="Auth">{k.username ? `Basic · ${k.username}` : (k.header ? `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}` : '—')}</Field>
+                      <Field label="Auth">{authSummary(k)}</Field>
                       <Field label="Base URL">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{k.baseUrl || 'docs'}</a> : (k.baseUrl || '—')}</Field>
                     </div>
                     <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
@@ -140,19 +154,19 @@ export function CredentialsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={form.open} onOpenChange={(o) => { if (!o) setForm({ open: false, scheme: 'header' }) }}>
+      <Dialog open={form.open} onOpenChange={(o) => { if (!o) setForm({ open: false, kind: 'header_api_key' }) }}>
         <DialogContent className="sm:max-w-xl">
           <DialogHeader>
-            <DialogTitle>{form.item ? (form.view ? form.item.name : `Edit ${form.item.name}`) : (formScheme === 'basic' ? 'Add username + password' : 'Add an API key / token')}</DialogTitle>
+            <DialogTitle>{form.item ? (form.view ? form.item.name : `Edit ${form.item.name}`) : 'Add a credential'}</DialogTitle>
             <DialogDescription>{form.view ? 'Read-only view of this credential.' : 'Self-describing — description / host / docs help agents discover how to use it.'}</DialogDescription>
           </DialogHeader>
           <StoreKey
-            key={`${form.item?.id ?? 'new'}-${formScheme}-${form.view ? 'view' : 'edit'}`}
+            key={`${form.item?.id ?? 'new'}-${form.view ? 'view' : 'edit'}`}
             initial={form.item}
-            scheme={formScheme}
+            kind={formKind}
             readOnly={!!form.view}
-            onClose={() => setForm({ open: false, scheme: 'header' })}
-            onStored={() => { load(); setForm({ open: false, scheme: 'header' }) }}
+            onClose={() => setForm({ open: false, kind: 'header_api_key' })}
+            onStored={() => { load(); setForm({ open: false, kind: 'header_api_key' }) }}
           />
         </DialogContent>
       </Dialog>
@@ -253,14 +267,14 @@ function RevealButton({ title, load }: { title: string; load: () => Promise<stri
   )
 }
 
-type Scheme = 'header' | 'basic'
-
-function StoreKey({ initial, scheme, readOnly = false, onClose, onStored }: { initial?: ApiKeyItem; scheme: Scheme; readOnly?: boolean; onClose?: () => void; onStored: () => void }) {
+function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onStored }: { initial?: ApiKeyItem; kind: CredentialKind; readOnly?: boolean; onClose?: () => void; onStored: () => void }) {
   // Read-only view is always opened with a stored credential. Guarding here keeps a stray render
   // with no `initial` (e.g. the brief frame as the dialog clears its item on close) from throwing.
   const view = readOnly && !!initial
-  // The scheme is fixed for the lifetime of the dialog — chosen from the + dropdown when adding,
-  // or derived from the stored credential when editing. The parent remounts this on a scheme change.
+  // The kind is editable while adding (the selector swaps the form body live); once stored it's fixed,
+  // so on edit/view it's shown read-only. The parent remounts this only on item/view changes.
+  const [kind, setKind] = useState<CredentialKind>(initialKind)
+  const conf = shapeConf[kind]
   const [k, setK] = useState({
     name: initial?.name ?? '', secret: '', description: initial?.description ?? '',
     baseUrl: initial?.baseUrl ?? '', docsUrl: initial?.docsUrl ?? '', header: initial?.header ?? '', prefix: initial?.prefix ?? '',
@@ -269,7 +283,6 @@ function StoreKey({ initial, scheme, readOnly = false, onClose, onStored }: { in
   const [msg, setMsg] = useState<string>()
   const set = (patch: Partial<typeof k>) => setK({ ...k, ...patch })
   const editing = !!initial
-  const basic = scheme === 'basic'
 
   // In read-only view, fields render as muted, non-editable surfaces and the secret is fetched
   // on demand via the reveal flow rather than shown as a blank password box.
@@ -278,47 +291,61 @@ function StoreKey({ initial, scheme, readOnly = false, onClose, onStored }: { in
 
   const submit = async () => {
     setMsg(undefined)
-    // Send only the fields for the chosen scheme so the other mode's values can't leak through:
-    // Basic clears header/prefix (auto-assembled); a token credential clears username.
-    const kind: CredentialKind = basic ? 'http_basic' : 'header_api_key'
-    const payload = basic
-      ? { ...k, kind, username: k.username.trim(), header: '', prefix: '' }
-      : { ...k, kind, username: '' }
+    // Send only the fields this shape uses so another shape's values can't leak through: clear the
+    // username for shapes without one, and header/prefix for shapes that don't expose them.
+    const payload: NewApiKey = {
+      ...k, kind,
+      username: conf.username ? k.username.trim() : '',
+      header: conf.headerPrefix ? k.header : '',
+      prefix: conf.headerPrefix ? k.prefix : '',
+    }
     try { await api.createApiKey(payload); onStored() } catch (e) { setMsg(String(e)) }
   }
 
   return (
     <div className="grid gap-3">
       <div className="grid gap-3 sm:grid-cols-2">
+        <div className="sm:col-span-2">
+          <Label className={lbl}>Kind</Label>
+          {editing || readOnly ? (
+            <Input value={prettyKind(kind)} readOnly className={ro} />
+          ) : (
+            <Select value={kind} onValueChange={(v) => setKind(v as CredentialKind)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                {(Object.keys(kindLabel) as CredentialKind[]).map((kk) => (
+                  <SelectItem key={kk} value={kk}>{kindLabel[kk]}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+        </div>
+
         <div><Label className={lbl}>Name{readOnly ? '' : ' *'}</Label><Input value={k.name} readOnly={editing || readOnly} className={ro} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. grafana-prod" /></div>
 
-        {basic ? (
-          <>
-            <div><Label className={lbl}>Username{readOnly ? '' : ' *'}</Label><Input value={k.username} readOnly={readOnly} className={ro} onChange={(e) => set({ username: e.target.value })} placeholder="e.g. admin" /></div>
-            <div className="sm:col-span-2"><Label className={lbl}>Password</Label>{view ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} />}</div>
-          </>
-        ) : (
-          <div><Label className={lbl}>Secret</Label>{view ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : '*'} />}</div>
+        {conf.username && (
+          <div><Label className={lbl}>Username{readOnly ? '' : ' *'}</Label><Input value={k.username} readOnly={readOnly} className={ro} onChange={(e) => set({ username: e.target.value })} placeholder="e.g. admin" /></div>
         )}
 
+        <div className={conf.username ? 'sm:col-span-2' : ''}><Label className={lbl}>{conf.secretLabel}</Label>{view ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} />}</div>
+
         <div className="sm:col-span-2"><Label className={lbl}>Description</Label><Textarea {...fieldProps(k.description)} rows={3} value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="what this credential is for" /></div>
-        <div><Label className={lbl}>Base URL / host</Label><Input value={k.baseUrl} readOnly={readOnly} className={ro} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" /></div>
+        <div><Label className={lbl}>{conf.baseUrlLabel}</Label><Input value={k.baseUrl} readOnly={readOnly} className={ro} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" /></div>
         <div><Label className={lbl}>API docs link</Label><Input value={k.docsUrl} readOnly={readOnly} className={ro} onChange={(e) => set({ docsUrl: e.target.value })} placeholder="https://docs.example.com" /></div>
 
-        {basic ? (
-          <p className="text-xs text-muted-foreground sm:col-span-2">Sent as <code>Authorization: Basic base64(username:password)</code> — header and prefix are handled for you.</p>
-        ) : (
+        {conf.headerPrefix && (
           <>
             <div><Label className={lbl}>Header (optional)</Label><Input value={k.header} readOnly={readOnly} className={ro} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
             <div><Label className={lbl}>Prefix (optional)</Label><Input value={k.prefix} readOnly={readOnly} className={ro} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " /></div>
           </>
         )}
+        {conf.note && <p className="text-xs text-muted-foreground sm:col-span-2">{conf.note}</p>}
 
         {msg && <p className="text-sm text-destructive sm:col-span-2">{msg}</p>}
         {readOnly ? (
           <div className="flex justify-end sm:col-span-2"><Button variant="outline" onClick={onClose}>Close</Button></div>
         ) : (
-          <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || (!editing && !k.secret) || (basic && !k.username.trim())}>{editing ? 'Save changes' : 'Save key'}</Button></div>
+          <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || (!editing && !k.secret) || (!!conf.username && !k.username.trim())}>{editing ? 'Save changes' : 'Save key'}</Button></div>
         )}
       </div>
     </div>

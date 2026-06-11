@@ -106,8 +106,9 @@ to know how to use the secret. Set it on `create`; it defaults to `opaque`.
 
 For `header_api_key`/`http_basic`, `dwvault credentials header <name>` assembles the ready
 header line. For `ssh`/`connection_string`/`opaque`, just `get` the secret (it *is* the usable
-value). `--username` (without `--header`/`--prefix`) still drives HTTP Basic header assembly
-regardless of kind.
+value). A bare `--username` with no explicit `--kind` defaults to `http_basic`; the `kind` (not
+the presence of a username) is what decides whether a Basic header is assembled, so `ssh` and
+`username_password` carry a username without becoming Basic.
 
 ## Workflow: discover → select → interpret → use
 
@@ -149,7 +150,7 @@ the Acme API" → `acme-api`). The **NAME** is the identifier you pass to `shape
 | `header`     | The HTTP header to put the secret in (e.g. `Authorization`, `x-api-key`). |
 | `prefix`     | Goes **immediately before** the secret in that header (e.g. `Bearer ` → `Authorization: Bearer <secret>`). Often empty. |
 | `scheme`     | `header` or `basic` — `basic` means it's an HTTP Basic credential (username + password). |
-| `username`   | Set for Basic credentials; the secret is the password. |
+| `username`   | Set for login kinds (`http_basic`, `username_password`, `ssh`); the secret is the password/key. |
 | `docs_url`   | Where to read the API's auth docs if you need more. |
 | `description`| Free-text — **read it**, especially when `header` is empty. |
 

@@ -78,7 +78,10 @@ func (s *APIKeyService) Create(ctx context.Context, p CreateAPIKeyParams) (*Stor
 	}
 	secret := deref(p.Secret)
 
-	// username present ⇒ HTTP Basic; the username must not contain ':' (it delimits Basic creds).
+	kind := contracts.CredentialKindFromWire(string(p.Kind))
+
+	// A username may accompany several kinds (http_basic, username_password, ssh); it must not contain
+	// ':' since that delimits the pair when http_basic base64-encodes username:secret.
 	username := strings.TrimSpace(deref(p.Username))
 	var usernamePtr *string
 	if username != "" {
@@ -101,29 +104,36 @@ func (s *APIKeyService) Create(ctx context.Context, p CreateAPIKeyParams) (*Stor
 		existing = &store.APIKey{UserID: caller.UserID, TenantID: caller.TenantID, ProviderKey: "", Name: p.Name, Kind: string(contracts.KindOpaque)}
 	}
 
-	// Basic requires both halves; on edit a blank secret keeps the stored password.
+	// A username-bearing login (Basic, username+password, SSH) needs a secret; on edit a blank secret
+	// keeps the stored one.
 	if usernamePtr != nil && secret == "" && (isNew || len(existing.FieldsCipher) == 0) {
-		return nil, ValidationError{"Basic auth requires a password (secret) alongside the username."}
+		return nil, ValidationError{"a password (secret) is required alongside the username."}
 	}
 
 	existing.Description = p.Description
 	existing.BaseURL = p.BaseURL
 	existing.DocsURL = p.DocsURL
 	existing.Username = usernamePtr
-	existing.Kind = string(contracts.CredentialKindFromWire(string(p.Kind)))
+	existing.Kind = string(kind)
 
+	// Only http_basic carries an HTTP header: the secret is combined with the username into an
+	// Authorization: Basic header at use time, so default the header name and drop any prefix.
+	// header_api_key keeps the caller's header/prefix; every other kind has no HTTP header.
 	header := strings.TrimSpace(deref(p.Header))
-	if usernamePtr != nil {
-		// For Basic, default the header to Authorization so list/shape read sensibly.
+	switch kind {
+	case contracts.KindHTTPBasic:
 		hn := "Authorization"
 		if header != "" {
 			hn = header
 		}
 		existing.HeaderName = &hn
 		existing.Prefix = nil
-	} else {
+	case contracts.KindHeaderAPIKey:
 		existing.HeaderName = ptrIfNotEmpty(header)
 		existing.Prefix = p.Prefix
+	default:
+		existing.HeaderName = nil
+		existing.Prefix = nil
 	}
 
 	if secret != "" { // blank on edit keeps the existing secret
