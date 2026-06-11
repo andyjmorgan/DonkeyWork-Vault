@@ -375,3 +375,39 @@ func TestMemListSortComparators(t *testing.T) {
 		t.Fatalf("find should return newest: %+v", f)
 	}
 }
+
+// TestMemDeleteExpiredOAuthStates verifies the sweep removes only lapsed states and returns the count.
+func TestMemDeleteExpiredOAuthStates(t *testing.T) {
+	ctx := context.Background()
+	m := New()
+	u := uuid.New()
+	expired := &store.OAuthState{State: "old", Provider: "p", OwnerUserID: u, ExpiresAt: time.Now().Add(-time.Minute)}
+	live := &store.OAuthState{State: "new", Provider: "p", OwnerUserID: u, ExpiresAt: time.Now().Add(time.Minute)}
+	_ = m.InsertOAuthState(ctx, expired)
+	_ = m.InsertOAuthState(ctx, live)
+
+	n, err := m.DeleteExpiredOAuthStates(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("deleted = %d, want 1", n)
+	}
+	if g, _ := m.GetOAuthStateByState(ctx, "old"); g != nil {
+		t.Fatal("expired state should be gone")
+	}
+	if g, _ := m.GetOAuthStateByState(ctx, "new"); g == nil {
+		t.Fatal("live state should remain")
+	}
+
+	// A second sweep with nothing expired deletes nothing.
+	if n, _ := m.DeleteExpiredOAuthStates(ctx); n != 0 {
+		t.Fatalf("second sweep deleted = %d, want 0", n)
+	}
+
+	// The injected-error path is propagated.
+	m.FailNext = errors.New("boom")
+	if _, err := m.DeleteExpiredOAuthStates(ctx); err == nil {
+		t.Fatal("expected error from FailNext")
+	}
+}

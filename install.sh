@@ -5,12 +5,14 @@
 #
 # Downloads the right prebuilt `dwvault` binary for your OS/arch from the latest
 # GitHub release, verifies it against the published SHA256SUMS, and installs it.
+# Verification is mandatory and fails closed: if the checksum cannot be fetched
+# or computed, the install aborts rather than proceeding unverified.
 #
 # Environment overrides:
 #   DWVAULT_VERSION   release tag to install (default: latest)
 #   DWVAULT_BIN_DIR   install directory     (default: ~/.local/bin, or /usr/local/bin if writable & on PATH)
 #   DWVAULT_REPO      owner/repo to pull from (default: andyjmorgan/DonkeyWork-Vault)
-#   DWVAULT_NO_VERIFY set to 1 to skip checksum verification (not recommended)
+#   DWVAULT_NO_VERIFY set to 1 to skip checksum verification (not recommended; the only bypass)
 set -eu
 
 REPO="${DWVAULT_REPO:-andyjmorgan/DonkeyWork-Vault}"
@@ -70,19 +72,21 @@ say "Downloading $asset ($VERSION)…"
 dl "$tmp/$asset" "$base/$asset" || err "download failed: $base/$asset"
 
 # --- verify checksum -------------------------------------------------------
+# Fail closed: unless DWVAULT_NO_VERIFY=1 is explicitly set, any condition that
+# prevents completing verification (missing SHA256SUMS, no checksum tool, or no
+# matching entry for this asset) is a hard error — never install an unverified
+# binary. The only sanctioned bypass is DWVAULT_NO_VERIFY=1.
 if [ "${DWVAULT_NO_VERIFY:-0}" != "1" ]; then
-  if dl "$tmp/SHA256SUMS" "$base/SHA256SUMS" 2>/dev/null; then
-    want=$(grep " $asset\$" "$tmp/SHA256SUMS" | awk '{print $1}')
-    if [ -n "$want" ]; then
-      if have sha256sum;   then got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
-      elif have shasum;    then got=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
-      else got=""; say "warning: no sha256 tool found, skipping verification"; fi
-      [ -n "$got" ] && [ "$got" != "$want" ] && err "checksum mismatch for $asset (expected $want, got $got)"
-      [ -n "$got" ] && say "Checksum OK."
-    fi
-  else
-    say "warning: could not fetch SHA256SUMS, skipping verification"
+  dl "$tmp/SHA256SUMS" "$base/SHA256SUMS" 2>/dev/null \
+    || err "could not fetch SHA256SUMS for verification ($base/SHA256SUMS); refusing to install an unverified binary (set DWVAULT_NO_VERIFY=1 to override)"
+  want=$(grep " $asset\$" "$tmp/SHA256SUMS" | awk '{print $1}')
+  [ -n "$want" ] || err "no checksum for $asset in SHA256SUMS; refusing to install an unverified binary (set DWVAULT_NO_VERIFY=1 to override)"
+  if have sha256sum;   then got=$(sha256sum "$tmp/$asset" | awk '{print $1}')
+  elif have shasum;    then got=$(shasum -a 256 "$tmp/$asset" | awk '{print $1}')
+  else err "no sha256 tool found (need sha256sum or shasum) to verify the download; refusing to install an unverified binary (set DWVAULT_NO_VERIFY=1 to override)"
   fi
+  [ "$got" = "$want" ] || err "checksum mismatch for $asset (expected $want, got $got)"
+  say "Checksum OK."
 fi
 
 # --- install ---------------------------------------------------------------

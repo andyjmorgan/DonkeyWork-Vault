@@ -88,6 +88,37 @@ func TestStoreResolveCredential_OAuthBlob(t *testing.T) {
 	}
 }
 
+func TestFileDeleteRewrite(t *testing.T) {
+	keyring.MockInit()
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("VAULT_API_KEY", "")
+	const hostA, hostB = "https://a.example", "https://b.example"
+
+	if err := fileSet(hostA, "dwv_a"); err != nil {
+		t.Fatalf("fileSet a: %v", err)
+	}
+	if err := fileSet(hostB, "dwv_b"); err != nil {
+		t.Fatalf("fileSet b: %v", err)
+	}
+
+	// Deleting one of two entries takes the atomic rewrite path; the file must
+	// still parse and hold the survivor.
+	if err := fileDelete(hostA); err != nil {
+		t.Fatalf("fileDelete: %v", err)
+	}
+
+	m, _, err := fileLoad()
+	if err != nil {
+		t.Fatalf("fileLoad after delete: %v", err)
+	}
+	if _, ok := m[hostA]; ok {
+		t.Fatalf("hostA still present after delete: %+v", m)
+	}
+	if got := m[hostB]; got != "dwv_b" {
+		t.Fatalf("survivor = %q, want dwv_b", got)
+	}
+}
+
 func TestFileFallback(t *testing.T) {
 	keyring.MockInit()
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())

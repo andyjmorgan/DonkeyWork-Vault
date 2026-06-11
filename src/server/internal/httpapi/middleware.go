@@ -17,6 +17,21 @@ import (
 // apiKeyPrefix marks an access-key secret presented as X-Api-Key or Authorization: Bearer.
 const apiKeyPrefix = "dwv_"
 
+// securityHeaders sets defense-in-depth response headers on every response (API, SPA and error
+// alike). TLS terminates at the ingress, so HSTS only advertises the policy to browsers — the server
+// never sees plaintext to redirect. No Content-Security-Policy here: a wrong CSP would break the SPA
+// console, and tailoring one is tracked separately (issue #31).
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		h := w.Header()
+		h.Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		h.Set("X-Content-Type-Options", "nosniff")
+		h.Set("X-Frame-Options", "DENY")
+		h.Set("Referrer-Policy", "no-referrer")
+		next.ServeHTTP(w, r)
+	})
+}
+
 type scopesKey struct{}
 
 func scopesFrom(ctx context.Context) map[string]bool {
