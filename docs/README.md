@@ -4,7 +4,7 @@ DonkeyWork Vault is a credential vault for people, scripts, and agents. It store
 
 Use these docs based on what you are trying to do:
 
-- [Quick start](quick-start.md): create your first credential, mint an access key, and use the CLI.
+- [Quick start](quick-start.md): create your first credential, log in with the CLI, and make your first call.
 - [Web app guide](web-app.md): use Credentials, Providers, OAuth Connect, Audit trail, and Profile.
 - [CLI guide](cli.md): install, log in, retrieve credentials, connect scripts, and manage access keys.
 - [OAuth providers](oauth-providers.md): add built-in or custom OAuth/OIDC providers and connect accounts.

@@ -30,21 +30,7 @@ Recommended fields:
 - **Header**: commonly `Authorization`, `X-Api-Key`, or the provider-specific header.
 - **Prefix**: commonly `Bearer `, including the trailing space.
 
-## 3. Mint an Access Key
-
-Go to **Profile** and create an API key for the CLI or agent.
-
-Pick the least scope needed:
-
-| Scope | Use |
-|---|---|
-| `vault:read` | Read credentials and OAuth tokens. Best default for scripts. |
-| `vault:readwrite` | Create, update, and delete vault records. |
-| `vault:audit` | Read audit events. |
-
-The key value starts with `dwv_` and is shown once. Copy it immediately.
-
-## 4. Install the CLI
+## 3. Install the CLI
 
 Linux and macOS:
 
@@ -53,7 +39,7 @@ curl -fsSL https://raw.githubusercontent.com/andyjmorgan/DonkeyWork-Vault/main/i
 dwvault --version
 ```
 
-## 5. Log In
+## 4. Log In
 
 Hosted vault:
 
@@ -67,7 +53,23 @@ Self-hosted vault:
 dwvault --addr https://vault.example.com auth login
 ```
 
-Paste the `dwv_...` access key when prompted.
+**OAuth device login** is the default: the CLI prints an activation URL, you approve it in a browser, and the access/refresh tokens are stored in your OS keyring (or a `0600` file). No key to copy.
+
+Choose **Paste API key** in the selector (or run `dwvault auth login --api-key`) if you prefer a `dwv_...` access key — see the next step for minting one.
+
+## 5. Optional: Mint an Access Key for Automation
+
+For unattended scripts, CI jobs, or agents where browser login is impractical, go to **Profile** in the web app and create an API key.
+
+Pick the least scope needed:
+
+| Scope | Use |
+|---|---|
+| `vault:read` | Read credentials and OAuth tokens. Best default for scripts. |
+| `vault:readwrite` | Create, update, and delete vault records. |
+| `vault:audit` | Read audit events. |
+
+The key value starts with `dwv_` and is shown once. Copy it immediately. Store it with `dwvault auth login --api-key`, or pass it per-process via `VAULT_API_KEY`.
 
 ## 6. Use a Credential
 

@@ -1,10 +1,11 @@
-import { Github, LogIn, ArrowRight, Timer, ShieldCheck, Terminal, RefreshCw, Boxes, Zap } from 'lucide-react'
+import { Github, BookOpen, LogIn, ArrowRight, Timer, ShieldCheck, Terminal, RefreshCw, Boxes, Zap } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../ui/components/button'
 import { CopyButton } from '../components/CopyButton'
 import { isAuthed, login } from '../auth'
 
 const REPO = 'https://github.com/andyjmorgan/DonkeyWork-Vault'
+const DOCS = 'https://andyjmorgan.github.io/DonkeyWork-Vault/'
 const INSTALL = 'curl -fsSL https://raw.githubusercontent.com/andyjmorgan/DonkeyWork-Vault/main/install.sh | sh'
 
 const features = [
@@ -54,6 +55,9 @@ export function LandingPage() {
           <span>DonkeyWork <span className="text-accent">Vault</span></span>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" asChild>
+            <a href={DOCS} target="_blank" rel="noreferrer"><BookOpen className="size-4" /> Docs</a>
+          </Button>
           <Button variant="ghost" size="icon" asChild aria-label="GitHub">
             <a href={REPO} target="_blank" rel="noreferrer"><Github /></a>
           </Button>
@@ -86,6 +90,9 @@ export function LandingPage() {
         <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
           <Button size="lg" onClick={enter}>{authed ? 'Open the app' : 'Log in'} <ArrowRight className="size-4" /></Button>
           <Button size="lg" variant="outline" asChild>
+            <a href={DOCS} target="_blank" rel="noreferrer"><BookOpen className="size-4" /> Read the docs</a>
+          </Button>
+          <Button size="lg" variant="outline" asChild>
             <a href={REPO} target="_blank" rel="noreferrer"><Github className="size-4" /> View on GitHub</a>
           </Button>
         </div>
@@ -112,7 +119,10 @@ export function LandingPage() {
             <div>DonkeyWork Vault — self-hosted secrets &amp; OAuth for agents.</div>
             <div className="mt-1 text-[11px] text-muted-foreground/75">Fueled by caffeine and token spending addictions.</div>
           </div>
-          <a href={REPO} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground"><Github className="size-3.5" /> andyjmorgan/DonkeyWork-Vault</a>
+          <div className="flex items-center gap-4">
+            <a href={DOCS} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground"><BookOpen className="size-3.5" /> Documentation</a>
+            <a href={REPO} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 hover:text-foreground"><Github className="size-3.5" /> andyjmorgan/DonkeyWork-Vault</a>
+          </div>
         </div>
       </footer>
     </div>
