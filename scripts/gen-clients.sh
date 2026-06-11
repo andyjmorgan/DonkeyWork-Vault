@@ -3,7 +3,8 @@
 #   - Go  : src/cli/internal/vaultapi/vaultapi.gen.go   (oapi-codegen — models + net/http client)
 #   - TS  : src/portal/frontend/src/api/schema.d.ts     (openapi-typescript — types)
 #
-# Run scripts/emit-openapi.sh first to refresh api/openapi.json. Requires: go, node/npx.
+# api/openapi.json is the hand-maintained wire contract (the Go server's contract test pins the
+# route table to it). Requires: go, node/npx.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"

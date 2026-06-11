@@ -11,6 +11,11 @@ import (
 // request is the root span of a trace (the traces pillar's entry point). A static file handler for
 // the SPA can be layered by the caller via Fallback.
 func (s *Server) Handler() http.Handler {
+	return otelhttp.NewHandler(s.router(), "vault.http")
+}
+
+// router builds the bare chi mux — separate from Handler so tests can walk the route table.
+func (s *Server) router() chi.Router {
 	r := chi.NewRouter()
 
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -69,5 +74,5 @@ func (s *Server) Handler() http.Handler {
 		})
 	})
 
-	return otelhttp.NewHandler(r, "vault.http")
+	return r
 }

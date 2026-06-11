@@ -1,4 +1,4 @@
-# DonkeyWork Vault — single HTTP service: REST API + OAuth + the React SPA.
+# DonkeyWork Vault — Go service: REST API + OAuth + the React SPA.
 # Stage 1: build the SPA.
 FROM node:22 AS frontend
 WORKDIR /web
@@ -7,21 +7,20 @@ RUN npm ci --no-audit --no-fund
 COPY src/portal/frontend/ ./
 RUN npm run build
 
-# Stage 2: build the .NET service.
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+# Stage 2: build the Go binary.
+FROM golang:1.26 AS build
 WORKDIR /src
-COPY . .
-# CI swaps in the in-cluster Nexus NuGet proxy; locally this no-ops to nuget.org.
-RUN cp _nuget.config nuget.config 2>/dev/null || true
-RUN dotnet restore src/vault/DonkeyWork.Vault.Api/DonkeyWork.Vault.Api.csproj
-RUN dotnet publish src/vault/DonkeyWork.Vault.Api/DonkeyWork.Vault.Api.csproj \
-    -c Release -o /app --no-restore /p:UseAppHost=false
+COPY src/server/go.mod src/server/go.sum ./
+RUN go mod download
+COPY src/server/ ./
+RUN CGO_ENABLED=0 go build -trimpath -o /out/vault ./cmd/vault
 
-# Stage 3: runtime — the service serves the built SPA from wwwroot.
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# Stage 3: minimal runtime serving the built SPA from /web.
+FROM gcr.io/distroless/static-debian12 AS runtime
 WORKDIR /app
-COPY --from=build /app .
-COPY --from=frontend /web/dist/ ./wwwroot/
-ENV ASPNETCORE_URLS=http://+:8080
+COPY --from=build /out/vault /app/vault
+COPY --from=frontend /web/dist/ /app/web/
+ENV VAULT_LISTEN_ADDR=:8080
+ENV VAULT_WEBROOT=/app/web
 EXPOSE 8080
-ENTRYPOINT ["dotnet", "DonkeyWork.Vault.Api.dll"]
+ENTRYPOINT ["/app/vault"]

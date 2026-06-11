@@ -9,6 +9,16 @@ It is written to be picked up by a coding agent (or engineer) and continued with
 - **Status:** feature-complete, compiles, `go vet`/`gofmt` clean, full test suite green, smoke-tested
   against a real Postgres. **Not yet validated against live OAuth providers or a real OIDC IdP.**
 
+> **Update 2026-06-11 — migration completed.** Validated end-to-end against a prod DB copy with
+> the real Keycloak IdP and real providers (.NET-minted access-key hash verifies; secret decrypt
+> parity vs the live .NET service confirmed byte-for-byte; real Google token auto-refresh; real
+> Keycloak JWT → `/me`; connect-begin builds real authorize URLs + persists state). The wire
+> contract is frozen as `api/openapi.json` and pinned by `internal/httpapi/contract_test.go`
+> (25 operations). CI/publish workflows now build/test Go and publish from `Dockerfile.vault`
+> (the Go image); the C# backend (`src/vault`, `test/`, `tools/`, solution/props/nuget files) is
+> removed. TODO #2 (coverage to 95%) deliberately deferred. The remainder of this document is
+> retained as historical context for the port.
+
 ---
 
 ## 1. What this is

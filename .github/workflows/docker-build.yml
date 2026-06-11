@@ -19,24 +19,39 @@ env:
 
 jobs:
   test-backend:
-    name: Test Backend
+    name: Test Backend (Go)
     runs-on: [self-hosted, Linux, X64]
-    env:
-      DOTNET_INSTALL_DIR: ${{ github.workspace }}/.dotnet
+    defaults:
+      run:
+        working-directory: src/server
     steps:
       - uses: actions/checkout@v4
-      - name: Setup .NET 10
-        uses: actions/setup-dotnet@v4
+      - name: Setup Go
+        uses: actions/setup-go@v5
         with:
-          dotnet-version: '10.0.x'
-      - name: Configure NuGet for local proxy
-        run: cp _nuget.config nuget.config
-      - name: Restore
-        run: dotnet restore DonkeyWork.Vault.slnx
+          go-version-file: src/server/go.mod
+          cache-dependency-path: src/server/go.sum
       - name: Build
-        run: dotnet build DonkeyWork.Vault.slnx -c Release --no-restore
-      - name: Test (unit tier)
-        run: dotnet test DonkeyWork.Vault.slnx -c Release --no-build --filter "Category!=Integration"
+        run: go build ./...
+      - name: Vet
+        run: go vet ./...
+      - name: Start ephemeral Postgres
+        run: |
+          docker rm -f vault-ci-pg 2>/dev/null || true
+          docker run -d --name vault-ci-pg \
+            -e POSTGRES_USER=vault -e POSTGRES_PASSWORD=vault -e POSTGRES_DB=vault_test \
+            -p 127.0.0.1:55433:5432 postgres:17-alpine
+          for i in $(seq 1 30); do
+            docker exec vault-ci-pg pg_isready -U vault && break
+            sleep 1
+          done
+      - name: Test (unit + Postgres integration)
+        env:
+          VAULT_TEST_DSN: postgres://vault:vault@127.0.0.1:55433/vault_test?sslmode=disable
+        run: go test ./...
+      - name: Stop ephemeral Postgres
+        if: always()
+        run: docker rm -f vault-ci-pg 2>/dev/null || true
 
   build-vault:
     name: Build & Push Vault Image

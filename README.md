@@ -258,24 +258,28 @@ provider (see below).
 
 ## Self-hosting
 
-The whole product is **one container** — REST API + OAuth + the React console — plus Postgres. It
-serves HTTP on **:8080** (health at **/healthz**) and runs EF Core migrations on start.
+The whole product is **one container** — REST API + OAuth + the React console (a single static Go
+binary) — plus Postgres. It serves HTTP on **:8080** (health at **/healthz**) and runs idempotent
+SQL migrations on start.
 
-Build/run with `Dockerfile.vault`. Provide via configuration:
+Build/run with `Dockerfile.vault`. Configure via environment variables:
 
-| Setting | Meaning |
+| Variable | Meaning |
 |---|---|
-| `Vault:Persistence:ConnectionString` | Postgres connection string. |
-| `Vault:Crypto:ActiveKekId` | id of the KEK used to wrap new secrets. |
-| `Vault:Crypto:Keks:<id>` | base64-encoded 256-bit (32-byte) key material; keep every historical id to decrypt old rows. |
-| `Vault:PublicBaseUrl` | public origin, used to build OAuth redirect URIs. |
-| `Vault:RunMigrationsOnStartup` | defaults `true`. |
-| `Oidc:Authority` | your issuer URL (the SPA logs in against it; the API validates the token issuer via JWKS). Leave **blank to disable auth** — local/dev only. |
-| `Oidc:WebClientId` | web UI client id. Legacy `Oidc:ClientId` still works and falls back to `Oidc:Audience`. |
-| `Oidc:CliClientId` | CLI OAuth device-flow client id (default `donkeywork-vault-cli`). |
-| `Oidc:WebScopes` | web UI scopes. Legacy `Oidc:Scopes` still works (default `openid profile email`). |
-| `Oidc:CliScopes` | CLI scopes (default `openid profile email offline_access`). |
-| `Oidc:InternalAuthority` | optional in-cluster issuer URL, if it differs from the public one. |
+| `VAULT_DSN` (or `DATABASE_URL`) | Postgres DSN, e.g. `postgres://user:pass@host:5432/db`. |
+| `VAULT_CRYPTO_ACTIVE_KEK_ID` | id of the KEK used to wrap new secrets. |
+| `VAULT_CRYPTO_KEKS` | `id=base64,id2=base64` — base64-encoded 256-bit (32-byte) key material; keep every historical id to decrypt old rows. |
+| `VAULT_PUBLIC_BASE_URL` | public origin, used to build OAuth redirect URIs. |
+| `VAULT_RUN_MIGRATIONS` | defaults `true`. |
+| `VAULT_OIDC_AUTHORITY` | your issuer URL (the SPA logs in against it; the API validates the token issuer via JWKS). Leave **blank to disable auth** — local/dev only. |
+| `VAULT_OIDC_AUDIENCE` | expected JWT audience. |
+| `VAULT_OIDC_WEB_CLIENT_ID` | web UI client id. |
+| `VAULT_OIDC_CLI_CLIENT_ID` | CLI OAuth device-flow client id (default `donkeywork-vault-cli`). |
+| `VAULT_OIDC_WEB_SCOPES` | web UI scopes (default `openid profile email`). |
+| `VAULT_OIDC_CLI_SCOPES` | CLI scopes (default `openid profile email offline_access`). |
+| `VAULT_OIDC_INTERNAL_AUTHORITY` | optional in-cluster issuer URL, if it differs from the public one. |
+
+Full reference: `src/server/internal/config/config.go`.
 
 **Bring your own identity provider.** The console is vendor-neutral — any OIDC-compliant IdP works
 (Keycloak, Entra ID, Auth0, Okta, Cognito, Authentik, Zitadel, …) with **config only, no rebuild**.
@@ -296,22 +300,20 @@ dwvault --addr https://vault.example.com auth login
 ## Repository layout
 
 ```
-src/vault/      The vault service (.NET): Api (REST + OAuth + SPA host), Core, Persistence, Contracts
-src/portal/     frontend/ — the Vite + React + Tailwind console (built into the vault's wwwroot)
+src/server/     The vault service (Go): REST API + OAuth flows + SPA host (module donkeywork.dev/vault-server)
+src/portal/     frontend/ — the Vite + React + Tailwind console (served by the vault binary)
 src/cli/        dwvault — the Go credential CLI (bundles the agent skill: `dwvault skill`)
 api/            openapi.json (the REST contract) + oapi-codegen config
-test/           integration tests
-tools/          maintenance utilities (e.g. importer)
 Dockerfile.vault, install.sh
 ```
 
 ## Build & develop
 
-Requirements: **.NET 10 SDK**, **Go 1.24+**, **Node 22+** (for the SPA).
+Requirements: **Go 1.26+**, **Node 22+** (for the SPA).
 
 ```bash
-# service (vault + tests)
-dotnet build DonkeyWork.Vault.slnx
+# service (build + unit tests; set VAULT_TEST_DSN to a Postgres DSN for the integration suite)
+cd src/server && go build ./... && go test ./...
 
 # CLI
 cd src/cli && CGO_ENABLED=0 go build -o dwvault .
@@ -320,6 +322,8 @@ cd src/cli && CGO_ENABLED=0 go build -o dwvault .
 cd src/portal/frontend && npm ci && npm run build
 ```
 
-The CLI's REST client is generated from `api/openapi.json` (oapi-codegen); see `scripts/gen-clients.sh`
-and `scripts/emit-openapi.sh`. Tagging a commit `vX.Y.Z` (or any change under `src/cli/`) cross-compiles
-the `dwvault` binaries and publishes a GitHub release via the release workflows.
+`api/openapi.json` is the authoritative wire contract; the server's contract test pins the Go route
+table to it. The CLI's REST client and the SPA's types are generated from it (oapi-codegen /
+openapi-typescript); see `scripts/gen-clients.sh`. Tagging a commit `vX.Y.Z` (or any change under
+`src/cli/`) cross-compiles the `dwvault` binaries and publishes a GitHub release via the release
+workflows.
