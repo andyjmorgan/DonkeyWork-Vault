@@ -13,6 +13,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"text/tabwriter"
@@ -109,7 +110,7 @@ func main() {
 	keys := &cobra.Command{Use: "keys", Short: "Manage access keys (scoped auth credentials)"}
 	keys.AddCommand(cmdKeysList(), cmdKeysCreate(), cmdKeysSetEnabled(true), cmdKeysSetEnabled(false), cmdKeysDelete())
 
-	root.AddCommand(creds, oauth, keys, authCmd(), cmdSkill(), cmdUpdate(), cmdUpdateCheckHidden())
+	root.AddCommand(creds, oauth, keys, authCmd(), cmdSkill(), cmdVersion(), cmdUpdate(), cmdUpdateCheckHidden())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
@@ -300,8 +301,24 @@ func cmdOAuthList() *cobra.Command {
 	}
 }
 
+// cmdVersion mirrors the root `--version` flag as a subcommand (some callers and drift checks
+// reach for `dwvault version`). It prints the same `dwvault version <v>` line, to stderr — the
+// CLI reserves stdout for secret material, so version info goes to stderr like all other notices.
+func cmdVersion() *cobra.Command {
+	return &cobra.Command{
+		Use:   "version",
+		Short: "Print the dwvault version (same as --version)",
+		Args:  cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			fmt.Fprintf(os.Stderr, "%s version %s\n", cmd.Root().Name(), version)
+			return nil
+		},
+	}
+}
+
 func cmdCreate() *cobra.Command {
-	var secret, description, baseURL, docs, header, prefix, username, kind string
+	var secret, secretEnv, description, baseURL, docs, header, prefix, username, kind string
+	var secretStdin bool
 	c := &cobra.Command{
 		Use:   "create <name>",
 		Short: "Store a self-describing credential (set --kind for ssh/connection_string/etc.)",
@@ -309,8 +326,9 @@ func cmdCreate() *cobra.Command {
 			"opaque); the vault returns it on discovery so an agent knows what it is:\n\n" + kindHelp,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if secret == "" {
-				return fmt.Errorf("--secret is required")
+			secret, err := resolveCreateSecret(cmd, secret, secretEnv, secretStdin)
+			if err != nil {
+				return err
 			}
 			// A bare --username with no explicit --kind is HTTP Basic — the historical default.
 			if username != "" && !cmd.Flags().Changed("kind") {
@@ -356,7 +374,9 @@ func cmdCreate() *cobra.Command {
 			return nil
 		},
 	}
-	c.Flags().StringVar(&secret, "secret", "", "the API key value, or password with --username (required)")
+	c.Flags().StringVar(&secret, "secret", "", "the API key value, or password with --username; prefer --secret-stdin/--secret-env to keep it out of argv")
+	c.Flags().BoolVar(&secretStdin, "secret-stdin", false, "read the secret from stdin (keeps it out of shell history / ps / transcripts)")
+	c.Flags().StringVar(&secretEnv, "secret-env", "", "read the secret from the named environment variable, e.g. --secret-env SECRET")
 	c.Flags().StringVar(&description, "description", "", "what this credential is for")
 	c.Flags().StringVar(&baseURL, "base-url", "", "host / base URL where it's used")
 	c.Flags().StringVar(&docs, "docs", "", "API documentation link")
@@ -564,14 +584,76 @@ func cmdKeysDelete() *cobra.Command {
 	}
 }
 
+// resolveCreateSecret picks the secret for `create` from exactly one of --secret,
+// --secret-stdin, or --secret-env. The stdin/env forms keep the secret out of argv (shell
+// history, `ps`, transcripts), matching the vault's "never expose the secret" discipline.
+// The three are mutually exclusive; exactly one must be given and must yield a non-empty value.
+func resolveCreateSecret(cmd *cobra.Command, secret, secretEnv string, secretStdin bool) (string, error) {
+	n := 0
+	for _, set := range []bool{cmd.Flags().Changed("secret"), secretStdin, cmd.Flags().Changed("secret-env")} {
+		if set {
+			n++
+		}
+	}
+	switch {
+	case n == 0:
+		return "", fmt.Errorf("a secret is required: pass --secret-stdin, --secret-env NAME, or --secret <value>")
+	case n > 1:
+		return "", fmt.Errorf("--secret, --secret-stdin and --secret-env are mutually exclusive — pass exactly one")
+	}
+
+	var value string
+	switch {
+	case secretStdin:
+		b, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("read secret from stdin: %w", err)
+		}
+		// Drop a single trailing newline (echo/heredoc add one); keep any other content verbatim.
+		value = strings.TrimSuffix(strings.TrimSuffix(string(b), "\n"), "\r")
+	case cmd.Flags().Changed("secret-env"):
+		if secretEnv == "" {
+			return "", fmt.Errorf("--secret-env requires an environment variable name")
+		}
+		v, ok := os.LookupEnv(secretEnv)
+		if !ok {
+			return "", fmt.Errorf("--secret-env %q: environment variable is not set", secretEnv)
+		}
+		value = v
+	default:
+		value = secret
+	}
+	if value == "" {
+		return "", fmt.Errorf("the secret is empty")
+	}
+	return value, nil
+}
+
 // truncate shortens s to at most n runes, appending an ellipsis when it was cut, so the
-// discovery table stays scannable regardless of description length.
+// discovery table stays scannable regardless of description length. It prefers to cut on the
+// last whitespace at/under the limit so the row never ends mid-word (e.g. "…literal $oau…");
+// a single token longer than the budget — or a word boundary so early it would gut the cell —
+// still gets a hard positional cut.
 func truncate(s string, n int) string {
 	r := []rune(s)
 	if len(r) <= n {
 		return s
 	}
-	return string(r[:n-1]) + "…"
+	cut := n - 1 // reserve one rune for the ellipsis
+	if i := lastSpace(r[:cut]); i >= cut/2 {
+		cut = i
+	}
+	return strings.TrimRight(string(r[:cut]), " \t") + "…"
+}
+
+// lastSpace returns the index of the last ASCII space or tab in r, or -1 if there is none.
+func lastSpace(r []rune) int {
+	for i := len(r) - 1; i >= 0; i-- {
+		if r[i] == ' ' || r[i] == '\t' {
+			return i
+		}
+	}
+	return -1
 }
 
 // strPtr returns a pointer to s, or nil when s is empty (so omitted flags stay unset).

@@ -73,8 +73,8 @@ dwvault credentials list                 # discovery: name + truncated descripti
 dwvault credentials get    <name>        # the secret to stdout (for $(...) substitution)
 dwvault credentials shape  <name>        # JSON: kind/description/base_url/header/prefix/scheme/username/docs_url
 dwvault credentials header <name>        # the ready Authorization header line (for curl -H; HTTP kinds)
-dwvault credentials create <name> --secret <v> --kind <kind> [--description ..] [--base-url ..] \
-                                       [--docs ..] [--header ..] [--prefix ..] [--username ..]
+dwvault credentials create <name> --kind <kind> (--secret-stdin | --secret-env VAR | --secret <v>) \
+                                       [--description ..] [--base-url ..] [--docs ..] [--header ..] [--prefix ..] [--username ..]
 dwvault credentials delete <name>        # remove a stored credential
 
 dwvault oauth list                       # connected OAuth providers (provider/account/status/scopes)
@@ -88,7 +88,7 @@ dwvault keys delete <id>
 
 > `credentials` is the canonical group; the old `creds` shorthand still works as an alias.
 > `create` is an **upsert** — re-running it for an existing name updates that credential's
-> fields in place (a blank `--secret` keeps the stored secret).
+> fields in place. A secret source is always required (one of `--secret-stdin`/`--secret-env`/`--secret`).
 
 ### Credential kinds (`--kind`)
 
@@ -180,6 +180,12 @@ TOKEN=$(dwvault oauth get microsoft) && \
   curl -H "Authorization: Bearer $TOKEN" https://graph.microsoft.com/v1.0/me
 ```
 
+**`http_basic` web consoles:** request the credential's canonical URL directly — usually a
+trailing-slash path like `…/admin/`. A bare `…/admin` typically 301-redirects to `…/admin/`,
+and curl drops the `Authorization` header across redirects unless you pass `--location-trusted`,
+so a naive `curl -H "$(dwvault credentials header sluice-admin)" https://host/admin` returns the
+301 and looks like an auth failure. Hit the trailing-slash URL (or pass `--location-trusted`).
+
 **Into an environment variable** (when several commands need it) — assign with `$(...)`,
 then reference `"$VAR"`. Assigning does not print it; just never echo it afterwards:
 
@@ -200,23 +206,27 @@ and **never appear in output**. This is imperative:
 - ❌ `env`, `set`, `cat`-ing a file you wrote it to, or `curl -v` (headers print)
 - ✅ `curl -H "Authorization: Bearer $(dwvault credentials get acme-api)" …` — used, never shown
 - ✅ `export VAR="$(dwvault credentials get …)"` then reference `"$VAR"`
-- ✅ pass secrets to `credentials create` via an **env var** (`SECRET=$(…) dwvault credentials create … --secret "$SECRET"`), not a literal
+- ✅ pass secrets to `credentials create` via `--secret-stdin` (`… | dwvault credentials create … --secret-stdin`) or `--secret-env VAR`, never a `--secret <literal>`
 
 If you need to confirm a secret was retrieved, check a **side effect** (e.g. the API
 call returned 200), not the value itself.
 
 ### Storing a new credential
 
+Pass the secret via **`--secret-stdin`** (read from stdin) or **`--secret-env VAR`** (read from
+an env var) so it never lands in argv — shell history, `ps`, or a transcript. `--secret <value>`
+still works but puts the literal on the command line; avoid it. The three are mutually exclusive.
+
 ```bash
-# Secret via env so it isn't on the command line; set --kind so discovery is meaningful:
-SECRET=$(some-source) dwvault credentials create acme-api --secret "$SECRET" --kind header_api_key \
+# Preferred: pipe the secret in on stdin; set --kind so discovery is meaningful:
+some-source | dwvault credentials create acme-api --secret-stdin --kind header_api_key \
   --description "Acme prod API" --base-url https://api.acme.com --docs https://docs.acme.com \
   --header Authorization --prefix "Bearer "
 
-# An SSH login or a DB connection string:
-PW=$(some-source) dwvault credentials create db-box --secret "$PW" --kind ssh \
+# Or from an env var (the CLI reads it; the value is not on the command line):
+PW=$(some-source) dwvault credentials create db-box --secret-env PW --kind ssh \
   --username ops --base-url ssh://db.acme.example:22 --description "DB box SSH"
-DSN=$(some-source) dwvault credentials create warehouse-dsn --secret "$DSN" --kind connection_string \
+DSN=$(some-source) dwvault credentials create warehouse-dsn --secret-env DSN --kind connection_string \
   --base-url postgresql://wh.acme:5432 --description "Analytics warehouse"
 ```
 
