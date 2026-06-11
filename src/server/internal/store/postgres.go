@@ -304,6 +304,13 @@ func (p *Postgres) DeleteOAuthState(ctx context.Context, id uuid.UUID) (int64, e
 	return tag.RowsAffected(), err
 }
 
+// DeleteExpiredOAuthStates reaps rows whose TTL has lapsed, so abandoned flows do not accumulate;
+// returns the number of rows deleted.
+func (p *Postgres) DeleteExpiredOAuthStates(ctx context.Context) (int64, error) {
+	tag, err := p.pool.Exec(ctx, `DELETE FROM vault.oauth_states WHERE expires_at < now()`)
+	return tag.RowsAffected(), err
+}
+
 // ---- oauth tokens ----
 
 //nolint:gosec // G101: column-name list for the oauth_tokens table, not an embedded credential.

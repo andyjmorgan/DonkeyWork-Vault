@@ -92,6 +92,7 @@ func run() error {
 	auditLog := audit.NewLog(cfg.AuditChannelCap, logger, metrics)
 	writer := audit.NewWriter(auditLog, pg, logger, metrics, audit.WriterOptions{BatchSize: cfg.AuditBatchSize, FlushInterval: cfg.AuditFlushInterval})
 	retention := audit.NewRetention(pg, logger, audit.RetentionOptions{RetentionDays: cfg.AuditRetentionDays, SweepInterval: cfg.AuditSweepInterval, BatchSize: cfg.AuditRetentionBatch})
+	oauthStateSweeper := service.NewOAuthStateSweeper(pg, logger, 0)
 	auditQuery := audit.NewQueryService(pg, auditLog)
 
 	// Outbound HTTP for OAuth/discovery, traced via otelhttp so exchanges are child spans. The
@@ -133,9 +134,10 @@ func run() error {
 	// Background workers.
 	var wg sync.WaitGroup
 	workerCtx, cancelWorkers := context.WithCancel(context.Background())
-	wg.Add(2)
+	wg.Add(3)
 	go func() { defer wg.Done(); writer.Run(workerCtx) }()
 	go func() { defer wg.Done(); retention.Run(workerCtx) }()
+	go func() { defer wg.Done(); oauthStateSweeper.Run(workerCtx) }()
 
 	httpSrv := &http.Server{
 		Addr:              cfg.ListenAddr,
