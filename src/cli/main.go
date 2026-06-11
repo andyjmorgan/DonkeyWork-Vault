@@ -581,7 +581,7 @@ func strPtr(s string) *string {
 // fmtTime formats an optional timestamp for table output.
 func fmtTime(t *time.Time) string {
 	if t == nil {
-		return "-"
+		return "no expiry"
 	}
 	return t.Format(time.RFC3339)
 }

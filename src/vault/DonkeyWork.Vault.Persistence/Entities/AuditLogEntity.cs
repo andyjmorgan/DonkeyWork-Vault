@@ -4,8 +4,8 @@ namespace DonkeyWork.Vault.Persistence.Entities;
 
 /// <summary>
 /// An append-only audit record of a credential-sensitive event. Deliberately <b>not</b> a
-/// <see cref="BaseEntity"/>: the per-user query filter is wrong here (admins read across users)
-/// and the rows must never be updated. <c>UserId</c>/<c>TenantId</c> are plain columns. It never
+/// <see cref="BaseEntity"/>: the rows must never be updated, and read scoping is applied explicitly
+/// by the audit query service. <c>UserId</c>/<c>TenantId</c> are plain columns. It never
 /// stores secret material — the access key is referenced by id / prefix / name only (never the
 /// <c>dwv_</c> secret nor its SHA-256 hash), and <c>Headers</c> is already redacted.
 /// </summary>
