@@ -115,7 +115,7 @@ func (s *Server) authenticateJWT(ctx context.Context, w http.ResponseWriter, raw
 	}
 	ctx = withIdentity(ctx, meIdentity{Email: emptyToNil(claims.Email), Name: emptyToNil(name)})
 
-	// Scopes depend on the requesting OAuth client (web vs CLI), matching the C# scope mapper.
+	// Scopes depend on the requesting OAuth client (web vs CLI).
 	clientID := clientIDFromClaims(claims.Azp, claims.ClientID, idToken.Audience)
 	granted := map[string]bool{}
 	for _, sc := range vaultScopesFor(clientID, idToken.Audience, s.webClientID, s.cliClientID) {

@@ -1,7 +1,7 @@
 // Package httpapi is the HTTP/JSON transport: a chi router, OIDC/JWT + access-key authentication,
 // the uniform scope gate, the per-request audit/caller context, and handlers that call the domain
-// services. The DTOs below reproduce the exact camelCase wire contract the .NET service emitted, so
-// the generated Go CLI client and the React SPA keep working unchanged.
+// services. The DTOs below define the exact camelCase wire contract, so the generated Go CLI client
+// and the React SPA keep working unchanged.
 package httpapi
 
 import (

@@ -1,5 +1,5 @@
 // Command vault is the DonkeyWork Vault HTTP service: the REST API, OAuth flows and (optionally) the
-// React SPA, backed by Postgres. It is the Go replacement for the .NET DonkeyWork.Vault.Api host.
+// React SPA, backed by Postgres.
 package main
 
 import (

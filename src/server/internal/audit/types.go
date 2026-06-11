@@ -1,7 +1,7 @@
 // Package audit is the append-only audit trail: a fire-and-forget bounded-channel sink, a background
 // batch writer, a retention sweeper, header redaction, a trusted-proxy IP resolver and a caller-scoped
-// query service. It is a faithful port of the C# audit subsystem; auditing must never block or fail
-// the credential path, and no record ever carries secret material.
+// query service. Auditing must never block or fail the credential path, and no record ever carries
+// secret material.
 package audit
 
 import (
@@ -12,7 +12,7 @@ import (
 )
 
 // EventType is the kind of credential-sensitive event recorded. Values are stable and stored as int;
-// they must not be reordered (they match the C# AuditEventType).
+// they must not be reordered.
 type EventType int
 
 const (
@@ -27,8 +27,8 @@ const (
 	EventTokenRemoved      EventType = 8
 )
 
-// String renders the PascalCase name the .NET service emitted on the wire (enum.ToString()), so the
-// audit DTO's `type` field is unchanged for existing API consumers.
+// String renders the PascalCase name emitted on the wire, so the audit DTO's `type` field is
+// stable for existing API consumers.
 func (t EventType) String() string {
 	switch t {
 	case EventTokenAccessed:
@@ -70,7 +70,7 @@ const (
 	OutcomeFailure Outcome = 1
 )
 
-// String renders "Success"/"Failure" to match the .NET wire form.
+// String renders "Success"/"Failure" for the wire form.
 func (o Outcome) String() string {
 	if o == OutcomeFailure {
 		return "Failure"

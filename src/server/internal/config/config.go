@@ -1,6 +1,6 @@
 // Package config loads the vault server configuration from the environment. It is env-first (the
-// natural fit for a single-container deployment) with the same defaults the .NET appsettings.json
-// used, so an existing deployment keeps the same behaviour.
+// natural fit for a single-container deployment) with defaults chosen so an existing deployment
+// keeps the same behaviour.
 package config
 
 import (

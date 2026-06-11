@@ -23,7 +23,7 @@ var migrationsFS embed.FS
 const migrateLockKey = 0x76_61_75_6c_74 // "vault"
 
 // Migrate applies all embedded migrations that have not yet been recorded. It is safe to run on
-// every startup and against a database the .NET service already populated. A session advisory
+// every startup and against an already-populated database. A session advisory
 // lock serialises concurrent replicas (the loser waits, then sees the versions as applied).
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
 	lockConn, err := pool.Acquire(ctx)

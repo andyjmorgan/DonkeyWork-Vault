@@ -1,10 +1,10 @@
 // Package contracts holds the cross-cutting types shared by the transport, service and store
 // layers: the ambient caller identity, the credential-kind discriminator and the audit event model.
 //
-// Where the original C# used AsyncLocal-backed ambient accessors (IVaultCallerContext,
-// IAuditContextAccessor), the Go port threads the same data through context.Context. This is the
-// idiomatic equivalent, it is explicit rather than magical, and it flows naturally alongside the
-// OpenTelemetry span context so every log line and DB span can be correlated to the caller.
+// The caller identity and audit context are threaded through context.Context rather than stored in
+// ambient/goroutine-local state: it is explicit rather than magical, and it flows naturally
+// alongside the OpenTelemetry span context so every log line and DB span can be correlated to the
+// caller.
 package contracts
 
 import (

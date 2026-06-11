@@ -112,8 +112,8 @@ func NewServer(ctx context.Context, deps Deps) (*Server, error) {
 	}
 
 	if s.authOn {
-		// Parity with the .NET RequireHttpsMetadata flag: refuse to fetch IdP metadata over
-		// plain http (a forged discovery/JWKS document would mint arbitrary identities).
+		// When RequireHTTPS is set, refuse to fetch IdP metadata over plain http (a forged
+		// discovery/JWKS document would mint arbitrary identities).
 		if deps.OIDC.RequireHTTPS {
 			for _, u := range []string{deps.OIDC.Authority, deps.OIDC.InternalAuthority} {
 				if u != "" && !strings.HasPrefix(strings.ToLower(u), "https://") {
@@ -146,7 +146,7 @@ func (s *Server) initVerifier(ctx context.Context) error {
 		return err
 	}
 	// Audience varies by IdP (often in azp), so skip the client-id check — the issuer + signature
-	// are the trust anchors, exactly as the C# config did (ValidateAudience = false).
+	// are the trust anchors.
 	s.verifier.Store(provider.Verifier(&oidc.Config{SkipClientIDCheck: true}))
 	return nil
 }

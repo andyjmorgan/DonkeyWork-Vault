@@ -1,7 +1,6 @@
 // Package crypto implements the vault's envelope encryption for secret-at-rest columns.
 //
-// It is a byte-for-byte port of the original C# EnvelopeCipherService / LocalKekProvider so that
-// ciphertext written by the .NET service decrypts here unchanged (and vice versa). The on-disk blob
+// The blob format is stable so that existing stored ciphertext decrypts unchanged. The on-disk blob
 // layout (a single bytea column) is:
 //
 //	magic "DWV1" (4) | version (1) | kekIdLen (1) | kekId (utf8) |
@@ -76,7 +75,7 @@ func (c *EnvelopeCipher) Encrypt(plaintext []byte) ([]byte, error) {
 		return nil, err
 	}
 
-	// Go's Seal appends a 16-byte tag to the ciphertext; the C# layout stores tag and ciphertext
+	// Go's Seal appends a 16-byte tag to the ciphertext; the blob layout stores tag and ciphertext
 	// separately, so split the sealed output back into ciphertext || tag.
 	sealed := gcm.Seal(nil, nonce, plaintext, nil)
 	ct := sealed[:len(sealed)-tagSize]
@@ -108,7 +107,7 @@ func (c *EnvelopeCipher) Encrypt(plaintext []byte) ([]byte, error) {
 	return blob, nil
 }
 
-// Decrypt opens an envelope blob produced by Encrypt (here or by the .NET service).
+// Decrypt opens an envelope blob produced by Encrypt, including existing stored ciphertext.
 func (c *EnvelopeCipher) Decrypt(blob []byte) ([]byte, error) {
 	o := 0
 	if len(blob) < len(magic)+2 || string(blob[:len(magic)]) != magic {
