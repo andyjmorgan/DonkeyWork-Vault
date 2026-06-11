@@ -163,3 +163,23 @@ func TestQueryService(t *testing.T) {
 		t.Fatalf("filtered total=%d", res.Total)
 	}
 }
+
+func TestRetentionRunCancel(t *testing.T) {
+	ms := memstore.New()
+	r := NewRetention(ms, nil, RetentionOptions{}) // defaults applied
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel before the initial delay elapses
+	r.Run(ctx)
+}
+
+func TestWriterAndLogDefaults(t *testing.T) {
+	// NewWriter/NewLog clamp invalid options.
+	l := NewLog(0, nil, nil)
+	if l == nil {
+		t.Fatal("log")
+	}
+	w := NewWriter(l, memstore.New(), nil, nil, WriterOptions{})
+	if w == nil {
+		t.Fatal("writer")
+	}
+}

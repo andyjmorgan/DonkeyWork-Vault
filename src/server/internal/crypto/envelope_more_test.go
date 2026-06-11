@@ -68,3 +68,10 @@ func TestDecrypt_BadDEKLength(t *testing.T) {
 		t.Fatal("expected aes key length error")
 	}
 }
+
+func TestDecryptToStringError(t *testing.T) {
+	c := newTestCipher(t)
+	if _, err := c.DecryptToString([]byte("not-a-blob")); err == nil {
+		t.Fatal("expected error")
+	}
+}
