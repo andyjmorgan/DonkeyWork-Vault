@@ -63,10 +63,13 @@ type ApiKeyDto struct {
 
 // AppConfigResponse defines model for AppConfigResponse.
 type AppConfigResponse struct {
-	AuthEnabled bool   `json:"authEnabled"`
-	Authority   string `json:"authority"`
-	ClientId    string `json:"clientId"`
-	Scopes      string `json:"scopes"`
+	AuthEnabled          bool   `json:"authEnabled"`
+	Authority            string `json:"authority"`
+	CliClientId          string `json:"cliClientId"`
+	CliScopes            string `json:"cliScopes"`
+	ClientId             string `json:"clientId"`
+	RequireHttpsMetadata bool   `json:"requireHttpsMetadata"`
+	Scopes               string `json:"scopes"`
 }
 
 // AuditEventDto defines model for AuditEventDto.

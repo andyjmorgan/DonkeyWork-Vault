@@ -16,7 +16,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("want empty, got %v", c.Hosts)
 	}
 
-	c.Hosts["https://vault.example"] = Host{Account: "a@b.c", Store: StoreKeyring}
+	c.Hosts["https://vault.example"] = Host{Account: "a@b.c", Store: StoreKeyring, Auth: AuthOAuth}
 	if err := Save(c); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
@@ -35,7 +35,7 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 		t.Fatalf("Load: %v", err)
 	}
 	h, ok := got.Hosts["https://vault.example"]
-	if !ok || h.Account != "a@b.c" || h.Store != StoreKeyring {
+	if !ok || h.Account != "a@b.c" || h.Store != StoreKeyring || h.Auth != AuthOAuth {
 		t.Fatalf("round trip mismatch: %+v", got.Hosts)
 	}
 }

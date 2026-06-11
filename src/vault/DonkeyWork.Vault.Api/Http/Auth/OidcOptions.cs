@@ -20,11 +20,38 @@ public sealed class OidcOptions
     /// <summary>Expected audience.</summary>
     public string Audience { get; set; } = string.Empty;
 
-    /// <summary>Public client id the SPA uses to log in. Defaults to <see cref="Audience"/> if unset.</summary>
+    /// <summary>Legacy public client id the SPA uses to log in. Prefer <see cref="WebClientId"/>.</summary>
     public string ClientId { get; set; } = string.Empty;
 
-    /// <summary>Space-separated scopes the SPA requests.</summary>
+    /// <summary>Public client id the web UI uses to log in. Defaults to <see cref="ClientId"/>, then <see cref="Audience"/>.</summary>
+    public string WebClientId { get; set; } = string.Empty;
+
+    /// <summary>Public client id the CLI uses for OAuth device authorization.</summary>
+    public string CliClientId { get; set; } = string.Empty;
+
+    /// <summary>Legacy space-separated scopes the SPA requests. Prefer <see cref="WebScopes"/>.</summary>
     public string Scopes { get; set; } = "openid profile email";
 
+    /// <summary>Space-separated scopes the web UI requests.</summary>
+    public string WebScopes { get; set; } = string.Empty;
+
+    /// <summary>Space-separated scopes the CLI requests during device authorization.</summary>
+    public string CliScopes { get; set; } = "openid profile email offline_access";
+
     public bool RequireHttpsMetadata { get; set; } = true;
+
+    public string EffectiveWebClientId =>
+        FirstNonEmpty(WebClientId, ClientId, Audience);
+
+    public string EffectiveWebScopes =>
+        FirstNonEmpty(WebScopes, Scopes, "openid profile email");
+
+    public string EffectiveCliClientId =>
+        FirstNonEmpty(CliClientId, "donkeywork-vault-cli");
+
+    public string EffectiveCliScopes =>
+        FirstNonEmpty(CliScopes, "openid profile email offline_access");
+
+    private static string FirstNonEmpty(params string[] values) =>
+        values.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v)) ?? string.Empty;
 }

@@ -39,22 +39,30 @@ The vault is a plain **HTTPS** service. Point the CLI at your vault host:
 export VAULT_ADDR=https://vault.donkeywork.dev   # the CLI's default; self-hosters set their own host
 ```
 
-Identity is a **`dwv_` access key**, sent as the `X-Api-Key` header. Provide the key either way:
+Default identity is **OAuth device login**. `dwvault auth login` prints a browser activation URL,
+stores the IdP access/refresh token in the OS keyring (or a 0600 file fallback), and sends
+`Authorization: Bearer <access-token>` to the vault. Access keys (`dwv_...`) are for autonomous jobs
+or environments where OAuth is not practical.
 
-- **Env (wins over everything, never persisted):**
+- **OAuth login (recommended for user machines):**
+  ```bash
+  dwvault auth login            # interactive selector; OAuth is the default
+  dwvault auth login --oauth    # skip selector in scripts
+  dwvault auth status
+  dwvault auth logout
+  ```
+- **Access-key env override (wins over everything, never persisted):**
   ```bash
   export VAULT_API_KEY=dwv_...
   ```
-- **Stored once (OS keyring, else a 0600 file), per host:**
+- **Stored access key (automation/fallback):**
   ```bash
-  dwvault auth login            # prompts for the key (no echo), validates it against /api/v1/me
-  dwvault auth status           # show the stored identity for VAULT_ADDR
-  dwvault auth logout
+  dwvault auth login --api-key  # prompts for the key (no echo), validates it against /api/v1/me
   ```
 
 Resolution order when no `--api-key` flag is given: `VAULT_API_KEY` → OS keyring → 0600 file.
 
-**Getting a key:** mint one in the web UI (Access keys → create, scope `vault:readwrite`),
+**Getting an access key:** mint one in the web UI (Access keys → create, scope `vault:readwrite`),
 or with an existing key: `dwvault keys create <name> --scope vault:readwrite`. The secret
 is shown **once** on creation. Scopes: `vault:read`, `vault:readwrite`, `vault:audit`.
 

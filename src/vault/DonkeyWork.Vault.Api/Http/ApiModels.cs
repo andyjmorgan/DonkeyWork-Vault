@@ -12,7 +12,14 @@ namespace DonkeyWork.Vault.Api.Http;
 public sealed record MeResponse(string? UserId, string TenantId, string? Email, string? Name);
 
 /// <summary>Public runtime config the SPA reads before sign-in (anonymous).</summary>
-public sealed record AppConfigResponse(string Authority, string ClientId, string Scopes, bool AuthEnabled);
+public sealed record AppConfigResponse(
+    string Authority,
+    string ClientId,
+    string Scopes,
+    bool AuthEnabled,
+    string CliClientId,
+    string CliScopes,
+    bool RequireHttpsMetadata);
 
 // ---- stored API keys (self-describing credentials) ----
 

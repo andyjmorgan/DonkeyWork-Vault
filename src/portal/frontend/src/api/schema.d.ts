@@ -1022,7 +1022,10 @@ export interface components {
         AppConfigResponse: {
             authEnabled: boolean;
             authority: string;
+            cliClientId: string;
+            cliScopes: string;
             clientId: string;
+            requireHttpsMetadata: boolean;
             scopes: string;
         };
         AuditEventDto: {

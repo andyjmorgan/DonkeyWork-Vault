@@ -58,8 +58,8 @@ Then `dwvault auth login` and you're set — full [Quick start](#quick-start) be
   **secret-to-stdout discipline** so values flow through `$(...)` and never get echoed.
 - **Encrypts everything at rest** with per-secret envelope encryption (AES-256-GCM); the database
   only ever holds ciphertext.
-- **Authenticates machines with scoped, revocable access keys** (`dwv_…`) and humans with your own
-  OIDC identity provider.
+- **Authenticates local users with OAuth device login** and keeps scoped, revocable access keys
+  (`dwv_…`) for autonomous jobs or environments where OAuth is too much.
 - **Audits every access** — who/what read which credential, when.
 
 ## Quick start
@@ -68,16 +68,15 @@ Using the hosted vault:
 
 1. **Sign in** at [vault.donkeywork.dev](https://vault.donkeywork.dev) and add a credential (or
    connect an OAuth provider).
-2. **Mint an access key** — *Profile & API keys* (top-right menu) → create a key with scope
-   `vault:read`. The secret (`dwv_…`) is shown **once**; copy it.
-3. **Install the CLI** and log in:
+2. **Install the CLI** and log in. OAuth is the default; the CLI prints a Keycloak activation URL
+   and stores the resulting access/refresh token in your OS keyring:
 
    ```bash
    curl -fsSL https://raw.githubusercontent.com/andyjmorgan/DonkeyWork-Vault/main/install.sh | sh
-   dwvault auth login          # paste the dwv_… key
+   dwvault auth login
    ```
 
-4. **Use it:**
+3. **Use it:**
 
    ```bash
    dwvault credentials list                          # what's stored + how to use each
@@ -122,9 +121,10 @@ dwvault --version
 
 ## CLI reference
 
-`dwvault` talks to the vault's REST API and authenticates with a `dwv_…` access key. Run
-`dwvault auth login` once to store the key (OS keyring, or a `0600` file when no keyring is
-available); thereafter every command uses it.
+`dwvault` talks to the vault's REST API and authenticates with either an OAuth device-login token
+(default for users/local agents) or a `dwv_…` access key (automation/fallback). Run
+`dwvault auth login` once to store the credential in the OS keyring, or in a `0600` file when no
+keyring is available; thereafter every command uses it.
 
 **Global flags** (each has an env equivalent):
 
@@ -132,15 +132,14 @@ available); thereafter every command uses it.
 |---|---|---|---|
 | `--addr` | `VAULT_ADDR` | `https://vault.donkeywork.dev` | vault address (`https://host[:port]` or bare `host:port`) |
 | `--api-key` | `VAULT_API_KEY` | — | access key (`dwv_…`); overrides the stored login for this call |
-| `--tls` | `VAULT_TLS` | off | force TLS for a bare `host:port` (implied by an `https://` addr) |
-| `--user` | `VAULT_USER_ID` | — | caller user id (self-host / trusted-network only) |
-| `--tenant` | `VAULT_TENANT_ID` | — | caller tenant id |
 
 **Commands:**
 
 ```bash
-# auth — manage the stored key for a host (validated against /api/v1/me)
-dwvault auth login [--force]       # paste & store a dwv_… key
+# auth — manage the stored credential for a host
+dwvault auth login [--force]       # interactive selector; OAuth device login is default
+dwvault auth login --oauth         # script-friendly OAuth device login
+dwvault auth login --api-key       # paste & store a dwv_… key for automation/fallback
 dwvault auth status                # which credential is active for --addr
 dwvault auth logout                # forget the stored key
 
@@ -250,9 +249,10 @@ provider (see below).
 - **The database only ever holds ciphertext.** Decryption happens in the vault process.
 - **Secret-to-stdout discipline.** The CLI prints a secret to **stdout only**, with no decoration,
   so it's safe for `$(...)` and never needs echoing. Logs and errors go to stderr.
-- **Auth.** Machines use scoped, revocable access keys (`dwv_…`); the vault resolves the key, owns
-  the identity, and enforces the required `vault:*` scope on every endpoint. Humans use standard OIDC
-  bearer JWTs from your IdP. OAuth connect uses authorization-code flow with **PKCE (S256)**.
+- **Auth.** Humans and local agents use standard OIDC bearer JWTs from your IdP. The CLI uses OAuth
+  Device Authorization Grant with **PKCE (S256)** and stores the access/refresh token in the same
+  keyring/file path as API keys. CLI OAuth callers get `vault:readwrite`; audit is web-only. Machines
+  that cannot use OAuth use scoped, revocable access keys (`dwv_…`).
 - **Audit.** Every credential access is recorded (key reference, never the secret) and queryable with
   `vault:audit`.
 
@@ -271,16 +271,19 @@ Build/run with `Dockerfile.vault`. Provide via configuration:
 | `Vault:PublicBaseUrl` | public origin, used to build OAuth redirect URIs. |
 | `Vault:RunMigrationsOnStartup` | defaults `true`. |
 | `Oidc:Authority` | your issuer URL (the SPA logs in against it; the API validates the token issuer via JWKS). Leave **blank to disable auth** — local/dev only. |
-| `Oidc:ClientId` / `Oidc:Audience` | SPA client id / expected audience (`ClientId` defaults to `Audience`). |
-| `Oidc:Scopes` | SPA scopes (default `openid profile email`). |
+| `Oidc:WebClientId` | web UI client id. Legacy `Oidc:ClientId` still works and falls back to `Oidc:Audience`. |
+| `Oidc:CliClientId` | CLI OAuth device-flow client id (default `donkeywork-vault-cli`). |
+| `Oidc:WebScopes` | web UI scopes. Legacy `Oidc:Scopes` still works (default `openid profile email`). |
+| `Oidc:CliScopes` | CLI scopes (default `openid profile email offline_access`). |
 | `Oidc:InternalAuthority` | optional in-cluster issuer URL, if it differs from the public one. |
 
 **Bring your own identity provider.** The console is vendor-neutral — any OIDC-compliant IdP works
 (Keycloak, Entra ID, Auth0, Okta, Cognito, Authentik, Zitadel, …) with **config only, no rebuild**.
-Register `https://<your-host>/` as a redirect URI for the SPA client, and
-`https://<your-host>/api/oauth/{provider}/callback` as the allowed redirect URI on each OAuth app you
-connect. The SPA runs Authorization Code + PKCE and forwards `sub → user id` (and optional
-`tenant_id`) to the vault.
+Register `https://<your-host>/` as a redirect URI for the web client. Create a separate public CLI
+client, enable OAuth 2.0 Device Authorization Grant, and allow/request `offline_access` so refresh
+tokens survive long-running CLI use. For Keycloak, configure an audience mapper/client scope so CLI
+access tokens include the Vault audience. OAuth provider connections registered inside Vault use the
+static callback `https://<your-host>/api/oauth/callback`.
 (The legacy `Keycloak:*` section is honored as a deprecated alias.)
 
 Point the CLI at your instance:

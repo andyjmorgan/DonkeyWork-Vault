@@ -1,8 +1,8 @@
 // dwvault — DonkeyWork Vault credential CLI.
 //
-// Talks to the Vault HTTP API. Machine auth is a dwvault API key (dwv_…) sent as
-// the X-Api-Key header; the key is resolved from --api-key / VAULT_API_KEY, the OS
-// keyring, or the 0600 file written by `dwvault auth login`.
+// Talks to the Vault HTTP API. User auth is OAuth device login by default; autonomous
+// callers can use a dwvault API key (dwv_...) via --api-key / VAULT_API_KEY. Stored
+// credentials live in the OS keyring, or a 0600 file fallback.
 //
 // Output discipline: the requested secret/token goes to STDOUT only (no decoration,
 // safe for shell substitution). All logs, prompts and errors go to STDERR. A miss or

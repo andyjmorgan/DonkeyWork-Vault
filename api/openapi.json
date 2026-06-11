@@ -133,8 +133,17 @@
           "authority": {
             "type": "string"
           },
+          "cliClientId": {
+            "type": "string"
+          },
+          "cliScopes": {
+            "type": "string"
+          },
           "clientId": {
             "type": "string"
+          },
+          "requireHttpsMetadata": {
+            "type": "boolean"
           },
           "scopes": {
             "type": "string"
@@ -144,7 +153,10 @@
           "authority",
           "clientId",
           "scopes",
-          "authEnabled"
+          "authEnabled",
+          "cliClientId",
+          "cliScopes",
+          "requireHttpsMetadata"
         ],
         "type": "object"
       },

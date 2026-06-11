@@ -114,5 +114,5 @@ esac
 say ""
 say "Done. Next steps:"
 say "  dwvault --version"
-say "  dwvault auth login            # paste a dwv_… key minted in the portal"
+say "  dwvault auth login            # OAuth device login by default"
 say "  dwvault credentials list      # see your credentials"

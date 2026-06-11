@@ -35,13 +35,9 @@ if (string.IsNullOrWhiteSpace(oidc.Authority))
         oidc = legacy;
     }
 }
-var spaClientId = string.IsNullOrWhiteSpace(oidc.ClientId) ? oidc.Audience : oidc.ClientId;
+var webClientId = oidc.EffectiveWebClientId;
+var cliClientId = oidc.EffectiveCliClientId;
 var authConfigured = !string.IsNullOrWhiteSpace(oidc.Authority);
-
-// Scopes granted to an interactive JWT (portal) login. A portal user is the trusted human/admin, so
-// they carry the full set — including vault:audit — and are then subject to the same scope gate as an
-// API key. API keys, by contrast, carry only the scopes they were explicitly minted with.
-string[] jwtUserScopes = ["vault:read", "vault:readwrite", "vault:audit"];
 
 // Two ways in: interactive users via an OIDC JWT, and scripts/agents via a dwv_ access key. A policy
 // scheme routes each request to the right handler so HttpContext.User is set from whichever credential
@@ -65,12 +61,12 @@ if (authConfigured)
         {
             OnTokenValidated = ctx =>
             {
-                // Materialise the portal user's scopes onto the principal so the unified scope gate
-                // (which now enforces for JWT and API-key callers alike) authorises them. Without this
-                // a JWT caller would carry no "scope" claims and be denied every gated endpoint.
+                // Materialise Vault scopes onto the principal so the unified scope gate (JWT + API key)
+                // can enforce consistently. Keycloak identifies the requesting OAuth client with azp;
+                // fall back to aud/client_id for other OIDC providers.
                 if (ctx.Principal?.Identity is ClaimsIdentity id)
                 {
-                    foreach (var scope in jwtUserScopes)
+                    foreach (var scope in OidcVaultScopeMapper.ScopesFor(ctx.Principal, webClientId, cliClientId))
                     {
                         id.AddClaim(new Claim("scope", scope));
                     }
@@ -158,7 +154,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(opts =>
 var publicBaseUrl = builder.Configuration["Vault:PublicBaseUrl"]
     ?? builder.Configuration["Portal:PublicBaseUrl"]
     ?? "https://vault.donkeywork.dev";
-var appConfig = new AppConfigResponse(oidc.Authority, spaClientId, oidc.Scopes, authConfigured);
+var appConfig = new AppConfigResponse(
+    oidc.Authority,
+    webClientId,
+    oidc.EffectiveWebScopes,
+    authConfigured,
+    cliClientId,
+    oidc.EffectiveCliScopes,
+    oidc.RequireHttpsMetadata);
 
 var app = builder.Build();
 

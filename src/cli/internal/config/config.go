@@ -15,16 +15,21 @@ import (
 
 // StoreKind records where a host's secret is kept.
 type StoreKind string
+type AuthType string
 
 const (
 	StoreKeyring StoreKind = "keyring"
 	StoreFile    StoreKind = "file"
+
+	AuthAPIKey AuthType = "api_key"
+	AuthOAuth  AuthType = "oauth"
 )
 
 // Host is the non-secret record for one vault host.
 type Host struct {
 	Account string    `json:"account,omitempty"` // identity the key belongs to (email/name/sub)
 	Store   StoreKind `json:"store,omitempty"`   // where the secret is kept
+	Auth    AuthType  `json:"auth,omitempty"`    // api_key or oauth
 }
 
 // Config is the whole file.

@@ -1,12 +1,12 @@
-// Package credstore resolves and persists the dwvault API key for a host.
+// Package credstore resolves and persists the dwvault credential for a host.
 //
 // Resolution precedence (highest first):
 //  1. VAULT_API_KEY environment variable — ephemeral, NEVER persisted.
 //  2. OS keyring — macOS Keychain, Linux Secret Service, Windows Credential Manager.
 //  3. A 0600 fallback credentials file (used only when no keyring is available).
 //
-// `auth login` writes the secret to the keyring (or the file fallback); the env
-// variable is read-only and is never written to either store.
+// `auth login` writes the OAuth/API-key credential blob to the keyring (or the file
+// fallback); the env variable is read-only and is never written to either store.
 package credstore
 
 import (
@@ -40,27 +40,72 @@ const (
 // ErrNotFound is returned when no credential exists for the host.
 var ErrNotFound = errors.New("no stored credential for host")
 
+type CredentialType string
+
+const (
+	TypeAPIKey CredentialType = "api_key"
+	TypeOAuth  CredentialType = "oauth"
+)
+
+type Credential struct {
+	Type             CredentialType `json:"type"`
+	Secret           string         `json:"secret,omitempty"`
+	Issuer           string         `json:"issuer,omitempty"`
+	ClientID         string         `json:"clientId,omitempty"`
+	Scopes           string         `json:"scopes,omitempty"`
+	AccessToken      string         `json:"accessToken,omitempty"`
+	RefreshToken     string         `json:"refreshToken,omitempty"`
+	ExpiresAt        string         `json:"expiresAt,omitempty"`
+	RefreshExpiresAt string         `json:"refreshExpiresAt,omitempty"`
+	Account          string         `json:"account,omitempty"`
+}
+
 // Resolve returns the API key for host and where it came from, honouring precedence.
 func Resolve(host string) (key string, src Source, err error) {
+	c, src, err := ResolveCredential(host)
+	if err != nil {
+		return "", "", err
+	}
+	if c.Type != TypeAPIKey {
+		return "", "", fmt.Errorf("stored credential for %s is %s, not api_key", host, c.Type)
+	}
+	return c.Secret, src, nil
+}
+
+func ResolveCredential(host string) (*Credential, Source, error) {
 	if v := os.Getenv(envVar); v != "" {
-		return v, SourceEnv, nil
+		return &Credential{Type: TypeAPIKey, Secret: v}, SourceEnv, nil
 	}
 	if v, kerr := keyring.Get(service, host); kerr == nil && v != "" {
-		return v, SourceKeyring, nil
+		c, err := parseCredential(v)
+		return c, SourceKeyring, err
 	}
 	v, ok, ferr := fileGet(host)
 	if ferr != nil {
-		return "", "", ferr
+		return nil, "", ferr
 	}
 	if ok {
-		return v, SourceFile, nil
+		c, err := parseCredential(v)
+		return c, SourceFile, err
 	}
-	return "", "", ErrNotFound
+	return nil, "", ErrNotFound
 }
 
 // Store persists key for host. It prefers the OS keyring; if that's unavailable it
 // falls back to a 0600 file. The chosen store is returned so callers can record it.
 func Store(host, key string) (config.StoreKind, error) {
+	return StoreCredential(host, &Credential{Type: TypeAPIKey, Secret: key})
+}
+
+func StoreCredential(host string, c *Credential) (config.StoreKind, error) {
+	b, err := json.Marshal(c)
+	if err != nil {
+		return "", err
+	}
+	return storeRaw(host, string(b))
+}
+
+func storeRaw(host, key string) (config.StoreKind, error) {
 	if err := keyring.Set(service, host, key); err == nil {
 		_ = fileDelete(host) // drop any stale file copy once the keyring holds it
 		return config.StoreKeyring, nil
@@ -72,6 +117,23 @@ func Store(host, key string) (config.StoreKind, error) {
 		return "", fmt.Errorf("no OS keyring available and file fallback failed: %w", err)
 	}
 	return config.StoreFile, nil
+}
+
+func parseCredential(raw string) (*Credential, error) {
+	if raw == "" {
+		return nil, ErrNotFound
+	}
+	if raw[0] != '{' {
+		return &Credential{Type: TypeAPIKey, Secret: raw}, nil
+	}
+	var c Credential
+	if err := json.Unmarshal([]byte(raw), &c); err != nil {
+		return nil, err
+	}
+	if c.Type == "" {
+		return nil, fmt.Errorf("credential missing type")
+	}
+	return &c, nil
 }
 
 // Delete removes any stored credential for host from both stores.
