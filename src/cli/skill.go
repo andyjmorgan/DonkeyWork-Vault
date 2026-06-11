@@ -83,7 +83,7 @@ func cmdSkillInstall() *cobra.Command {
 // rename) so a crash never leaves a half-written skill. All messages go to stderr.
 func installSkill(dest string, force, diff bool) error {
 	want := []byte(skillMD)
-	existing, err := os.ReadFile(dest)
+	existing, err := os.ReadFile(dest) //nolint:gosec // G304: dest is the user-chosen install target (flag/positional), read back only to compare against the bundled skill
 	switch {
 	case err == nil:
 		if bytes.Equal(existing, want) {
@@ -106,7 +106,7 @@ func installSkill(dest string, force, diff bool) error {
 		return fmt.Errorf("read %s: %w", dest, err)
 	}
 
-	if err := os.MkdirAll(filepath.Dir(dest), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
 		return fmt.Errorf("create skill directory: %w", err)
 	}
 	if err := atomicWriteFile(dest, want, 0o644); err != nil {
