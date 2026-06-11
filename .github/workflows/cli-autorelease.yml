@@ -48,6 +48,11 @@ jobs:
           go-version-file: src/cli/go.mod
           cache-dependency-path: src/cli/go.sum
 
+      - name: Test + coverage gate (cli, ≥95%)
+        # Don't publish a release if the CLI tests fail or coverage of hand-written code
+        # regresses below the threshold. No Postgres needed for the CLI module.
+        run: bash scripts/coverage.sh cli
+
       - name: Build dwvault (multi-arch)
         working-directory: src/cli
         env:

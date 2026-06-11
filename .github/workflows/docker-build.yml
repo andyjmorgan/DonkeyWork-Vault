@@ -21,19 +21,26 @@ jobs:
   test-backend:
     name: Test Backend (Go)
     runs-on: [self-hosted, Linux, X64]
-    defaults:
-      run:
-        working-directory: src/server
     steps:
       - uses: actions/checkout@v4
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version-file: src/server/go.mod
-          cache-dependency-path: src/server/go.sum
-      - name: Build
+          cache-dependency-path: |
+            src/server/go.sum
+            src/cli/go.sum
+      - name: Build (server)
+        working-directory: src/server
         run: go build ./...
-      - name: Vet
+      - name: Vet (server)
+        working-directory: src/server
+        run: go vet ./...
+      - name: Build (cli)
+        working-directory: src/cli
+        run: go build ./...
+      - name: Vet (cli)
+        working-directory: src/cli
         run: go vet ./...
       - name: Start ephemeral Postgres
         run: |
@@ -49,8 +56,8 @@ jobs:
           done
           PORT=$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')
           echo "VAULT_TEST_DSN=postgres://vault:vault@127.0.0.1:${PORT}/vault_test?sslmode=disable" >> "$GITHUB_ENV"
-      - name: Test (unit + Postgres integration)
-        run: go test ./...
+      - name: Test + coverage gate (server + cli, ≥95%)
+        run: bash scripts/coverage.sh all
       - name: Stop ephemeral Postgres
         if: always()
         run: docker rm -f "$PG_NAME" 2>/dev/null || true

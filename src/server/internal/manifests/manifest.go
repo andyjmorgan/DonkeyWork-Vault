@@ -55,16 +55,23 @@ type Loader struct {
 // NewLoader reads and validates the embedded OAuth templates, failing fast on a missing/duplicate id
 // or a missing key/token endpoint.
 func NewLoader() (*Loader, error) {
+	return loadFromFS(embeddedFS, "embedded/oauth")
+}
+
+// loadFromFS walks root in fsys, validating each *.yaml manifest. Split out from NewLoader so the
+// validation/error paths can be exercised against a synthetic filesystem in tests; production always
+// passes the embedded FS.
+func loadFromFS(fsys fs.FS, root string) (*Loader, error) {
 	byKey := make(map[string]Manifest)
 	byID := make(map[uuid.UUID]Manifest)
 
-	err := fs.WalkDir(embeddedFS, "embedded/oauth", func(path string, d fs.DirEntry, err error) error {
+	err := fs.WalkDir(fsys, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil || d.IsDir() || !strings.HasSuffix(path, ".yaml") {
 			return err
 		}
-		raw, err := embeddedFS.ReadFile(path)
+		raw, err := fs.ReadFile(fsys, path)
 		if err != nil {
-			return err
+			return err //coverage:ignore path came from WalkDir over a compiled-in embed.FS; read cannot fail
 		}
 		var m Manifest
 		if err := yaml.Unmarshal(raw, &m); err != nil {

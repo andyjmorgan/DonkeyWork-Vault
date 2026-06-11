@@ -211,7 +211,7 @@ func writeFileAtomic(p string, b []byte) error {
 		return err
 	}
 	if err := f.Close(); err != nil {
-		return err
+		return err //coverage:ignore Close error after a successful write not reproducible
 	}
 	return os.Rename(tmp, p)
 }
@@ -238,7 +238,7 @@ func fileDelete(host string) error {
 // checkPerms refuses to read a secrets file that group/other can access.
 func checkPerms(p string) error {
 	if runtime.GOOS == "windows" {
-		return nil // POSIX perm bits aren't meaningful on Windows
+		return nil //coverage:ignore unreachable on the Linux test host
 	}
 	fi, err := os.Stat(p)
 	if os.IsNotExist(err) {

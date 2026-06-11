@@ -3,10 +3,10 @@ package crypto
 import (
 	"crypto/aes"
 	"crypto/cipher"
-	"crypto/rand"
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 )
 
 // LocalKekProvider is the default KEK provider for dev and small self-host deployments. It reads KEK
@@ -51,10 +51,10 @@ func (p *LocalKekProvider) ActiveKekID() string { return p.activeKek }
 func (p *LocalKekProvider) Wrap(dek []byte) ([]byte, error) {
 	gcm, err := newGCM(p.keks[p.activeKek])
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore newGCM cannot fail on a validated 32-byte KEK
 	}
 	nonce := make([]byte, nonceSize)
-	if _, err := rand.Read(nonce); err != nil {
+	if _, err := io.ReadFull(randReader, nonce); err != nil {
 		return nil, err
 	}
 	sealed := gcm.Seal(nil, nonce, dek, nil) // ciphertext || tag
@@ -83,7 +83,7 @@ func (p *LocalKekProvider) Unwrap(kekID string, wrappedDek []byte) ([]byte, erro
 
 	gcm, err := newGCM(key)
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore newGCM cannot fail on a validated 32-byte KEK
 	}
 	sealed := make([]byte, 0, len(ct)+len(tag))
 	sealed = append(sealed, ct...)
@@ -94,7 +94,7 @@ func (p *LocalKekProvider) Unwrap(kekID string, wrappedDek []byte) ([]byte, erro
 func newGCM(key []byte) (cipher.AEAD, error) {
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore aes.NewCipher cannot fail on a validated 32-byte KEK
 	}
 	return cipher.NewGCM(block)
 }

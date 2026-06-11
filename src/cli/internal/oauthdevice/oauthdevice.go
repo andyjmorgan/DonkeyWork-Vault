@@ -78,7 +78,7 @@ func Discover(authority string) (*Discovery, error) {
 func Start(d *Discovery, clientID, scopes string) (*DeviceStart, error) {
 	verifier, challenge, err := pkce()
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore pkce only fails if crypto/rand fails, which never happens in practice
 	}
 	body, status, err := restclient.PostForm(d.DeviceAuthorizationEndpoint, map[string]string{
 		"client_id":             clientID,
@@ -209,7 +209,7 @@ func oauthError(op string, status int, body []byte) error {
 func pkce() (verifier string, challenge string, err error) {
 	raw := make([]byte, 64)
 	if _, err := rand.Read(raw); err != nil {
-		return "", "", err
+		return "", "", err //coverage:ignore crypto/rand never fails in practice
 	}
 	verifier = base64.RawURLEncoding.EncodeToString(raw)
 	sum := sha256.Sum256([]byte(verifier))

@@ -35,6 +35,15 @@ const defaultRepo = "andyjmorgan/DonkeyWork-Vault"
 
 const sha256SumsAsset = "SHA256SUMS"
 
+// githubAPIBase is the GitHub REST API root. It's a var (not a const) only so tests can
+// point Latest at an httptest server; production never changes it.
+var githubAPIBase = "https://api.github.com"
+
+// createTemp is os.CreateTemp, indirected only so tests can exercise the atomic-write
+// failure paths in Apply and SaveState (e.g. by handing back an already-closed file so
+// the subsequent Write fails). Production never reassigns it.
+var createTemp = os.CreateTemp
+
 // maxDownload caps a single asset read so a misconfigured or hostile DWVAULT_REPO can't
 // exhaust memory. The dwvault binary is ~10 MB; 256 MB is comfortable headroom. A truncated
 // binary fails the sha256 check; a truncated manifest fails the "not listed" lookup.
@@ -66,7 +75,7 @@ func AssetName() string {
 // Latest returns the newest published (non-draft, non-prerelease) release. The caller
 // controls the timeout via ctx.
 func Latest(ctx context.Context) (*Release, error) {
-	url := fmt.Sprintf("https://api.github.com/repos/%s/releases/latest", Repo())
+	url := fmt.Sprintf("%s/repos/%s/releases/latest", githubAPIBase, Repo())
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -217,12 +226,17 @@ func fetch(ctx context.Context, url string) ([]byte, error) {
 	return io.ReadAll(io.LimitReader(resp.Body, maxDownload))
 }
 
+// executable resolves the running binary's real path. It's a var (not a direct
+// os.Executable call) only so tests can point Apply at a temp file instead of the live
+// test binary; production always uses os.Executable.
+var executable = os.Executable
+
 // Apply atomically replaces the running executable with bin. It resolves the executable
 // through symlinks, writes a temp file alongside the real target (same dir ⇒ rename is
 // atomic, not a cross-device copy), makes it executable, and renames it into place.
 // Returns the resolved path that was replaced.
 func Apply(bin []byte) (string, error) {
-	exe, err := os.Executable()
+	exe, err := executable()
 	if err != nil {
 		return "", err
 	}
@@ -231,7 +245,7 @@ func Apply(bin []byte) (string, error) {
 		return "", err
 	}
 	dir := filepath.Dir(exe)
-	f, err := os.CreateTemp(dir, ".dwvault-update-*")
+	f, err := createTemp(dir, ".dwvault-update-*")
 	if err != nil {
 		return "", fmt.Errorf("cannot stage update in %s: %w", dir, err)
 	}
@@ -244,13 +258,13 @@ func Apply(bin []byte) (string, error) {
 	// Flush to disk before the rename so a crash can't leave a truncated binary in place.
 	if err := f.Sync(); err != nil {
 		f.Close()
-		return "", err
+		return "", err //coverage:ignore Sync syscall failure not reproducible on a normal temp file
 	}
 	if err := f.Close(); err != nil {
-		return "", err
+		return "", err //coverage:ignore Close error after a successful write/sync not reproducible
 	}
 	if err := os.Chmod(tmp, 0o755); err != nil {
-		return "", err
+		return "", err //coverage:ignore Chmod syscall failure not reproducible on a normal temp file
 	}
 	if err := os.Rename(tmp, exe); err != nil {
 		return "", fmt.Errorf("cannot replace %s: %w", exe, err)
@@ -307,9 +321,9 @@ func SaveState(s State) error {
 	}
 	b, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
-		return err
+		return err //coverage:ignore State always marshals
 	}
-	f, err := os.CreateTemp(filepath.Dir(p), ".tmp-*")
+	f, err := createTemp(filepath.Dir(p), ".tmp-*")
 	if err != nil {
 		return err
 	}
@@ -320,7 +334,7 @@ func SaveState(s State) error {
 		return err
 	}
 	if err := f.Close(); err != nil {
-		return err
+		return err //coverage:ignore Close error after a successful write not reproducible
 	}
 	return os.Rename(tmp, p)
 }

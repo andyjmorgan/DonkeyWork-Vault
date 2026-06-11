@@ -99,7 +99,7 @@ func (s *Server) authenticateJWT(ctx context.Context, w http.ResponseWriter, raw
 	}
 	if err := idToken.Claims(&claims); err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid token claims.")
-		return ctx, false
+		return ctx, false //coverage:ignore OIDC lib already unmarshalled these bytes during Verify; decode cannot fail here
 	}
 	userID, err := uuid.Parse(claims.Sub)
 	if err != nil {

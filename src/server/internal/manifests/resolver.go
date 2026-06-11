@@ -101,7 +101,7 @@ func (r *Resolver) UpsertOAuth(ctx context.Context, m Manifest) error {
 	m.ParentID = parentID
 	doc, err := json.Marshal(m)
 	if err != nil {
-		return err
+		return err //coverage:ignore Manifest has only JSON-safe fields; marshal never errors
 	}
 
 	if row == nil {
