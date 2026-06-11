@@ -75,8 +75,8 @@ func (r *ForwardedIPResolver) Resolve(peer netip.Addr, xForwardedFor, xRealIP st
 // stripPort removes a trailing :port (and []-brackets for IPv6) from a host[:port] token.
 func stripPort(v string) string {
 	if strings.HasPrefix(v, "[") {
-		if close := strings.IndexByte(v, ']'); close > 0 {
-			return v[1:close]
+		if end := strings.IndexByte(v, ']'); end > 0 {
+			return v[1:end]
 		}
 		return v
 	}

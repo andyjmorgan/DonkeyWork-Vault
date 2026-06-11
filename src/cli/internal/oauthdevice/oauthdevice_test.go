@@ -18,7 +18,7 @@ func TestDiscover_Success(t *testing.T) {
 	var gotPath string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotPath = r.URL.Path
-		json.NewEncoder(w).Encode(Discovery{
+		_ = json.NewEncoder(w).Encode(Discovery{ //nolint:gosec // G101: these are OIDC endpoint URLs in a test fixture, not credentials
 			Issuer:                      "https://iss",
 			DeviceAuthorizationEndpoint: "https://iss/device",
 			TokenEndpoint:               "https://iss/token",
@@ -40,7 +40,7 @@ func TestDiscover_Success(t *testing.T) {
 }
 
 func TestDiscover_Non2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -50,8 +50,8 @@ func TestDiscover_Non2xx(t *testing.T) {
 }
 
 func TestDiscover_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 	if _, err := Discover(srv.URL); err == nil {
@@ -60,8 +60,8 @@ func TestDiscover_BadJSON(t *testing.T) {
 }
 
 func TestDiscover_MissingEndpoints(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(Discovery{Issuer: "https://iss"}) // no endpoints
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(Discovery{Issuer: "https://iss"}) // no endpoints
 	}))
 	defer srv.Close()
 	_, err := Discover(srv.URL)
@@ -71,7 +71,7 @@ func TestDiscover_MissingEndpoints(t *testing.T) {
 }
 
 func TestDiscover_NetworkError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := srv.URL
 	srv.Close()
 	if _, err := Discover(addr); err == nil {
@@ -102,7 +102,7 @@ func TestStart_Success(t *testing.T) {
 		if r.Form.Get("code_challenge") == "" {
 			t.Error("missing code_challenge")
 		}
-		json.NewEncoder(w).Encode(DeviceStart{
+		_ = json.NewEncoder(w).Encode(DeviceStart{
 			DeviceCode: "dc", UserCode: "UC", VerificationURI: "https://v",
 			ExpiresIn: 600, Interval: 0, // 0 → defaulted to 5
 		})
@@ -123,8 +123,8 @@ func TestStart_Success(t *testing.T) {
 }
 
 func TestStart_PreservesInterval(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(DeviceStart{DeviceCode: "dc", ExpiresIn: 10, Interval: 3})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(DeviceStart{DeviceCode: "dc", ExpiresIn: 10, Interval: 3})
 	}))
 	defer srv.Close()
 	d := &Discovery{DeviceAuthorizationEndpoint: srv.URL}
@@ -138,9 +138,9 @@ func TestStart_PreservesInterval(t *testing.T) {
 }
 
 func TestStart_OAuthErrorResponse(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TokenResponse{Error: "invalid_client", ErrorDescription: "bad"})
+		_ = json.NewEncoder(w).Encode(TokenResponse{Error: "invalid_client", ErrorDescription: "bad"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 	}))
 	defer srv.Close()
 	d := &Discovery{DeviceAuthorizationEndpoint: srv.URL}
@@ -155,8 +155,8 @@ func TestStart_OAuthErrorResponse(t *testing.T) {
 }
 
 func TestStart_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 	d := &Discovery{DeviceAuthorizationEndpoint: srv.URL}
@@ -176,17 +176,17 @@ func TestStart_PostFormError(t *testing.T) {
 
 func TestPoll_PendingThenSlowDownThenSuccess(t *testing.T) {
 	var calls int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		calls++
 		switch calls {
 		case 1:
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(TokenResponse{Error: "authorization_pending"})
+			_ = json.NewEncoder(w).Encode(TokenResponse{Error: "authorization_pending"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 		case 2:
 			w.WriteHeader(http.StatusBadRequest)
-			json.NewEncoder(w).Encode(TokenResponse{Error: "slow_down"})
+			_ = json.NewEncoder(w).Encode(TokenResponse{Error: "slow_down"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 		default:
-			json.NewEncoder(w).Encode(TokenResponse{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 60})
+			_ = json.NewEncoder(w).Encode(TokenResponse{AccessToken: "at", RefreshToken: "rt", ExpiresIn: 60}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 		}
 	}))
 	defer srv.Close()
@@ -212,9 +212,9 @@ func TestPoll_PendingThenSlowDownThenSuccess(t *testing.T) {
 }
 
 func TestPoll_TerminalError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TokenResponse{Error: "access_denied", ErrorDescription: "no"})
+		_ = json.NewEncoder(w).Encode(TokenResponse{Error: "access_denied", ErrorDescription: "no"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 	}))
 	defer srv.Close()
 	d := &Discovery{TokenEndpoint: srv.URL}
@@ -227,10 +227,10 @@ func TestPoll_TerminalError(t *testing.T) {
 }
 
 func TestPoll_NonOAuthError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		// 2xx but missing access_token → token() returns a plain (non-oauthErr) error,
 		// which Poll surfaces immediately.
-		json.NewEncoder(w).Encode(TokenResponse{TokenType: "bearer"})
+		_ = json.NewEncoder(w).Encode(TokenResponse{TokenType: "bearer"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 	}))
 	defer srv.Close()
 	d := &Discovery{TokenEndpoint: srv.URL}
@@ -246,9 +246,9 @@ func TestPoll_NonOAuthError(t *testing.T) {
 }
 
 func TestPoll_Expired(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TokenResponse{Error: "authorization_pending"})
+		_ = json.NewEncoder(w).Encode(TokenResponse{Error: "authorization_pending"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 	}))
 	defer srv.Close()
 	d := &Discovery{TokenEndpoint: srv.URL}
@@ -270,7 +270,7 @@ func TestRefresh_Success(t *testing.T) {
 		if r.Form.Get("grant_type") != "refresh_token" || r.Form.Get("refresh_token") != "rt" {
 			t.Errorf("form = %v", r.Form)
 		}
-		json.NewEncoder(w).Encode(TokenResponse{AccessToken: "new-at", RefreshToken: "new-rt"})
+		_ = json.NewEncoder(w).Encode(TokenResponse{AccessToken: "new-at", RefreshToken: "new-rt"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 	}))
 	defer srv.Close()
 
@@ -284,9 +284,9 @@ func TestRefresh_Success(t *testing.T) {
 }
 
 func TestRefresh_OAuthError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(TokenResponse{Error: "invalid_grant"})
+		_ = json.NewEncoder(w).Encode(TokenResponse{Error: "invalid_grant"}) //nolint:gosec // G117: encoding a test TokenResponse fixture to the test server is intended
 	}))
 	defer srv.Close()
 	_, err := Refresh(srv.URL, "cid", "rt")
@@ -299,8 +299,8 @@ func TestRefresh_OAuthError(t *testing.T) {
 // --- token (covered via Refresh paths above; add the bad-JSON and net error cases) ---
 
 func TestToken_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 	if _, err := Refresh(srv.URL, "cid", "rt"); err == nil {
@@ -309,7 +309,7 @@ func TestToken_BadJSON(t *testing.T) {
 }
 
 func TestToken_NetworkError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := srv.URL
 	srv.Close()
 	if _, err := Refresh(addr, "cid", "rt"); err == nil {
@@ -365,9 +365,9 @@ func TestOauthErr_Error(t *testing.T) {
 // --- oauthError fallback when body isn't an OAuth error doc ---
 
 func TestStart_NonOAuthErrorBody(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadGateway)
-		w.Write([]byte("plain text gateway error"))
+		_, _ = w.Write([]byte("plain text gateway error"))
 	}))
 	defer srv.Close()
 	d := &Discovery{DeviceAuthorizationEndpoint: srv.URL}

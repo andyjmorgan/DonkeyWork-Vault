@@ -23,7 +23,7 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 	if err != nil {
 		return 0, nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	// Cap the provider response: a token endpoint JSON body is small; an unbounded read of a
 	// hostile/compromised endpoint could OOM the process.
 	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenResponseBytes))

@@ -116,10 +116,10 @@ func TestSaveCreateTempError(t *testing.T) {
 	if err := os.MkdirAll(dwdir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dwdir, 0o500); err != nil { // read-only ⇒ CreateTemp fails
+	if err := os.Chmod(dwdir, 0o500); err != nil { //nolint:gosec // G302: test deliberately makes the dir read-only so CreateTemp fails
 		t.Fatal(err)
 	}
-	defer os.Chmod(dwdir, 0o700)
+	defer func() { _ = os.Chmod(dwdir, 0o700) }() //nolint:gosec // G302: restoring dir perms in test cleanup; directories need the exec bit
 	if err := Save(&Config{Hosts: map[string]Host{}}); err == nil {
 		t.Fatal("expected CreateTemp error in read-only dir")
 	}
@@ -148,7 +148,7 @@ func TestSaveWriteError(t *testing.T) {
 		if err != nil {
 			return nil, err
 		}
-		f.Close() // name persists for the defer Remove; Write now fails
+		_ = f.Close() // name persists for the defer Remove; Write now fails
 		return f, nil
 	}
 	defer func() { createTemp = old }()

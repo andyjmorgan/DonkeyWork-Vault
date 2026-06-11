@@ -34,7 +34,7 @@ func TestLatest_Success(t *testing.T) {
 		if r.Header.Get("Accept") != "application/vnd.github+json" {
 			t.Errorf("accept = %q", r.Header.Get("Accept"))
 		}
-		json.NewEncoder(w).Encode(Release{TagName: "v1.2.3"})
+		_ = json.NewEncoder(w).Encode(Release{TagName: "v1.2.3"})
 	}))
 	defer srv.Close()
 	t.Setenv("DWVAULT_REPO", "me/fork")
@@ -52,7 +52,7 @@ func TestLatest_Success(t *testing.T) {
 }
 
 func TestLatest_Non200(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -65,8 +65,8 @@ func TestLatest_Non200(t *testing.T) {
 }
 
 func TestLatest_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 	old := githubAPIBase
@@ -78,8 +78,8 @@ func TestLatest_BadJSON(t *testing.T) {
 }
 
 func TestLatest_EmptyTag(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(Release{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(Release{})
 	}))
 	defer srv.Close()
 	old := githubAPIBase
@@ -92,7 +92,7 @@ func TestLatest_EmptyTag(t *testing.T) {
 }
 
 func TestLatest_NetworkError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := srv.URL
 	srv.Close()
 	old := githubAPIBase
@@ -148,9 +148,9 @@ func TestDownload_Success(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, AssetName()):
-			w.Write(bin)
+			_, _ = w.Write(bin)
 		case strings.HasSuffix(r.URL.Path, sha256SumsAsset):
-			w.Write([]byte(manifest))
+			_, _ = w.Write([]byte(manifest))
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -175,9 +175,9 @@ func TestDownload_ChecksumMismatch(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, AssetName()):
-			w.Write(bin)
+			_, _ = w.Write(bin)
 		case strings.HasSuffix(r.URL.Path, sha256SumsAsset):
-			w.Write([]byte(manifest))
+			_, _ = w.Write([]byte(manifest))
 		}
 	}))
 	defer srv.Close()
@@ -206,7 +206,7 @@ func TestDownload_MissingManifest(t *testing.T) {
 }
 
 func TestDownload_ManifestFetchError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError) // both assets fail
 	}))
 	defer srv.Close()
@@ -222,10 +222,10 @@ func TestDownload_AssetNotInManifest(t *testing.T) {
 	manifest := strings.Repeat("a", 64) + "  some-other-file\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, sha256SumsAsset) {
-			w.Write([]byte(manifest))
+			_, _ = w.Write([]byte(manifest))
 			return
 		}
-		w.Write([]byte("bin"))
+		_, _ = w.Write([]byte("bin"))
 	}))
 	defer srv.Close()
 	rel := relWith(t, srv.URL, AssetName(), sha256SumsAsset)
@@ -241,7 +241,7 @@ func TestDownload_BinaryFetchError(t *testing.T) {
 	manifest := hex.EncodeToString(sum[:]) + "  " + AssetName() + "\n"
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if strings.HasSuffix(r.URL.Path, sha256SumsAsset) {
-			w.Write([]byte(manifest))
+			_, _ = w.Write([]byte(manifest))
 			return
 		}
 		w.WriteHeader(http.StatusNotFound) // binary asset 404s
@@ -261,7 +261,7 @@ func TestFetch_BadURL(t *testing.T) {
 }
 
 func TestFetch_NetworkError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := srv.URL
 	srv.Close() // nothing listening ⇒ Do() errors
 	if _, err := fetch(context.Background(), addr); err == nil {
@@ -310,7 +310,7 @@ func TestSumFor_SkipsMalformedLines(t *testing.T) {
 func TestApply_AtomicReplace(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "dwvault")
-	if err := os.WriteFile(target, []byte("OLD"), 0o755); err != nil {
+	if err := os.WriteFile(target, []byte("OLD"), 0o755); err != nil { //nolint:gosec // G306: test fixture binary must be executable (0o755)
 		t.Fatal(err)
 	}
 	old := executable
@@ -324,7 +324,7 @@ func TestApply_AtomicReplace(t *testing.T) {
 	if path != target {
 		t.Fatalf("path = %q, want %q", path, target)
 	}
-	got, _ := os.ReadFile(target)
+	got, _ := os.ReadFile(target) //nolint:gosec // G304: path is a test-controlled temp file, not attacker-supplied
 	if string(got) != "NEWBINARY" {
 		t.Fatalf("contents = %q", got)
 	}
@@ -357,17 +357,17 @@ func TestApply_StageError(t *testing.T) {
 	// Resolve to a path inside a directory that doesn't exist → CreateTemp fails.
 	dir := t.TempDir()
 	realFile := filepath.Join(dir, "exe")
-	if err := os.WriteFile(realFile, []byte("x"), 0o755); err != nil {
+	if err := os.WriteFile(realFile, []byte("x"), 0o755); err != nil { //nolint:gosec // G306: test fixture binary must be executable (0o755)
 		t.Fatal(err)
 	}
 	old := executable
 	executable = func() (string, error) { return realFile, nil }
 	defer func() { executable = old }()
 	// Make the dir unwritable so CreateTemp in it fails.
-	if err := os.Chmod(dir, 0o500); err != nil {
+	if err := os.Chmod(dir, 0o500); err != nil { //nolint:gosec // G302: test deliberately makes the dir read-only
 		t.Fatal(err)
 	}
-	defer os.Chmod(dir, 0o700)
+	defer func() { _ = os.Chmod(dir, 0o700) }() //nolint:gosec // G302: restoring dir perms in test cleanup; directories need the exec bit
 	if _, err := Apply([]byte("x")); err == nil {
 		t.Fatal("expected stage error in unwritable dir")
 	}
@@ -394,11 +394,11 @@ func TestNoConfigHome(t *testing.T) {
 func TestApply_RenameError(t *testing.T) {
 	dir := t.TempDir()
 	exeDir := filepath.Join(dir, "exe-as-dir")
-	if err := os.MkdirAll(exeDir, 0o755); err != nil {
+	if err := os.MkdirAll(exeDir, 0o750); err != nil {
 		t.Fatal(err)
 	}
 	// Populate it so the rename can't succeed as an empty-dir replacement.
-	if err := os.WriteFile(filepath.Join(exeDir, "child"), []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(exeDir, "child"), []byte("x"), 0o644); err != nil { //nolint:gosec // G306: test fixture file, perms are not security-sensitive
 		t.Fatal(err)
 	}
 	old := executable
@@ -416,14 +416,14 @@ func closedTempFile(dir, pattern string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	f.Close() // name still exists (defer Remove works); Write/Sync now fail
+	_ = f.Close() // name still exists (defer Remove works); Write/Sync now fail
 	return f, nil
 }
 
 func TestApply_WriteError(t *testing.T) {
 	dir := t.TempDir()
 	target := filepath.Join(dir, "exe")
-	if err := os.WriteFile(target, []byte("OLD"), 0o755); err != nil {
+	if err := os.WriteFile(target, []byte("OLD"), 0o755); err != nil { //nolint:gosec // G306: test fixture binary must be executable (0o755)
 		t.Fatal(err)
 	}
 	oldExe, oldCT := executable, createTemp
@@ -435,7 +435,7 @@ func TestApply_WriteError(t *testing.T) {
 		t.Fatal("expected write error on a closed staging file")
 	}
 	// Original must be untouched.
-	if got, _ := os.ReadFile(target); string(got) != "OLD" {
+	if got, _ := os.ReadFile(target); string(got) != "OLD" { //nolint:gosec // G304: path is a test-controlled temp file, not attacker-supplied
 		t.Fatalf("target mutated: %q", got)
 	}
 }
@@ -545,10 +545,10 @@ func TestSaveState_CreateTempError(t *testing.T) {
 	if err := os.MkdirAll(d, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(d, 0o500); err != nil {
+	if err := os.Chmod(d, 0o500); err != nil { //nolint:gosec // G302: test deliberately makes the dir read-only
 		t.Fatal(err)
 	}
-	defer os.Chmod(d, 0o700)
+	defer func() { _ = os.Chmod(d, 0o700) }() //nolint:gosec // G302: restoring dir perms in test cleanup; directories need the exec bit
 	if err := SaveState(State{LatestVersion: "v1"}); err == nil {
 		t.Fatal("expected CreateTemp error in read-only dir")
 	}

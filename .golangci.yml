@@ -1,0 +1,23 @@
+# Shared lint config for both Go modules (src/server, src/cli). golangci-lint walks up to find
+# this file, so running `golangci-lint run` from either module dir uses it. Generated files
+# (the "Code generated … DO NOT EDIT" header, e.g. src/cli/internal/vaultapi/vaultapi.gen.go)
+# are excluded automatically.
+version: "2"
+
+linters:
+  # On top of the v2 defaults (errcheck, govet, ineffassign, staticcheck, unused):
+  enable:
+    - bodyclose
+    - contextcheck
+    - gocritic
+    - gosec
+    - revive
+    - unconvert
+    - unparam
+  exclusions:
+    generated: lax
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

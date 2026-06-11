@@ -31,6 +31,17 @@ jobs:
           out=$(gofmt -l src/server src/cli)
           if [ -n "$out" ]; then echo "::error::gofmt needed on: $out"; exit 1; fi
 
+      - name: Install golangci-lint
+        run: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.12.2
+
+      - name: Lint (server)
+        working-directory: src/server
+        run: "$(go env GOPATH)/bin/golangci-lint run ./..."
+
+      - name: Lint (cli)
+        working-directory: src/cli
+        run: "$(go env GOPATH)/bin/golangci-lint run ./..."
+
       - name: Build (server)
         working-directory: src/server
         run: go build ./...

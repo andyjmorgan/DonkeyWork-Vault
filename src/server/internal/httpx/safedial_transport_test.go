@@ -32,7 +32,7 @@ func TestSafeTransportAllowsLoopback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("loopback request should succeed: %v", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
@@ -44,7 +44,7 @@ func TestSafeTransportAllowsLoopback(t *testing.T) {
 		if err != nil {
 			t.Fatalf("loopback request should succeed: %v", err)
 		}
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode != http.StatusNoContent {
 			t.Fatalf("status = %d", resp.StatusCode)
 		}
@@ -60,7 +60,7 @@ func TestSafeTransportRefusesLinkLocalDial(t *testing.T) {
 	}
 	resp, err := c.Do(req)
 	if err == nil {
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		t.Fatal("dial to link-local metadata endpoint should be refused")
 	}
 	if !strings.Contains(err.Error(), "link-local") {

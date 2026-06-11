@@ -23,7 +23,7 @@ import (
 
 // randReader is the CSPRNG source for DEK and nonce generation. It is a package var so tests can
 // inject a failing reader to exercise the read-error paths; production reads from crypto/rand.
-var randReader io.Reader = rand.Reader
+var randReader = rand.Reader
 
 const (
 	magic     = "DWV1"
@@ -102,9 +102,9 @@ func (c *EnvelopeCipher) Encrypt(plaintext []byte) ([]byte, error) {
 	blob := make([]byte, 0, total)
 	blob = append(blob, magic...)
 	blob = append(blob, version)
-	blob = append(blob, byte(len(kekID)))
+	blob = append(blob, byte(len(kekID))) //nolint:gosec // G115: len(kekID) is bounded to <=0xFF by the check above.
 	blob = append(blob, kekID...)
-	blob = binary.BigEndian.AppendUint16(blob, uint16(len(wrappedDek)))
+	blob = binary.BigEndian.AppendUint16(blob, uint16(len(wrappedDek))) //nolint:gosec // G115: len(wrappedDek) is bounded to <=0xFFFF by the check above.
 	blob = append(blob, wrappedDek...)
 	blob = append(blob, nonce...)
 	blob = append(blob, tag...)

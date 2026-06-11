@@ -75,10 +75,10 @@ func TestDeleteTokenHandler(t *testing.T) {
 func TestStoreErrorReturns500(t *testing.T) {
 	// Use the JWT harness so authentication does not touch the store; the forced failure then lands
 	// in the handler's store call rather than in access-key auth.
-	h := newJWTHarness(t, "web", "cli")
+	h := newJWTHarness(t)
 	tok := makeJWT(t, map[string]any{"iss": testIssuer, "sub": uuid.NewString(), "aud": []string{"web"}, "azp": "web", "exp": timeFuture().Unix()})
 	h.ms.FailNext = errors.New("db down")
-	if rec := bearer(h, t, "GET", "/api/v1/api-keys", tok); rec.Code != http.StatusInternalServerError {
+	if rec := bearer(h, t, "/api/v1/api-keys", tok); rec.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d", rec.Code)
 	}
 }

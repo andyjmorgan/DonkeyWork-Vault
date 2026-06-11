@@ -47,7 +47,7 @@ func TestSetupNoEndpoint(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Shutdown is safe with a nil func too.
-	(&Providers{}).Shutdown(context.Background())
+	_ = (&Providers{}).Shutdown(context.Background())
 }
 
 func TestMetricsAndHelpers(t *testing.T) {

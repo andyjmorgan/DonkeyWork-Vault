@@ -15,7 +15,7 @@ type fakeKek struct {
 }
 
 func (f fakeKek) ActiveKekID() string { return f.id }
-func (f fakeKek) Wrap(dek []byte) ([]byte, error) {
+func (f fakeKek) Wrap(_ []byte) ([]byte, error) {
 	if f.wrapErr != nil {
 		return nil, f.wrapErr
 	}
@@ -51,8 +51,8 @@ func TestEncrypt_WrappedTooLong(t *testing.T) {
 
 func TestDecrypt_UnwrapError(t *testing.T) {
 	// Build a structurally valid blob with the real cipher, then decrypt with a kek that errors.
-	real := newTestCipher(t)
-	blob, _ := real.EncryptString("hi")
+	genuine := newTestCipher(t)
+	blob, _ := genuine.EncryptString("hi")
 	c := NewEnvelopeCipher(fakeKek{id: "local:v1", unwrapEr: errors.New("no key")})
 	if _, err := c.Decrypt(blob); err == nil {
 		t.Fatal("expected unwrap error")
@@ -60,8 +60,8 @@ func TestDecrypt_UnwrapError(t *testing.T) {
 }
 
 func TestDecrypt_BadDEKLength(t *testing.T) {
-	real := newTestCipher(t)
-	blob, _ := real.EncryptString("hi")
+	genuine := newTestCipher(t)
+	blob, _ := genuine.EncryptString("hi")
 	// Unwrap returns a 10-byte "key" → aes.NewCipher fails inside Decrypt.
 	c := NewEnvelopeCipher(fakeKek{id: "local:v1", unwrap: make([]byte, 10)})
 	if _, err := c.Decrypt(blob); err == nil {

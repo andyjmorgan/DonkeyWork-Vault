@@ -57,7 +57,7 @@ func (w *Writer) Run(ctx context.Context) {
 	}
 	// drainFlush persists the final batch on a fresh, bounded context so a shutdown that has already
 	// cancelled the run context can still flush buffered events rather than dropping them.
-	drainFlush := func() {
+	drainFlush := func() { //nolint:contextcheck // audit sink intentionally detaches from the request ctx (fire-and-forget): flush on a fresh ctx so a cancelled run ctx still drains buffered events
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		flush(c)

@@ -18,9 +18,9 @@ import (
 // tracer is the shared service tracer; spans are named "<entity>.<operation>".
 var tracer = otel.Tracer("donkeywork.dev/vault-server/service")
 
-// startSpan opens a child span and returns the derived context, the span and an end func.
-func startSpan(ctx context.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return tracer.Start(ctx, name, opts...)
+// startSpan opens a child span and returns the derived context and the span.
+func startSpan(ctx context.Context, name string) (context.Context, trace.Span) {
+	return tracer.Start(ctx, name)
 }
 
 // ValidationError is returned for invalid create/edit input; the transport maps it to HTTP 400.

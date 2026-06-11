@@ -55,6 +55,7 @@ var _ store.Store = (*Mem)(nil)
 
 // ---- access keys ----
 
+// InsertAccessKey stores a new access key, assigning an ID and creation time if unset.
 func (m *Mem) InsertAccessKey(_ context.Context, k *store.AccessKey) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -71,6 +72,7 @@ func (m *Mem) InsertAccessKey(_ context.Context, k *store.AccessKey) error {
 	return nil
 }
 
+// ListAccessKeys returns a user's access keys, newest first.
 func (m *Mem) ListAccessKeys(_ context.Context, userID uuid.UUID) ([]store.AccessKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -87,6 +89,7 @@ func (m *Mem) ListAccessKeys(_ context.Context, userID uuid.UUID) ([]store.Acces
 	return out, nil
 }
 
+// GetAccessKeyByID returns a user's access key by ID, or nil if it does not exist.
 func (m *Mem) GetAccessKeyByID(_ context.Context, userID, id uuid.UUID) (*store.AccessKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -99,6 +102,7 @@ func (m *Mem) GetAccessKeyByID(_ context.Context, userID, id uuid.UUID) (*store.
 	return nil, nil
 }
 
+// SetAccessKeyEnabled toggles an access key's enabled flag and returns the updated row.
 func (m *Mem) SetAccessKeyEnabled(_ context.Context, userID, id uuid.UUID, enabled bool) (*store.AccessKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -116,6 +120,7 @@ func (m *Mem) SetAccessKeyEnabled(_ context.Context, userID, id uuid.UUID, enabl
 	return &k, nil
 }
 
+// DeleteAccessKey removes a user's access key and reports whether a row was deleted.
 func (m *Mem) DeleteAccessKey(_ context.Context, userID, id uuid.UUID) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -129,6 +134,7 @@ func (m *Mem) DeleteAccessKey(_ context.Context, userID, id uuid.UUID) (bool, er
 	return false, nil
 }
 
+// GetAccessKeyByHash looks up an access key by its unique hash, ignoring user scoping.
 func (m *Mem) GetAccessKeyByHash(_ context.Context, hash []byte) (*store.AccessKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -143,6 +149,7 @@ func (m *Mem) GetAccessKeyByHash(_ context.Context, hash []byte) (*store.AccessK
 	return nil, nil
 }
 
+// TouchAccessKeyLastUsed stamps an access key's last-used time to now.
 func (m *Mem) TouchAccessKeyLastUsed(_ context.Context, id uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -159,6 +166,7 @@ func (m *Mem) TouchAccessKeyLastUsed(_ context.Context, id uuid.UUID) error {
 
 // ---- api keys ----
 
+// InsertAPIKey stores a new API key, assigning an ID and creation time if unset.
 func (m *Mem) InsertAPIKey(_ context.Context, k *store.APIKey) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -175,6 +183,7 @@ func (m *Mem) InsertAPIKey(_ context.Context, k *store.APIKey) error {
 	return nil
 }
 
+// UpdateAPIKey overwrites an existing API key when it belongs to the same owner.
 func (m *Mem) UpdateAPIKey(_ context.Context, k *store.APIKey) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -187,6 +196,7 @@ func (m *Mem) UpdateAPIKey(_ context.Context, k *store.APIKey) error {
 	return nil
 }
 
+// ListAPIKeys returns a user's API keys, newest first.
 func (m *Mem) ListAPIKeys(_ context.Context, userID uuid.UUID) ([]store.APIKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -203,6 +213,7 @@ func (m *Mem) ListAPIKeys(_ context.Context, userID uuid.UUID) ([]store.APIKey, 
 	return out, nil
 }
 
+// GetAPIKeyByName returns a user's API key by name, or nil if none matches.
 func (m *Mem) GetAPIKeyByName(_ context.Context, userID uuid.UUID, name string) (*store.APIKey, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -217,6 +228,7 @@ func (m *Mem) GetAPIKeyByName(_ context.Context, userID uuid.UUID, name string) 
 	return nil, nil
 }
 
+// DeleteAPIKey removes a user's API key and reports whether a row was deleted.
 func (m *Mem) DeleteAPIKey(_ context.Context, userID, id uuid.UUID) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -230,6 +242,7 @@ func (m *Mem) DeleteAPIKey(_ context.Context, userID, id uuid.UUID) (bool, error
 	return false, nil
 }
 
+// TouchAPIKeyLastUsed stamps an API key's last-used time to now.
 func (m *Mem) TouchAPIKeyLastUsed(_ context.Context, id uuid.UUID) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -246,6 +259,7 @@ func (m *Mem) TouchAPIKeyLastUsed(_ context.Context, id uuid.UUID) error {
 
 // ---- oauth configs ----
 
+// InsertOAuthConfig stores a new OAuth provider config, assigning an ID and creation time if unset.
 func (m *Mem) InsertOAuthConfig(_ context.Context, c *store.OAuthProviderConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -262,6 +276,7 @@ func (m *Mem) InsertOAuthConfig(_ context.Context, c *store.OAuthProviderConfig)
 	return nil
 }
 
+// UpdateOAuthConfig overwrites an existing OAuth config when it belongs to the same owner.
 func (m *Mem) UpdateOAuthConfig(_ context.Context, c *store.OAuthProviderConfig) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -274,6 +289,7 @@ func (m *Mem) UpdateOAuthConfig(_ context.Context, c *store.OAuthProviderConfig)
 	return nil
 }
 
+// ListOAuthConfigs returns a user's OAuth provider configs, ordered by provider key.
 func (m *Mem) ListOAuthConfigs(_ context.Context, userID uuid.UUID) ([]store.OAuthProviderConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -290,6 +306,7 @@ func (m *Mem) ListOAuthConfigs(_ context.Context, userID uuid.UUID) ([]store.OAu
 	return out, nil
 }
 
+// GetOAuthConfigByProvider returns a user's OAuth config for a provider, or nil if none exists.
 func (m *Mem) GetOAuthConfigByProvider(_ context.Context, userID, providerID uuid.UUID) (*store.OAuthProviderConfig, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -304,6 +321,7 @@ func (m *Mem) GetOAuthConfigByProvider(_ context.Context, userID, providerID uui
 	return nil, nil
 }
 
+// DeleteOAuthConfig removes a user's OAuth config and reports whether a row was deleted.
 func (m *Mem) DeleteOAuthConfig(_ context.Context, userID, id uuid.UUID) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -319,6 +337,7 @@ func (m *Mem) DeleteOAuthConfig(_ context.Context, userID, id uuid.UUID) (bool, 
 
 // ---- oauth states ----
 
+// InsertOAuthState stores a new OAuth flow state, assigning an ID and creation time if unset.
 func (m *Mem) InsertOAuthState(_ context.Context, s *store.OAuthState) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -335,6 +354,7 @@ func (m *Mem) InsertOAuthState(_ context.Context, s *store.OAuthState) error {
 	return nil
 }
 
+// GetOAuthStateByState looks up an OAuth flow state by its opaque state value, or nil if absent.
 func (m *Mem) GetOAuthStateByState(_ context.Context, state string) (*store.OAuthState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -349,6 +369,7 @@ func (m *Mem) GetOAuthStateByState(_ context.Context, state string) (*store.OAut
 	return nil, nil
 }
 
+// DeleteOAuthState removes an OAuth flow state, returning the number of rows deleted.
 func (m *Mem) DeleteOAuthState(_ context.Context, id uuid.UUID) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -364,6 +385,7 @@ func (m *Mem) DeleteOAuthState(_ context.Context, id uuid.UUID) (int64, error) {
 
 // ---- oauth tokens ----
 
+// InsertOAuthToken stores a new OAuth token, assigning an ID and creation time if unset.
 func (m *Mem) InsertOAuthToken(_ context.Context, t *store.OAuthToken) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -380,6 +402,7 @@ func (m *Mem) InsertOAuthToken(_ context.Context, t *store.OAuthToken) error {
 	return nil
 }
 
+// UpdateOAuthToken overwrites an existing OAuth token by ID.
 func (m *Mem) UpdateOAuthToken(_ context.Context, t *store.OAuthToken) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -392,6 +415,7 @@ func (m *Mem) UpdateOAuthToken(_ context.Context, t *store.OAuthToken) error {
 	return nil
 }
 
+// ListOAuthTokens returns a user's OAuth tokens, ordered by provider key.
 func (m *Mem) ListOAuthTokens(_ context.Context, userID uuid.UUID) ([]store.OAuthToken, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -408,6 +432,7 @@ func (m *Mem) ListOAuthTokens(_ context.Context, userID uuid.UUID) ([]store.OAut
 	return out, nil
 }
 
+// GetOAuthTokenByID returns a user's OAuth token by ID, or nil if it does not exist.
 func (m *Mem) GetOAuthTokenByID(_ context.Context, userID, id uuid.UUID) (*store.OAuthToken, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -420,6 +445,7 @@ func (m *Mem) GetOAuthTokenByID(_ context.Context, userID, id uuid.UUID) (*store
 	return nil, nil
 }
 
+// FindOAuthToken resolves the newest token for a provider (optionally an account) for a user.
 func (m *Mem) FindOAuthToken(_ context.Context, userID, providerID uuid.UUID, account string) (*store.OAuthToken, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -442,6 +468,7 @@ func (m *Mem) FindOAuthToken(_ context.Context, userID, providerID uuid.UUID, ac
 	return found, nil
 }
 
+// DeleteOAuthToken removes a user's OAuth token and reports whether a row was deleted.
 func (m *Mem) DeleteOAuthToken(_ context.Context, userID, id uuid.UUID) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -457,6 +484,7 @@ func (m *Mem) DeleteOAuthToken(_ context.Context, userID, id uuid.UUID) (bool, e
 
 // ---- manifests ----
 
+// ListOAuthManifests returns a user's OAuth provider manifests.
 func (m *Mem) ListOAuthManifests(_ context.Context, userID uuid.UUID) ([]store.ProviderManifest, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -472,6 +500,7 @@ func (m *Mem) ListOAuthManifests(_ context.Context, userID uuid.UUID) ([]store.P
 	return out, nil
 }
 
+// GetManifestByKey returns the manifest for a (kind, key) owned by a user, or nil if absent.
 func (m *Mem) GetManifestByKey(_ context.Context, ownerUserID uuid.UUID, kind, key string) (*store.ProviderManifest, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -486,6 +515,7 @@ func (m *Mem) GetManifestByKey(_ context.Context, ownerUserID uuid.UUID, kind, k
 	return nil, nil
 }
 
+// InsertManifest stores a new provider manifest, assigning an ID and creation time if unset.
 func (m *Mem) InsertManifest(_ context.Context, r *store.ProviderManifest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -502,6 +532,7 @@ func (m *Mem) InsertManifest(_ context.Context, r *store.ProviderManifest) error
 	return nil
 }
 
+// UpdateManifest overwrites an existing manifest when it belongs to the same owner.
 func (m *Mem) UpdateManifest(_ context.Context, r *store.ProviderManifest) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -514,6 +545,7 @@ func (m *Mem) UpdateManifest(_ context.Context, r *store.ProviderManifest) error
 	return nil
 }
 
+// DeleteManifestCascade removes a manifest and its provider's configs and tokens.
 func (m *Mem) DeleteManifestCascade(_ context.Context, userID uuid.UUID, kind, key string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -549,6 +581,7 @@ func (m *Mem) DeleteManifestCascade(_ context.Context, userID uuid.UUID, kind, k
 
 // ---- audit ----
 
+// InsertAuditBatch appends a batch of audit entries, assigning IDs where unset.
 func (m *Mem) InsertAuditBatch(_ context.Context, entries []store.AuditEntry) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -564,6 +597,7 @@ func (m *Mem) InsertAuditBatch(_ context.Context, entries []store.AuditEntry) er
 	return nil
 }
 
+// QueryAudit returns a filtered, paginated page of audit entries plus the total matching count.
 func (m *Mem) QueryAudit(_ context.Context, f store.AuditFilter) ([]store.AuditEntry, int, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -602,6 +636,7 @@ func (m *Mem) QueryAudit(_ context.Context, f store.AuditFilter) ([]store.AuditE
 	return matched[lo:hi], total, nil
 }
 
+// DeleteAuditOlderThan deletes up to batchSize audit rows older than cutoff, returning the count.
 func (m *Mem) DeleteAuditOlderThan(_ context.Context, cutoff time.Time, batchSize int) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

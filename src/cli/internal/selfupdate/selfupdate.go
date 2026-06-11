@@ -85,7 +85,7 @@ func Latest(ctx context.Context) (*Release, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("github releases: %s", resp.Status)
 	}
@@ -219,7 +219,7 @@ func fetch(ctx context.Context, url string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s", resp.Status)
 	}
@@ -250,20 +250,20 @@ func Apply(bin []byte) (string, error) {
 		return "", fmt.Errorf("cannot stage update in %s: %w", dir, err)
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp) // no-op once the rename succeeds
+	defer func() { _ = os.Remove(tmp) }() // no-op once the rename succeeds
 	if _, err := f.Write(bin); err != nil {
-		f.Close()
+		_ = f.Close()
 		return "", err
 	}
 	// Flush to disk before the rename so a crash can't leave a truncated binary in place.
 	if err := f.Sync(); err != nil {
-		f.Close()
+		_ = f.Close()
 		return "", err //coverage:ignore Sync syscall failure not reproducible on a normal temp file
 	}
 	if err := f.Close(); err != nil {
 		return "", err //coverage:ignore Close error after a successful write/sync not reproducible
 	}
-	if err := os.Chmod(tmp, 0o755); err != nil {
+	if err := os.Chmod(tmp, 0o755); err != nil { //nolint:gosec // G302: staged binary must be executable (0o755); the file is program-controlled
 		return "", err //coverage:ignore Chmod syscall failure not reproducible on a normal temp file
 	}
 	if err := os.Rename(tmp, exe); err != nil {
@@ -295,7 +295,7 @@ func LoadState() (State, error) {
 	if err != nil {
 		return s, err
 	}
-	b, err := os.ReadFile(p)
+	b, err := os.ReadFile(p) //nolint:gosec // G304: path is the program-controlled update-check cache, not attacker-supplied
 	if os.IsNotExist(err) {
 		return s, nil
 	}
@@ -328,9 +328,9 @@ func SaveState(s State) error {
 		return err
 	}
 	tmp := f.Name()
-	defer os.Remove(tmp)
+	defer func() { _ = os.Remove(tmp) }()
 	if _, err := f.Write(b); err != nil {
-		f.Close()
+		_ = f.Close()
 		return err
 	}
 	if err := f.Close(); err != nil {

@@ -90,7 +90,7 @@ func TestWriterRetryThenSucceed(t *testing.T) {
 	}
 }
 
-func TestWriterPermanentFailure(t *testing.T) {
+func TestWriterPermanentFailure(_ *testing.T) {
 	fs := alwaysFailStore{memstore.New()}
 	l := NewLog(100, nil, nil)
 	w := NewWriter(l, fs, nil, nil, WriterOptions{BatchSize: 1, FlushInterval: time.Millisecond})
@@ -164,7 +164,7 @@ func TestQueryService(t *testing.T) {
 	}
 }
 
-func TestRetentionRunCancel(t *testing.T) {
+func TestRetentionRunCancel(_ *testing.T) {
 	ms := memstore.New()
 	r := NewRetention(ms, nil, RetentionOptions{}) // defaults applied
 	ctx, cancel := context.WithCancel(context.Background())

@@ -50,10 +50,10 @@ func TestStoreCredential_FileFallbackFails(t *testing.T) {
 	if err := os.MkdirAll(dwdir, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Chmod(dwdir, 0o500); err != nil {
+	if err := os.Chmod(dwdir, 0o500); err != nil { //nolint:gosec // G302: test deliberately makes the dir read-only
 		t.Fatal(err)
 	}
-	defer os.Chmod(dwdir, 0o700)
+	defer func() { _ = os.Chmod(dwdir, 0o700) }() //nolint:gosec // G302: restoring dir perms in test cleanup; directories need the exec bit
 
 	_, err := StoreCredential("https://vault.example", &Credential{Type: TypeAPIKey, Secret: "s"})
 	if err == nil {
@@ -153,7 +153,7 @@ func TestFileLoad_InsecurePerms(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(`{}`), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(`{}`), 0o644); err != nil { //nolint:gosec // G306: test deliberately writes a group/other-readable file to exercise the insecure-perms check
 		t.Fatal(err)
 	}
 	_, _, err := fileLoad()
@@ -245,10 +245,10 @@ func TestFileDelete_RemoveError(t *testing.T) {
 	}
 	p, _ := filePath()
 	d := filepath.Dir(p)
-	if err := os.Chmod(d, 0o500); err != nil { // read+exec but not write ⇒ unlink denied
+	if err := os.Chmod(d, 0o500); err != nil { //nolint:gosec // G302: test deliberately makes the dir read-only so unlink is denied
 		t.Fatal(err)
 	}
-	defer os.Chmod(d, 0o700)
+	defer func() { _ = os.Chmod(d, 0o700) }() //nolint:gosec // G302: restoring dir perms in test cleanup; directories need the exec bit
 	if err := fileDelete("only"); err == nil {
 		t.Fatal("expected os.Remove error in read-only dir")
 	}
@@ -312,7 +312,7 @@ func TestCheckPerms_Insecure(t *testing.T) {
 		t.Skip("perm bits not meaningful on Windows")
 	}
 	p := filepath.Join(t.TempDir(), "f")
-	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte("x"), 0o644); err != nil { //nolint:gosec // G306: test deliberately writes a group/other-readable file to exercise the insecure-perms check
 		t.Fatal(err)
 	}
 	if err := checkPerms(p); err == nil {
@@ -346,7 +346,7 @@ func TestFileSet_MkdirAllError(t *testing.T) {
 	if err := os.MkdirAll(ro, 0o500); err != nil { // read+exec, not writable
 		t.Fatal(err)
 	}
-	defer os.Chmod(ro, 0o700)
+	defer func() { _ = os.Chmod(ro, 0o700) }()            //nolint:gosec // G302: restoring dir perms in test cleanup; directories need the exec bit
 	t.Setenv("XDG_CONFIG_HOME", filepath.Join(ro, "sub")) // can't create "sub" under ro
 	if err := fileSet("h", "v"); err == nil {
 		t.Fatal("expected MkdirAll error")
@@ -363,7 +363,7 @@ func TestFileDelete_LoadError(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(`{"h":"v"}`), 0o644); err != nil { // insecure
+	if err := os.WriteFile(p, []byte(`{"h":"v"}`), 0o644); err != nil { //nolint:gosec // G306: test deliberately writes an insecure (group/other-readable) file
 		t.Fatal(err)
 	}
 	if err := fileDelete("h"); err == nil {
@@ -391,7 +391,7 @@ func TestCheckPerms_StatError(t *testing.T) {
 	if err := os.Chmod(sub, 0o000); err != nil { // no access ⇒ Stat fails with EACCES
 		t.Fatal(err)
 	}
-	defer os.Chmod(sub, 0o700)
+	defer func() { _ = os.Chmod(sub, 0o700) }() //nolint:gosec // G302: restoring dir perms in test cleanup; directories need the exec bit
 	err := checkPerms(target)
 	if err == nil {
 		t.Fatal("expected stat error on inaccessible parent")
@@ -419,7 +419,7 @@ func TestFileGet_Error(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(p, []byte(`{}`), 0o644); err != nil {
+	if err := os.WriteFile(p, []byte(`{}`), 0o644); err != nil { //nolint:gosec // G306: test deliberately writes a group/other-readable file
 		t.Fatal(err)
 	}
 	if _, _, err := fileGet("h"); err == nil {

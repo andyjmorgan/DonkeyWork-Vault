@@ -47,6 +47,7 @@ func noRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
 
 // ---- access keys ----
 
+// InsertAccessKey persists a new access key and back-fills its generated ID and timestamp.
 func (p *Postgres) InsertAccessKey(ctx context.Context, k *AccessKey) error {
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO vault.access_keys (user_id, tenant_id, name, description, key_hash, key_prefix, scopes, enabled)
@@ -68,6 +69,7 @@ func scanAccessKey(row pgx.Row) (*AccessKey, error) {
 	return &k, nil
 }
 
+// ListAccessKeys returns a user's access keys, newest first.
 func (p *Postgres) ListAccessKeys(ctx context.Context, userID uuid.UUID) ([]AccessKey, error) {
 	rows, err := p.pool.Query(ctx, `SELECT `+accessKeyCols+` FROM vault.access_keys WHERE user_id=$1 ORDER BY created_at DESC`, userID)
 	if err != nil {
@@ -85,6 +87,7 @@ func (p *Postgres) ListAccessKeys(ctx context.Context, userID uuid.UUID) ([]Acce
 	return out, rows.Err()
 }
 
+// GetAccessKeyByID returns a user's access key by ID, or nil if it does not exist.
 func (p *Postgres) GetAccessKeyByID(ctx context.Context, userID, id uuid.UUID) (*AccessKey, error) {
 	k, err := scanAccessKey(p.pool.QueryRow(ctx, `SELECT `+accessKeyCols+` FROM vault.access_keys WHERE user_id=$1 AND id=$2`, userID, id))
 	if noRows(err) {
@@ -93,6 +96,7 @@ func (p *Postgres) GetAccessKeyByID(ctx context.Context, userID, id uuid.UUID) (
 	return k, err
 }
 
+// SetAccessKeyEnabled toggles an access key's enabled flag and returns the updated row.
 func (p *Postgres) SetAccessKeyEnabled(ctx context.Context, userID, id uuid.UUID, enabled bool) (*AccessKey, error) {
 	k, err := scanAccessKey(p.pool.QueryRow(ctx, `
 		UPDATE vault.access_keys SET enabled=$3, updated_at=now() WHERE user_id=$1 AND id=$2
@@ -103,11 +107,14 @@ func (p *Postgres) SetAccessKeyEnabled(ctx context.Context, userID, id uuid.UUID
 	return k, err
 }
 
+// DeleteAccessKey removes a user's access key and reports whether a row was deleted.
 func (p *Postgres) DeleteAccessKey(ctx context.Context, userID, id uuid.UUID) (bool, error) {
 	tag, err := p.pool.Exec(ctx, `DELETE FROM vault.access_keys WHERE user_id=$1 AND id=$2`, userID, id)
 	return tag.RowsAffected() > 0, err
 }
 
+// GetAccessKeyByHash looks up an access key by its unique hash, bypassing user scoping (auth
+// precedes knowing the caller). Returns nil if no key matches.
 func (p *Postgres) GetAccessKeyByHash(ctx context.Context, hash []byte) (*AccessKey, error) {
 	k, err := scanAccessKey(p.pool.QueryRow(ctx, `SELECT `+accessKeyCols+` FROM vault.access_keys WHERE key_hash=$1`, hash))
 	if noRows(err) {
@@ -116,6 +123,7 @@ func (p *Postgres) GetAccessKeyByHash(ctx context.Context, hash []byte) (*Access
 	return k, err
 }
 
+// TouchAccessKeyLastUsed stamps an access key's last-used time to now.
 func (p *Postgres) TouchAccessKeyLastUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := p.pool.Exec(ctx, `UPDATE vault.access_keys SET last_used_at=now() WHERE id=$1`, id)
 	return err
@@ -123,6 +131,7 @@ func (p *Postgres) TouchAccessKeyLastUsed(ctx context.Context, id uuid.UUID) err
 
 // ---- api keys ----
 
+//nolint:gosec // G101: column-name list for the api_keys table, not an embedded credential.
 const apiKeyCols = `id, user_id, tenant_id, provider_key, name, fields_cipher, kind, description, base_url, docs_url, header_name, prefix, username, created_at, updated_at, last_used_at`
 
 func scanAPIKey(row pgx.Row) (*APIKey, error) {
@@ -136,6 +145,7 @@ func scanAPIKey(row pgx.Row) (*APIKey, error) {
 	return &k, nil
 }
 
+// InsertAPIKey persists a new API key and back-fills its generated ID and timestamp.
 func (p *Postgres) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO vault.api_keys (user_id, tenant_id, provider_key, name, fields_cipher, kind, description, base_url, docs_url, header_name, prefix, username)
@@ -145,6 +155,7 @@ func (p *Postgres) InsertAPIKey(ctx context.Context, k *APIKey) error {
 	).Scan(&k.ID, &k.CreatedAt)
 }
 
+// UpdateAPIKey overwrites the mutable fields of an existing API key for its owner.
 func (p *Postgres) UpdateAPIKey(ctx context.Context, k *APIKey) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE vault.api_keys SET fields_cipher=$3, kind=$4, description=$5, base_url=$6, docs_url=$7,
@@ -154,6 +165,7 @@ func (p *Postgres) UpdateAPIKey(ctx context.Context, k *APIKey) error {
 	return err
 }
 
+// ListAPIKeys returns a user's API keys, newest first.
 func (p *Postgres) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]APIKey, error) {
 	rows, err := p.pool.Query(ctx, `SELECT `+apiKeyCols+` FROM vault.api_keys WHERE user_id=$1 ORDER BY created_at DESC`, userID)
 	if err != nil {
@@ -171,6 +183,7 @@ func (p *Postgres) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]APIKey,
 	return out, rows.Err()
 }
 
+// GetAPIKeyByName returns a user's API key by name, or nil if none matches.
 func (p *Postgres) GetAPIKeyByName(ctx context.Context, userID uuid.UUID, name string) (*APIKey, error) {
 	k, err := scanAPIKey(p.pool.QueryRow(ctx, `SELECT `+apiKeyCols+` FROM vault.api_keys WHERE user_id=$1 AND name=$2`, userID, name))
 	if noRows(err) {
@@ -179,11 +192,13 @@ func (p *Postgres) GetAPIKeyByName(ctx context.Context, userID uuid.UUID, name s
 	return k, err
 }
 
+// DeleteAPIKey removes a user's API key and reports whether a row was deleted.
 func (p *Postgres) DeleteAPIKey(ctx context.Context, userID, id uuid.UUID) (bool, error) {
 	tag, err := p.pool.Exec(ctx, `DELETE FROM vault.api_keys WHERE user_id=$1 AND id=$2`, userID, id)
 	return tag.RowsAffected() > 0, err
 }
 
+// TouchAPIKeyLastUsed stamps an API key's last-used time to now.
 func (p *Postgres) TouchAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := p.pool.Exec(ctx, `UPDATE vault.api_keys SET last_used_at=now() WHERE id=$1`, id)
 	return err
@@ -203,6 +218,7 @@ func scanConfig(row pgx.Row) (*OAuthProviderConfig, error) {
 	return &c, nil
 }
 
+// InsertOAuthConfig persists a new OAuth provider config and back-fills its ID and timestamp.
 func (p *Postgres) InsertOAuthConfig(ctx context.Context, c *OAuthProviderConfig) error {
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO vault.oauth_provider_configs (user_id, tenant_id, provider_id, provider_key, client_id_cipher, client_secret_cipher, scopes_json, redirect_uri)
@@ -211,6 +227,7 @@ func (p *Postgres) InsertOAuthConfig(ctx context.Context, c *OAuthProviderConfig
 	).Scan(&c.ID, &c.CreatedAt)
 }
 
+// UpdateOAuthConfig overwrites the mutable fields of an existing OAuth config for its owner.
 func (p *Postgres) UpdateOAuthConfig(ctx context.Context, c *OAuthProviderConfig) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE vault.oauth_provider_configs SET provider_key=$3, client_id_cipher=$4, client_secret_cipher=$5,
@@ -220,6 +237,7 @@ func (p *Postgres) UpdateOAuthConfig(ctx context.Context, c *OAuthProviderConfig
 	return err
 }
 
+// ListOAuthConfigs returns a user's OAuth provider configs, ordered by provider key.
 func (p *Postgres) ListOAuthConfigs(ctx context.Context, userID uuid.UUID) ([]OAuthProviderConfig, error) {
 	rows, err := p.pool.Query(ctx, `SELECT `+configCols+` FROM vault.oauth_provider_configs WHERE user_id=$1 ORDER BY provider_key`, userID)
 	if err != nil {
@@ -237,6 +255,7 @@ func (p *Postgres) ListOAuthConfigs(ctx context.Context, userID uuid.UUID) ([]OA
 	return out, rows.Err()
 }
 
+// GetOAuthConfigByProvider returns a user's OAuth config for a provider, or nil if none exists.
 func (p *Postgres) GetOAuthConfigByProvider(ctx context.Context, userID, providerID uuid.UUID) (*OAuthProviderConfig, error) {
 	c, err := scanConfig(p.pool.QueryRow(ctx, `SELECT `+configCols+` FROM vault.oauth_provider_configs WHERE user_id=$1 AND provider_id=$2`, userID, providerID))
 	if noRows(err) {
@@ -245,6 +264,7 @@ func (p *Postgres) GetOAuthConfigByProvider(ctx context.Context, userID, provide
 	return c, err
 }
 
+// DeleteOAuthConfig removes a user's OAuth config and reports whether a row was deleted.
 func (p *Postgres) DeleteOAuthConfig(ctx context.Context, userID, id uuid.UUID) (bool, error) {
 	tag, err := p.pool.Exec(ctx, `DELETE FROM vault.oauth_provider_configs WHERE user_id=$1 AND id=$2`, userID, id)
 	return tag.RowsAffected() > 0, err
@@ -252,6 +272,7 @@ func (p *Postgres) DeleteOAuthConfig(ctx context.Context, userID, id uuid.UUID) 
 
 // ---- oauth states ----
 
+// InsertOAuthState persists a new OAuth flow state and back-fills its ID and timestamp.
 func (p *Postgres) InsertOAuthState(ctx context.Context, s *OAuthState) error {
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO vault.oauth_states (state, provider, code_verifier, owner_user_id, owner_tenant_id, redirect_uri, expires_at)
@@ -260,6 +281,7 @@ func (p *Postgres) InsertOAuthState(ctx context.Context, s *OAuthState) error {
 	).Scan(&s.ID, &s.CreatedAt)
 }
 
+// GetOAuthStateByState looks up an OAuth flow state by its opaque state value, or nil if absent.
 func (p *Postgres) GetOAuthStateByState(ctx context.Context, state string) (*OAuthState, error) {
 	var s OAuthState
 	err := p.pool.QueryRow(ctx, `
@@ -275,6 +297,8 @@ func (p *Postgres) GetOAuthStateByState(ctx context.Context, state string) (*OAu
 	return &s, nil
 }
 
+// DeleteOAuthState removes an OAuth flow state, returning the rows deleted so a concurrent replay
+// can be rejected.
 func (p *Postgres) DeleteOAuthState(ctx context.Context, id uuid.UUID) (int64, error) {
 	tag, err := p.pool.Exec(ctx, `DELETE FROM vault.oauth_states WHERE id=$1`, id)
 	return tag.RowsAffected(), err
@@ -282,6 +306,7 @@ func (p *Postgres) DeleteOAuthState(ctx context.Context, id uuid.UUID) (int64, e
 
 // ---- oauth tokens ----
 
+//nolint:gosec // G101: column-name list for the oauth_tokens table, not an embedded credential.
 const tokenCols = `id, user_id, tenant_id, provider_id, provider_key, account, access_token_cipher, refresh_token_cipher, scopes_json, expires_at, last_refreshed_at, created_at, updated_at`
 
 func scanToken(row pgx.Row) (*OAuthToken, error) {
@@ -294,6 +319,7 @@ func scanToken(row pgx.Row) (*OAuthToken, error) {
 	return &t, nil
 }
 
+// InsertOAuthToken persists a new OAuth token and back-fills its ID and timestamp.
 func (p *Postgres) InsertOAuthToken(ctx context.Context, t *OAuthToken) error {
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO vault.oauth_tokens (user_id, tenant_id, provider_id, provider_key, account, access_token_cipher, refresh_token_cipher, scopes_json, expires_at, last_refreshed_at)
@@ -302,6 +328,7 @@ func (p *Postgres) InsertOAuthToken(ctx context.Context, t *OAuthToken) error {
 	).Scan(&t.ID, &t.CreatedAt)
 }
 
+// UpdateOAuthToken overwrites a token's ciphers, scopes and expiry after a refresh.
 func (p *Postgres) UpdateOAuthToken(ctx context.Context, t *OAuthToken) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE vault.oauth_tokens SET access_token_cipher=$2, refresh_token_cipher=$3, scopes_json=$4::jsonb,
@@ -311,6 +338,7 @@ func (p *Postgres) UpdateOAuthToken(ctx context.Context, t *OAuthToken) error {
 	return err
 }
 
+// ListOAuthTokens returns a user's OAuth tokens, ordered by provider key.
 func (p *Postgres) ListOAuthTokens(ctx context.Context, userID uuid.UUID) ([]OAuthToken, error) {
 	rows, err := p.pool.Query(ctx, `SELECT `+tokenCols+` FROM vault.oauth_tokens WHERE user_id=$1 ORDER BY provider_key`, userID)
 	if err != nil {
@@ -328,6 +356,7 @@ func (p *Postgres) ListOAuthTokens(ctx context.Context, userID uuid.UUID) ([]OAu
 	return out, rows.Err()
 }
 
+// GetOAuthTokenByID returns a user's OAuth token by ID, or nil if it does not exist.
 func (p *Postgres) GetOAuthTokenByID(ctx context.Context, userID, id uuid.UUID) (*OAuthToken, error) {
 	t, err := scanToken(p.pool.QueryRow(ctx, `SELECT `+tokenCols+` FROM vault.oauth_tokens WHERE user_id=$1 AND id=$2`, userID, id))
 	if noRows(err) {
@@ -336,6 +365,7 @@ func (p *Postgres) GetOAuthTokenByID(ctx context.Context, userID, id uuid.UUID) 
 	return t, err
 }
 
+// FindOAuthToken resolves the newest token for a provider (optionally an account) for a user.
 func (p *Postgres) FindOAuthToken(ctx context.Context, userID, providerID uuid.UUID, account string) (*OAuthToken, error) {
 	q := `SELECT ` + tokenCols + ` FROM vault.oauth_tokens WHERE user_id=$1 AND provider_id=$2`
 	args := []any{userID, providerID}
@@ -351,6 +381,7 @@ func (p *Postgres) FindOAuthToken(ctx context.Context, userID, providerID uuid.U
 	return t, err
 }
 
+// DeleteOAuthToken removes a user's OAuth token and reports whether a row was deleted.
 func (p *Postgres) DeleteOAuthToken(ctx context.Context, userID, id uuid.UUID) (bool, error) {
 	tag, err := p.pool.Exec(ctx, `DELETE FROM vault.oauth_tokens WHERE user_id=$1 AND id=$2`, userID, id)
 	return tag.RowsAffected() > 0, err
@@ -369,6 +400,7 @@ func scanManifest(row pgx.Row) (*ProviderManifest, error) {
 	return &m, nil
 }
 
+// ListOAuthManifests returns a user's OAuth provider manifests.
 func (p *Postgres) ListOAuthManifests(ctx context.Context, userID uuid.UUID) ([]ProviderManifest, error) {
 	rows, err := p.pool.Query(ctx, `SELECT `+manifestCols+` FROM vault.provider_manifests WHERE kind='oauth' AND user_id=$1`, userID)
 	if err != nil {
@@ -386,6 +418,7 @@ func (p *Postgres) ListOAuthManifests(ctx context.Context, userID uuid.UUID) ([]
 	return out, rows.Err()
 }
 
+// GetManifestByKey returns the manifest for a (kind, key) owned by a user, or nil if absent.
 func (p *Postgres) GetManifestByKey(ctx context.Context, ownerUserID uuid.UUID, kind, key string) (*ProviderManifest, error) {
 	m, err := scanManifest(p.pool.QueryRow(ctx, `SELECT `+manifestCols+` FROM vault.provider_manifests WHERE kind=$1 AND key=$2 AND user_id=$3`, kind, key, ownerUserID))
 	if noRows(err) {
@@ -394,6 +427,7 @@ func (p *Postgres) GetManifestByKey(ctx context.Context, ownerUserID uuid.UUID, 
 	return m, err
 }
 
+// InsertManifest persists a new provider manifest and back-fills its ID and timestamp.
 func (p *Postgres) InsertManifest(ctx context.Context, m *ProviderManifest) error {
 	return p.pool.QueryRow(ctx, `
 		INSERT INTO vault.provider_manifests (user_id, tenant_id, kind, key, provider_id, parent_id, document_json)
@@ -402,6 +436,7 @@ func (p *Postgres) InsertManifest(ctx context.Context, m *ProviderManifest) erro
 	).Scan(&m.ID, &m.CreatedAt)
 }
 
+// UpdateManifest overwrites a manifest's provider, parent and document for its owner.
 func (p *Postgres) UpdateManifest(ctx context.Context, m *ProviderManifest) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE vault.provider_manifests SET provider_id=$3, parent_id=$4, document_json=$5::jsonb, updated_at=now()
@@ -410,12 +445,13 @@ func (p *Postgres) UpdateManifest(ctx context.Context, m *ProviderManifest) erro
 	return err
 }
 
+// DeleteManifestCascade removes a manifest and its provider's configs and tokens in one tx.
 func (p *Postgres) DeleteManifestCascade(ctx context.Context, userID uuid.UUID, kind, key string) (bool, error) {
 	tx, err := p.pool.Begin(ctx)
 	if err != nil {
 		return false, err
 	}
-	defer tx.Rollback(ctx)
+	defer func() { _ = tx.Rollback(ctx) }()
 
 	var id, providerID uuid.UUID
 	err = tx.QueryRow(ctx, `SELECT id, provider_id FROM vault.provider_manifests WHERE kind=$1 AND key=$2 AND user_id=$3`, kind, key, userID).
@@ -444,6 +480,7 @@ func (p *Postgres) DeleteManifestCascade(ctx context.Context, userID uuid.UUID, 
 
 // ---- audit ----
 
+// InsertAuditBatch writes a batch of audit entries in a single round trip; a no-op when empty.
 func (p *Postgres) InsertAuditBatch(ctx context.Context, entries []AuditEntry) error {
 	if len(entries) == 0 {
 		return nil
@@ -458,7 +495,7 @@ func (p *Postgres) InsertAuditBatch(ctx context.Context, entries []AuditEntry) e
 			e.SourceIP, e.Headers, e.TargetKind, e.TargetProvider, e.TargetAccount, e.TargetName, e.Transport, e.Method, e.Detail, e.CreatedAt)
 	}
 	br := p.pool.SendBatch(ctx, batch)
-	defer br.Close()
+	defer func() { _ = br.Close() }()
 	for range entries {
 		if _, err := br.Exec(); err != nil {
 			return err
@@ -467,6 +504,7 @@ func (p *Postgres) InsertAuditBatch(ctx context.Context, entries []AuditEntry) e
 	return nil
 }
 
+// QueryAudit returns a filtered, paginated page of audit entries plus the total matching count.
 func (p *Postgres) QueryAudit(ctx context.Context, f AuditFilter) ([]AuditEntry, int, error) {
 	where := ` WHERE user_id=$1 AND tenant_id=$2`
 	args := []any{f.UserID, f.TenantID}
@@ -517,6 +555,7 @@ func (p *Postgres) QueryAudit(ctx context.Context, f AuditFilter) ([]AuditEntry,
 	return out, total, rows.Err()
 }
 
+// DeleteAuditOlderThan deletes up to batchSize audit rows older than cutoff, returning the count.
 func (p *Postgres) DeleteAuditOlderThan(ctx context.Context, cutoff time.Time, batchSize int) (int64, error) {
 	tag, err := p.pool.Exec(ctx, `
 		DELETE FROM vault.audit_log WHERE id IN (

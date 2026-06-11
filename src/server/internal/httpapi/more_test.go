@@ -64,7 +64,7 @@ func TestReadWriteImpliesRead(t *testing.T) {
 
 func TestDiscover(t *testing.T) {
 	h := newHarness(t)
-	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	idp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"issuer":"https://idp.example","authorization_endpoint":"https://idp.example/auth","token_endpoint":"https://idp.example/token","userinfo_endpoint":"https://idp.example/me","scopes_supported":["openid","email","custom"]}`))
 	}))

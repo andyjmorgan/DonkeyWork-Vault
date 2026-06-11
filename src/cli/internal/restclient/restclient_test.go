@@ -16,7 +16,7 @@ func TestFetchMe_Success(t *testing.T) {
 		if r.Header.Get("X-Api-Key") != "k" {
 			t.Errorf("missing X-Api-Key, got %q", r.Header.Get("X-Api-Key"))
 		}
-		w.Write([]byte(`{"userId":"u","tenantId":"t","email":"e@x","name":"N"}`))
+		_, _ = w.Write([]byte(`{"userId":"u","tenantId":"t","email":"e@x","name":"N"}`))
 	}))
 	defer srv.Close()
 
@@ -35,7 +35,7 @@ func TestFetchMeBearer_Success(t *testing.T) {
 		if r.Header.Get("Authorization") != "Bearer tok" {
 			t.Errorf("authz = %q", r.Header.Get("Authorization"))
 		}
-		w.Write([]byte(`{"userId":"u"}`))
+		_, _ = w.Write([]byte(`{"userId":"u"}`))
 	}))
 	defer srv.Close()
 
@@ -49,7 +49,7 @@ func TestFetchMeBearer_Success(t *testing.T) {
 }
 
 func TestFetchMe_Unauthorized(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
 	defer srv.Close()
@@ -60,7 +60,7 @@ func TestFetchMe_Unauthorized(t *testing.T) {
 }
 
 func TestFetchMe_Forbidden(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusForbidden)
 	}))
 	defer srv.Close()
@@ -71,7 +71,7 @@ func TestFetchMe_Forbidden(t *testing.T) {
 }
 
 func TestFetchMe_OtherNon2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 	}))
 	defer srv.Close()
@@ -82,8 +82,8 @@ func TestFetchMe_OtherNon2xx(t *testing.T) {
 }
 
 func TestFetchMe_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("not json"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("not json"))
 	}))
 	defer srv.Close()
 	_, err := FetchMe(srv.URL, "k")
@@ -93,7 +93,7 @@ func TestFetchMe_BadJSON(t *testing.T) {
 }
 
 func TestFetchMe_NetworkError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := srv.URL
 	srv.Close() // nothing is listening now
 	if _, err := FetchMe(addr, "k"); err == nil {
@@ -112,7 +112,7 @@ func TestFetchConfig_Success(t *testing.T) {
 		if r.URL.Path != "/api/config" {
 			t.Errorf("path = %q", r.URL.Path)
 		}
-		w.Write([]byte(`{"authority":"https://auth","clientId":"c","scopes":"s","authEnabled":true,"cliClientId":"cc","cliScopes":"cs","requireHttpsMetadata":true}`))
+		_, _ = w.Write([]byte(`{"authority":"https://auth","clientId":"c","scopes":"s","authEnabled":true,"cliClientId":"cc","cliScopes":"cs","requireHttpsMetadata":true}`))
 	}))
 	defer srv.Close()
 
@@ -120,13 +120,13 @@ func TestFetchConfig_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("FetchConfig: %v", err)
 	}
-	if cfg.Authority != "https://auth" || !cfg.AuthEnabled || cfg.CliClientID != "cc" || !cfg.RequireHttpsMetadata {
+	if cfg.Authority != "https://auth" || !cfg.AuthEnabled || cfg.CliClientID != "cc" || !cfg.RequireHTTPSMetadata {
 		t.Fatalf("got %+v", cfg)
 	}
 }
 
 func TestFetchConfig_Non2xx(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 	}))
 	defer srv.Close()
@@ -136,8 +136,8 @@ func TestFetchConfig_Non2xx(t *testing.T) {
 }
 
 func TestFetchConfig_BadJSON(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("nope"))
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte("nope"))
 	}))
 	defer srv.Close()
 	_, err := FetchConfig(srv.URL)
@@ -147,7 +147,7 @@ func TestFetchConfig_BadJSON(t *testing.T) {
 }
 
 func TestFetchConfig_NetworkError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := srv.URL
 	srv.Close()
 	if _, err := FetchConfig(addr); err == nil {
@@ -176,7 +176,7 @@ func TestPostForm_Success(t *testing.T) {
 			t.Errorf("grant_type = %q", r.Form.Get("grant_type"))
 		}
 		w.WriteHeader(http.StatusCreated)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	}))
 	defer srv.Close()
 
@@ -190,9 +190,9 @@ func TestPostForm_Success(t *testing.T) {
 }
 
 func TestPostForm_Non2xxReturned(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(`{"error":"invalid"}`))
+		_, _ = w.Write([]byte(`{"error":"invalid"}`))
 	}))
 	defer srv.Close()
 	// PostForm returns status+body without erroring on non-2xx; the caller decides.
@@ -206,7 +206,7 @@ func TestPostForm_Non2xxReturned(t *testing.T) {
 }
 
 func TestPostForm_NetworkError(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {}))
 	addr := srv.URL
 	srv.Close()
 	if _, _, err := PostForm(addr, map[string]string{"a": "b"}); err == nil {
