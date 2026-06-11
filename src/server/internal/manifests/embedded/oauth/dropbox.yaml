@@ -1,0 +1,29 @@
+id: 9d7b27b7-30a2-4ecb-bf2b-d8f0af3698a5
+key: dropbox
+name: Dropbox
+icon_url: https://s3.donkeywork.dev/provider-icons/dropbox.svg
+docs_url: https://developers.dropbox.com/oauth-guide
+authorization_endpoint: https://www.dropbox.com/oauth2/authorize
+token_endpoint: https://api.dropboxapi.com/oauth2/token
+userinfo_endpoint: ""
+scope_delimiter: " "
+default_scopes: [openid, email, profile, account_info.read, files.metadata.read, files.content.read]
+# Dropbox only returns a refresh_token when the authorize URL carries token_access_type=offline.
+authorize_params:
+  token_access_type: offline
+scopes:
+  - { value: openid, description: Sign you in, category: Identity }
+  - { value: email, description: Your email address, category: Identity }
+  - { value: profile, description: Basic profile info, category: Identity }
+  - { value: account_info.read, description: View basic account info, category: Account }
+  - { value: account_info.write, description: Edit basic account info, category: Account }
+  - { value: files.metadata.read, description: View file and folder metadata, category: Files }
+  - { value: files.metadata.write, description: View and edit file and folder metadata, category: Files }
+  - { value: files.content.read, description: Read file contents, category: Files, sensitive: true }
+  - { value: files.content.write, description: Edit file contents, category: Files, sensitive: true }
+  - { value: file_requests.read, description: View your file requests, category: File requests }
+  - { value: file_requests.write, description: View and manage your file requests, category: File requests }
+  - { value: sharing.read, description: View your shared links and folders, category: Sharing }
+  - { value: sharing.write, description: Manage your shared links and folders, category: Sharing }
+  - { value: contacts.read, description: View your manually-added contacts, category: Contacts }
+  - { value: contacts.write, description: Manage your manually-added contacts, category: Contacts }

@@ -1,0 +1,43 @@
+id: c8b7d1c7-baae-4264-a7e0-0956af301e66
+key: box
+name: Box
+icon_url: https://s3.donkeywork.dev/provider-icons/box.svg
+docs_url: https://developer.box.com/guides/api-calls/permissions-and-errors/scopes/
+authorization_endpoint: https://account.box.com/api/oauth2/authorize
+token_endpoint: https://api.box.com/oauth2/token
+# /2.0/users/me returns the user's `login` (email) + id, which the account resolver picks up.
+userinfo_endpoint: https://api.box.com/2.0/users/me
+scope_delimiter: " "
+# Box 3-legged OAuth issues a refresh token by default (no extra authorize param needed).
+# Effective permissions are also gated by the scopes enabled on the app in the Box dev console;
+# the scopes selected here are sent on the authorize URL to limit the grant.
+default_scopes: [root_readwrite]
+scopes:
+  # Application scopes — grantable via 3-legged OAuth.
+  - { value: root_readonly, description: Read all files and folders, category: Files }
+  - { value: root_readwrite, description: Read and write all files and folders, category: Files, sensitive: true }
+  - { value: manage_managed_users, description: Manage users (logins, passwords, roles), category: Admin, sensitive: true }
+  - { value: manage_groups, description: Create and manage groups and membership, category: Admin, sensitive: true }
+  - { value: manage_webhook, description: Create and manage webhooks, category: Admin }
+  - { value: manage_enterprise_properties, description: View the enterprise event stream and properties, category: Admin, sensitive: true }
+  - { value: manage_data_retention, description: View and create retention policies (Box Governance), category: Admin, sensitive: true }
+  - { value: manage_legal_holds, description: View and create legal holds (Box Governance, on request), category: Admin, sensitive: true }
+  - { value: manage_triggers, description: Get workflows and start manual Box Relay flows, category: Admin }
+  - { value: enterprise_content, description: Global Content Manager — access content you do not own (on request), category: Admin, sensitive: true }
+  - { value: sign_requests.readwrite, description: Create, cancel and resend Box Sign requests, category: Sign }
+  - { value: ai.readwrite, description: Use the Box AI API, category: AI }
+  # Downscoping scopes — for token-exchange / Box UI Elements (not the standard authorize grant).
+  - { value: item_preview, description: Preview a file, category: Downscoping }
+  - { value: item_download, description: Download files or a folder's content, category: Downscoping }
+  - { value: item_upload, description: Upload items, category: Downscoping }
+  - { value: item_rename, description: Rename files and folders, category: Downscoping }
+  - { value: item_share, description: Share an item, category: Downscoping }
+  - { value: item_delete, description: Delete files and folders, category: Downscoping, sensitive: true }
+  - { value: annotation_edit, description: Edit and delete annotations, category: Downscoping }
+  - { value: annotation_view_all, description: View annotations by all users, category: Downscoping }
+  - { value: annotation_view_self, description: View only your own annotations, category: Downscoping }
+  - { value: base_explorer, description: Content Explorer UI element access, category: Downscoping }
+  - { value: base_picker, description: Content Picker UI element access, category: Downscoping }
+  - { value: base_preview, description: Preview-only UI element access, category: Downscoping }
+  - { value: base_sidebar, description: Sidebar UI element access, category: Downscoping }
+  - { value: base_upload, description: Uploader UI element access, category: Downscoping }

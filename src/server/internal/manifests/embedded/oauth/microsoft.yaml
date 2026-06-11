@@ -1,0 +1,54 @@
+id: 233d6bab-3a4f-4c48-84b4-2e38be309235
+key: microsoft
+name: Microsoft
+icon_url: https://s3.donkeywork.dev/provider-icons/microsoft.svg
+docs_url: https://learn.microsoft.com/graph/permissions-reference
+authorization_endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/authorize
+token_endpoint: https://login.microsoftonline.com/common/oauth2/v2.0/token
+userinfo_endpoint: https://graph.microsoft.com/oidc/userinfo
+scope_delimiter: " "
+default_scopes: [openid, email, profile, offline_access, User.Read]
+scopes:
+  # Identity
+  - { value: openid, description: Sign you in, category: Identity }
+  - { value: email, description: Your email address, category: Identity }
+  - { value: profile, description: Basic profile info, category: Identity }
+  - { value: offline_access, description: Stay signed in (issue refresh tokens), category: Identity }
+  - { value: User.Read, description: Read your profile, category: Identity }
+  - { value: User.ReadWrite, description: Read and update your profile, category: Identity }
+  - { value: User.ReadBasic.All, description: Read all users' basic profiles, category: Identity, sensitive: true }
+  - { value: People.Read, description: Read your relevant people list, category: Identity }
+  - { value: Presence.Read, description: Read your presence (Teams status), category: Identity }
+  # Mail (Outlook)
+  - { value: Mail.Read, description: Read your mail, category: Mail, sensitive: true }
+  - { value: Mail.ReadWrite, description: Read and write your mail, category: Mail, sensitive: true }
+  - { value: Mail.Send, description: Send mail as you, category: Mail, sensitive: true }
+  - { value: MailboxSettings.ReadWrite, description: Read and write your mailbox settings, category: Mail }
+  # Calendar
+  - { value: Calendars.Read, description: Read your calendars, category: Calendar }
+  - { value: Calendars.ReadWrite, description: Manage your calendars, category: Calendar, sensitive: true }
+  # Contacts
+  - { value: Contacts.Read, description: Read your contacts, category: Contacts }
+  - { value: Contacts.ReadWrite, description: Manage your contacts, category: Contacts, sensitive: true }
+  # Files (OneDrive / SharePoint)
+  - { value: Files.Read, description: Read your files, category: Files }
+  - { value: Files.ReadWrite, description: Read and write your files, category: Files, sensitive: true }
+  - { value: Files.Read.All, description: Read all files you can access, category: Files, sensitive: true }
+  - { value: Files.ReadWrite.All, description: Read and write all files you can access, category: Files, sensitive: true }
+  - { value: Sites.Read.All, description: Read SharePoint sites you can access, category: Files, sensitive: true }
+  - { value: Sites.ReadWrite.All, description: Read and write SharePoint sites you can access, category: Files, sensitive: true }
+  # Tasks (To Do / Planner)
+  - { value: Tasks.Read, description: Read your tasks, category: Tasks }
+  - { value: Tasks.ReadWrite, description: Manage your tasks, category: Tasks }
+  # OneNote
+  - { value: Notes.Read, description: Read your OneNote notebooks, category: OneNote }
+  - { value: Notes.ReadWrite, description: Read and write your OneNote notebooks, category: OneNote }
+  # Teams
+  - { value: Chat.Read, description: Read your Teams chat messages, category: Teams, sensitive: true }
+  - { value: Chat.ReadWrite, description: Read and send your Teams chat messages, category: Teams, sensitive: true }
+  - { value: ChannelMessage.Send, description: Send Teams channel messages as you, category: Teams, sensitive: true }
+  - { value: Team.ReadBasic.All, description: Read the names and descriptions of teams, category: Teams }
+  # Directory (admin)
+  - { value: Group.Read.All, description: Read all groups you can access, category: Directory, sensitive: true }
+  - { value: Group.ReadWrite.All, description: Read and write all groups you can access, category: Directory, sensitive: true }
+  - { value: Directory.Read.All, description: Read directory data, category: Directory, sensitive: true }

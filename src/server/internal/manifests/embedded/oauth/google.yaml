@@ -1,0 +1,53 @@
+id: b8cca12c-7524-4523-9190-81409cf25682
+key: google
+name: Google
+icon_url: https://s3.donkeywork.dev/provider-icons/google-color.svg
+docs_url: https://developers.google.com/identity/protocols/oauth2/scopes
+authorization_endpoint: https://accounts.google.com/o/oauth2/v2/auth
+token_endpoint: https://oauth2.googleapis.com/token
+userinfo_endpoint: https://www.googleapis.com/oauth2/v3/userinfo
+scope_delimiter: " "
+default_scopes: [openid, email, profile]
+# Required for Google to return a refresh_token (and to re-prompt so one is always issued).
+authorize_params:
+  access_type: offline
+  prompt: consent
+scopes:
+  # Identity
+  - { value: openid, description: Sign you in, category: Identity }
+  - { value: email, description: Your email address, category: Identity }
+  - { value: profile, description: Basic profile info, category: Identity }
+  # Gmail
+  - { value: "https://www.googleapis.com/auth/gmail.readonly", description: Read your Gmail, category: Gmail, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/gmail.send", description: Send email as you, category: Gmail, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/gmail.compose", description: Create and send drafts, category: Gmail, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/gmail.modify", description: Read, write and manage mail (no permanent delete), category: Gmail, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/gmail.labels", description: Manage Gmail labels, category: Gmail }
+  - { value: "https://mail.google.com/", description: Full Gmail access (incl. permanent delete), category: Gmail, sensitive: true }
+  # Drive
+  - { value: "https://www.googleapis.com/auth/drive.file", description: Access only files this app opens or creates, category: Drive }
+  - { value: "https://www.googleapis.com/auth/drive.readonly", description: Read all your Drive files, category: Drive, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/drive", description: Full access to all your Drive files, category: Drive, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/drive.metadata.readonly", description: Read Drive file metadata, category: Drive }
+  - { value: "https://www.googleapis.com/auth/drive.appdata", description: Access this app's hidden Drive data folder, category: Drive }
+  # Docs / Sheets / Slides
+  - { value: "https://www.googleapis.com/auth/documents", description: Manage your Google Docs, category: Docs }
+  - { value: "https://www.googleapis.com/auth/documents.readonly", description: Read your Google Docs, category: Docs }
+  - { value: "https://www.googleapis.com/auth/spreadsheets", description: Manage your Google Sheets, category: Sheets }
+  - { value: "https://www.googleapis.com/auth/spreadsheets.readonly", description: Read your Google Sheets, category: Sheets }
+  - { value: "https://www.googleapis.com/auth/presentations", description: Manage your Google Slides, category: Slides }
+  - { value: "https://www.googleapis.com/auth/presentations.readonly", description: Read your Google Slides, category: Slides }
+  # Calendar
+  - { value: "https://www.googleapis.com/auth/calendar", description: Manage your calendars, category: Calendar, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/calendar.readonly", description: Read your calendars, category: Calendar }
+  - { value: "https://www.googleapis.com/auth/calendar.events", description: Manage events on your calendars, category: Calendar }
+  # Contacts
+  - { value: "https://www.googleapis.com/auth/contacts", description: Manage your contacts, category: Contacts, sensitive: true }
+  - { value: "https://www.googleapis.com/auth/contacts.readonly", description: Read your contacts, category: Contacts }
+  - { value: "https://www.googleapis.com/auth/directory.readonly", description: Read your organization's directory, category: Contacts, sensitive: true }
+  # Tasks
+  - { value: "https://www.googleapis.com/auth/tasks", description: Manage your tasks, category: Tasks }
+  - { value: "https://www.googleapis.com/auth/tasks.readonly", description: Read your tasks, category: Tasks }
+  # Forms
+  - { value: "https://www.googleapis.com/auth/forms.body", description: Create and manage your Google Forms, category: Forms }
+  - { value: "https://www.googleapis.com/auth/forms.responses.readonly", description: Read your Google Forms responses, category: Forms }

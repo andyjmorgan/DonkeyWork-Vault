@@ -1,0 +1,18 @@
+id: 0f22f7b0-745a-491a-a0db-5091e55c45a7
+key: github
+name: GitHub
+icon_url: https://s3.donkeywork.dev/provider-icons/github.svg
+docs_url: https://docs.github.com/apps/oauth-apps/building-oauth-apps/scopes-for-oauth-apps
+authorization_endpoint: https://github.com/login/oauth/authorize
+token_endpoint: https://github.com/login/oauth/access_token
+userinfo_endpoint: https://api.github.com/user
+scope_delimiter: " "
+default_scopes: [read:user, user:email]
+scopes:
+  - { value: read:user, description: Read your profile, category: Profile }
+  - { value: user:email, description: Read your email addresses, category: Profile }
+  - { value: public_repo, description: Access public repositories, category: Repositories }
+  - { value: repo, description: Full control of private repositories, category: Repositories, sensitive: true }
+  - { value: read:org, description: Read org and team membership, category: Org }
+  - { value: gist, description: Create and edit gists, category: Gist }
+  - { value: workflow, description: Update GitHub Actions workflows, category: Actions, sensitive: true }
