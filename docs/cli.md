@@ -36,10 +36,22 @@ Set `VAULT_NO_UPDATE_CHECK=1` to disable passive update notices.
 
 ## Login
 
-Create a `dwv_...` access key in the web app under **Profile**, then store it locally:
+Sign in once per vault host; the CLI stores the credential and uses it for every command:
 
 ```bash
 dwvault auth login
+```
+
+In an interactive terminal this shows a selector with two methods:
+
+1. **OAuth device login** (default, recommended). The CLI prints an activation URL from the vault's identity provider. Open it in any browser, approve the request, and the CLI stores the resulting access and refresh tokens. Tokens are refreshed automatically on use.
+2. **Paste API key**. Paste a `dwv_...` access key created in the web app under **Profile**. Use this for automation or anywhere browser login is impractical.
+
+Scripts and non-interactive shells must pick a method explicitly:
+
+```bash
+dwvault auth login --oauth     # OAuth device login, no selector
+dwvault auth login --api-key   # read a dwv_... key from the prompt or stdin
 ```
 
 For a self-hosted vault:
@@ -48,15 +60,21 @@ For a self-hosted vault:
 dwvault --addr https://vault.example.com auth login
 ```
 
-The CLI validates the key against `/api/v1/me` before saving it. It stores the secret in the OS keyring when available, or in a local `0600` fallback file.
+The CLI validates the credential before saving it. It stores the secret in the OS keyring when available, or in a local `0600` fallback file.
 
-Check status:
+Notes:
+
+- Already logged in to a host? Pass `--force` to replace the stored credential.
+- If `VAULT_API_KEY` is set, it takes precedence over any stored login; `auth login` validates it but never stores it.
+- OAuth device logins act with `vault:readwrite`; the audit scope is web-only. Mint a scoped access key instead when a caller should have narrower permissions.
+
+Check status (shows the host, auth method, credential source, and account):
 
 ```bash
 dwvault auth status
 ```
 
-Forget a stored key:
+Forget the stored credential:
 
 ```bash
 dwvault auth logout

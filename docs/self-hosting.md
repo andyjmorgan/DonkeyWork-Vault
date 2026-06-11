@@ -12,7 +12,7 @@ The container listens on port `8080` and exposes health at:
 
 - A Postgres database.
 - A public HTTPS URL for the vault.
-- An OIDC identity provider for web app login, such as Keycloak, Entra ID, Auth0, Okta, Cognito, Authentik, or Zitadel.
+- An OIDC identity provider for web app and CLI login, such as Keycloak, Entra ID, Auth0, Okta, Cognito, Authentik, or Zitadel.
 - A 32-byte key-encryption key for vault encryption.
 
 ## Build the Container
@@ -82,6 +82,7 @@ services:
       VAULT_OIDC_AUTHORITY: https://idp.example.com/realms/vault
       VAULT_OIDC_AUDIENCE: donkeywork-vault
       VAULT_OIDC_WEB_CLIENT_ID: donkeywork-vault
+      VAULT_OIDC_CLI_CLIENT_ID: donkeywork-vault-cli
       VAULT_OIDC_WEB_SCOPES: openid profile email
 
 volumes:
@@ -106,7 +107,18 @@ Register this post-logout redirect URL if your IdP requires one:
 https://vault.example.com/
 ```
 
-The web app uses Authorization Code with PKCE and requests `Oidc:Scopes`.
+The web app uses Authorization Code with PKCE and requests `VAULT_OIDC_WEB_SCOPES`.
+
+## CLI Device-Login Client
+
+The `dwvault` CLI signs in with the OAuth 2.0 Device Authorization Grant (with PKCE S256). Create a second public client in your IdP for it:
+
+1. Create a public client whose id matches `VAULT_OIDC_CLI_CLIENT_ID` (default `donkeywork-vault-cli`).
+2. Enable the Device Authorization Grant on the client.
+3. Allow and request the `offline_access` scope so refresh tokens survive long-running CLI use.
+4. Make sure CLI access tokens carry the vault's audience. In Keycloak, add an audience mapper or client scope for the vault client.
+
+No redirect URI is needed; the device flow does not use one. The vault advertises the client id and scopes to the CLI at login time, so no CLI-side configuration is required.
 
 ## OAuth App Callback URLs
 
