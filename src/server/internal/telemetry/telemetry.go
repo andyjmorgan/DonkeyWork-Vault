@@ -13,6 +13,7 @@ import (
 	"errors"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"go.opentelemetry.io/contrib/bridges/otelslog"
@@ -86,9 +87,13 @@ func Setup(ctx context.Context, cfg Config) (*Providers, error) {
 		return &Providers{Logger: stderr, shutdown: func(context.Context) error { return nil }}, nil
 	}
 
+	// OTEL_EXPORTER_OTLP_ENDPOINT is conventionally a full URL (http://host:4318), but the
+	// WithEndpoint options want bare host:port — accept both, deriving insecure from the scheme.
+	endpoint, insecure := normalizeEndpoint(cfg.OTLPEndpoint, cfg.Insecure)
+
 	// Traces.
-	traceOpts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(cfg.OTLPEndpoint)}
-	if cfg.Insecure {
+	traceOpts := []otlptracehttp.Option{otlptracehttp.WithEndpoint(endpoint)}
+	if insecure {
 		traceOpts = append(traceOpts, otlptracehttp.WithInsecure())
 	}
 	traceExp, err := otlptracehttp.New(ctx, traceOpts...)
@@ -103,8 +108,8 @@ func Setup(ctx context.Context, cfg Config) (*Providers, error) {
 	shutdowns = append(shutdowns, tp.Shutdown)
 
 	// Metrics.
-	metricOpts := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(cfg.OTLPEndpoint)}
-	if cfg.Insecure {
+	metricOpts := []otlpmetrichttp.Option{otlpmetrichttp.WithEndpoint(endpoint)}
+	if insecure {
 		metricOpts = append(metricOpts, otlpmetrichttp.WithInsecure())
 	}
 	metricExp, err := otlpmetrichttp.New(ctx, metricOpts...)
@@ -119,8 +124,8 @@ func Setup(ctx context.Context, cfg Config) (*Providers, error) {
 	shutdowns = append(shutdowns, mp.Shutdown)
 
 	// Logs.
-	logOpts := []otlploghttp.Option{otlploghttp.WithEndpoint(cfg.OTLPEndpoint)}
-	if cfg.Insecure {
+	logOpts := []otlploghttp.Option{otlploghttp.WithEndpoint(endpoint)}
+	if insecure {
 		logOpts = append(logOpts, otlploghttp.WithInsecure())
 	}
 	logExp, err := otlploghttp.New(ctx, logOpts...)
@@ -149,4 +154,17 @@ func Setup(ctx context.Context, cfg Config) (*Providers, error) {
 			return errors.Join(errs...)
 		},
 	}, nil
+}
+
+// normalizeEndpoint accepts either bare host:port or a full http(s):// URL for the OTLP endpoint,
+// returning host:port plus whether transport should be insecure (forced by an http:// scheme).
+func normalizeEndpoint(endpoint string, insecure bool) (string, bool) {
+	switch {
+	case strings.HasPrefix(endpoint, "http://"):
+		return strings.TrimSuffix(strings.TrimPrefix(endpoint, "http://"), "/"), true
+	case strings.HasPrefix(endpoint, "https://"):
+		return strings.TrimSuffix(strings.TrimPrefix(endpoint, "https://"), "/"), insecure
+	default:
+		return endpoint, insecure
+	}
 }

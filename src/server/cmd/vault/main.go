@@ -145,15 +145,16 @@ func run() error {
 		}
 	}()
 
+	var runErr error
 	select {
 	case <-rootCtx.Done():
 		logger.Info("shutdown signal received")
-	case err := <-serveErr:
-		cancelWorkers()
-		return err
+	case runErr = <-serveErr:
+		logger.Error("http server failed", "err", runErr)
 	}
 
-	// Graceful shutdown: stop the server, then drain audit (close channel, wait for the writer).
+	// Graceful shutdown (both paths): stop the server, then drain audit (close channel, wait for
+	// the writer) so queued events are flushed even when the listener died.
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_ = httpSrv.Shutdown(shutdownCtx)
@@ -161,7 +162,7 @@ func run() error {
 	auditLog.Complete()
 	cancelWorkers()
 	wg.Wait()
-	return nil
+	return runErr
 }
 
 // withStaticFallback serves the SPA from webRoot for non-API routes, falling back to index.html so

@@ -2,7 +2,11 @@ package httpapi
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
+	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
 
@@ -69,22 +73,30 @@ type Deps struct {
 // Server holds the transport dependencies and renders the HTTP handler.
 type Server struct {
 	deps        Deps
-	verifier    *oidc.IDTokenVerifier
+	verifier    atomic.Pointer[oidc.IDTokenVerifier]
 	authOn      bool
 	appConfig   appConfigResponse
 	webClientID string
 	cliClientID string
 	logger      *slog.Logger
+	rate        *ipRateLimiter
+}
+
+// jwtVerifier returns the OIDC verifier, or nil while IdP discovery has not yet succeeded.
+func (s *Server) jwtVerifier() *oidc.IDTokenVerifier {
+	return s.verifier.Load()
 }
 
 // NewServer builds the server. When OIDC is configured it discovers the provider and builds a JWT
-// verifier; failure to reach the IdP at startup is fatal only when auth is required.
+// verifier. IdP discovery failure at startup is NOT fatal: access-key callers don't need the IdP,
+// so the server starts and keeps retrying discovery in the background; JWT requests get 503 until
+// it succeeds. Config errors (non-HTTPS authority with RequireHTTPS) fail fast.
 func NewServer(ctx context.Context, deps Deps) (*Server, error) {
 	logger := deps.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
-	s := &Server{deps: deps, logger: logger}
+	s := &Server{deps: deps, logger: logger, rate: newIPRateLimiter(rateLimitPerWindow, rateLimitWindow)}
 
 	s.webClientID = deps.OIDC.effectiveWebClientID()
 	s.cliClientID = deps.OIDC.effectiveCliClientID()
@@ -100,23 +112,62 @@ func NewServer(ctx context.Context, deps Deps) (*Server, error) {
 	}
 
 	if s.authOn {
-		issuerCtx := ctx
-		// Allow a separate in-cluster metadata URL while still validating the public issuer.
-		if deps.OIDC.InternalAuthority != "" && deps.OIDC.InternalAuthority != deps.OIDC.Authority {
-			issuerCtx = oidc.InsecureIssuerURLContext(ctx, deps.OIDC.Authority)
+		// Parity with the .NET RequireHttpsMetadata flag: refuse to fetch IdP metadata over
+		// plain http (a forged discovery/JWKS document would mint arbitrary identities).
+		if deps.OIDC.RequireHTTPS {
+			for _, u := range []string{deps.OIDC.Authority, deps.OIDC.InternalAuthority} {
+				if u != "" && !strings.HasPrefix(strings.ToLower(u), "https://") {
+					return nil, fmt.Errorf("OIDC authority %q is not https and VAULT_OIDC_REQUIRE_HTTPS is true", u)
+				}
+			}
 		}
-		authority := deps.OIDC.Authority
-		if deps.OIDC.InternalAuthority != "" {
-			authority = deps.OIDC.InternalAuthority
+		if err := s.initVerifier(ctx); err != nil {
+			s.logger.Warn("oidc discovery failed; JWT auth unavailable until the IdP is reachable (access keys unaffected)", "err", err)
+			go s.retryVerifier(ctx)
 		}
-		provider, err := oidc.NewProvider(issuerCtx, authority)
-		if err != nil {
-			return nil, err
-		}
-		// Audience varies by IdP (often in azp), so skip the client-id check — the issuer + signature
-		// are the trust anchors, exactly as the C# config did (ValidateAudience = false).
-		s.verifier = provider.Verifier(&oidc.Config{SkipClientIDCheck: true})
 	}
 
 	return s, nil
+}
+
+// initVerifier performs OIDC discovery once and installs the JWT verifier.
+func (s *Server) initVerifier(ctx context.Context) error {
+	issuerCtx := ctx
+	// Allow a separate in-cluster metadata URL while still validating the public issuer.
+	if s.deps.OIDC.InternalAuthority != "" && s.deps.OIDC.InternalAuthority != s.deps.OIDC.Authority {
+		issuerCtx = oidc.InsecureIssuerURLContext(ctx, s.deps.OIDC.Authority)
+	}
+	authority := s.deps.OIDC.Authority
+	if s.deps.OIDC.InternalAuthority != "" {
+		authority = s.deps.OIDC.InternalAuthority
+	}
+	provider, err := oidc.NewProvider(issuerCtx, authority)
+	if err != nil {
+		return err
+	}
+	// Audience varies by IdP (often in azp), so skip the client-id check — the issuer + signature
+	// are the trust anchors, exactly as the C# config did (ValidateAudience = false).
+	s.verifier.Store(provider.Verifier(&oidc.Config{SkipClientIDCheck: true}))
+	return nil
+}
+
+// retryVerifier keeps attempting IdP discovery with capped backoff until it succeeds or ctx ends.
+func (s *Server) retryVerifier(ctx context.Context) {
+	backoff := 5 * time.Second
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		if err := s.initVerifier(ctx); err != nil {
+			s.logger.Warn("oidc discovery retry failed", "err", err)
+			if backoff < 2*time.Minute {
+				backoff *= 2
+			}
+			continue
+		}
+		s.logger.Info("oidc discovery succeeded; JWT auth enabled")
+		return
+	}
 }

@@ -24,6 +24,7 @@ func (s *Server) router() chi.Router {
 	})
 
 	r.Group(func(r chi.Router) {
+		r.Use(s.limits)
 		r.Use(s.baseContext)
 
 		// Anonymous endpoints.

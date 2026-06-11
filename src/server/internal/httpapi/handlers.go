@@ -371,12 +371,18 @@ func (s *Server) handleAudit(w http.ResponseWriter, r *http.Request) {
 	if u, ok := uuidParam(q.Get("userId")); ok {
 		query.UserID = &u
 	}
-	if since := parseTime(q.Get("since")); since != nil {
-		query.Since = since
+	since, ok := parseTimeParam(q.Get("since"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid 'since' timestamp (RFC3339 expected).")
+		return
 	}
-	if until := parseTime(q.Get("until")); until != nil {
-		query.Until = until
+	query.Since = since
+	until, ok := parseTimeParam(q.Get("until"))
+	if !ok {
+		writeError(w, http.StatusBadRequest, "invalid 'until' timestamp (RFC3339 expected).")
+		return
 	}
+	query.Until = until
 
 	result, err := s.deps.AuditQuery.Query(r.Context(), query)
 	if writeServiceError(w, err) {
@@ -410,14 +416,16 @@ func atoiOr(s string, def int) int {
 	return def
 }
 
-func parseTime(s string) *time.Time {
+// parseTimeParam parses an optional RFC3339 query value: ("", true) when absent, (nil, false) on
+// garbage — a malformed filter must be a 400, not silently unfiltered results.
+func parseTimeParam(s string) (*time.Time, bool) {
 	if s == "" {
-		return nil
+		return nil, true
 	}
 	if t, err := time.Parse(time.RFC3339, s); err == nil {
-		return &t
+		return &t, true
 	}
-	return nil
+	return nil, false
 }
 
 // identity carried for the /me endpoint (JWT callers only).

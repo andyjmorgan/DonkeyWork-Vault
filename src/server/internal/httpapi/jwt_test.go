@@ -66,7 +66,7 @@ func newJWTHarness(t *testing.T, webClient, cliClient string) *harness {
 		IPResolver: audit.NewForwardedIPResolver(nil), PublicBaseURL: "https://v",
 	}
 	srv, _ := NewServer(context.Background(), deps)
-	srv.verifier = oidc.NewVerifier(testIssuer, fakeKeySet{}, &oidc.Config{SkipClientIDCheck: true})
+	srv.verifier.Store(oidc.NewVerifier(testIssuer, fakeKeySet{}, &oidc.Config{SkipClientIDCheck: true}))
 	srv.authOn = true
 	srv.webClientID = webClient
 	srv.cliClientID = cliClient

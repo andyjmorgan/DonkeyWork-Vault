@@ -19,9 +19,25 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// migrateLockKey is an arbitrary advisory-lock key serialising migration runs across replicas.
+const migrateLockKey = 0x76_61_75_6c_74 // "vault"
+
 // Migrate applies all embedded migrations that have not yet been recorded. It is safe to run on
-// every startup and against a database the .NET service already populated.
+// every startup and against a database the .NET service already populated. A session advisory
+// lock serialises concurrent replicas (the loser waits, then sees the versions as applied).
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	lockConn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire migration connection: %w", err)
+	}
+	defer lockConn.Release()
+	if _, err := lockConn.Exec(ctx, `SELECT pg_advisory_lock($1)`, migrateLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer func() {
+		_, _ = lockConn.Exec(context.WithoutCancel(ctx), `SELECT pg_advisory_unlock($1)`, migrateLockKey)
+	}()
+
 	if _, err := pool.Exec(ctx, `CREATE SCHEMA IF NOT EXISTS vault`); err != nil {
 		return fmt.Errorf("ensure schema: %w", err)
 	}

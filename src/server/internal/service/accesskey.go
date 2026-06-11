@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"log/slog"
 	"slices"
 	"strings"
 	"time"
@@ -150,8 +151,9 @@ func (s *AccessKeyService) Authenticate(ctx context.Context, secret string) (*Ac
 	if entity == nil || !entity.Enabled {
 		return nil, nil
 	}
+	// last_used_at is best-effort bookkeeping — a failed touch must not reject a valid key.
 	if err := s.store.TouchAccessKeyLastUsed(ctx, entity.ID); err != nil {
-		return nil, err
+		slog.Warn("access key last-used touch failed", "err", err)
 	}
 	return &AccessKeyPrincipal{
 		ID: entity.ID, UserID: entity.UserID, TenantID: entity.TenantID,

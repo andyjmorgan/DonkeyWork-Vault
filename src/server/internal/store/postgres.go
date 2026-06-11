@@ -428,10 +428,11 @@ func (p *Postgres) DeleteManifestCascade(ctx context.Context, userID uuid.UUID, 
 	}
 
 	if kind == "oauth" {
-		if _, err := tx.Exec(ctx, `DELETE FROM vault.oauth_provider_configs WHERE provider_id=$1`, providerID); err != nil {
+		// provider_id is minted per user, but scope by user_id anyway — no unscoped writes.
+		if _, err := tx.Exec(ctx, `DELETE FROM vault.oauth_provider_configs WHERE provider_id=$1 AND user_id=$2`, providerID, userID); err != nil {
 			return false, err
 		}
-		if _, err := tx.Exec(ctx, `DELETE FROM vault.oauth_tokens WHERE provider_id=$1`, providerID); err != nil {
+		if _, err := tx.Exec(ctx, `DELETE FROM vault.oauth_tokens WHERE provider_id=$1 AND user_id=$2`, providerID, userID); err != nil {
 			return false, err
 		}
 	}

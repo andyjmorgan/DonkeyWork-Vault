@@ -91,14 +91,22 @@ func TestAuditTimeFilters(t *testing.T) {
 	}
 }
 
-func TestParseTimeHelper(t *testing.T) {
-	if parseTime("") != nil {
-		t.Fatal("empty")
+func TestParseTimeParamHelper(t *testing.T) {
+	if v, ok := parseTimeParam(""); v != nil || !ok {
+		t.Fatal("empty should be (nil, true)")
 	}
-	if parseTime("garbage") != nil {
-		t.Fatal("garbage")
+	if _, ok := parseTimeParam("garbage"); ok {
+		t.Fatal("garbage should be rejected")
 	}
-	if parseTime("2020-01-02T03:04:05Z") == nil {
-		t.Fatal("valid")
+	if v, ok := parseTimeParam("2020-01-02T03:04:05Z"); v == nil || !ok {
+		t.Fatal("valid timestamp should parse")
+	}
+}
+
+func TestAuditRejectsMalformedTimeFilter(t *testing.T) {
+	h := newHarness(t)
+	rec := h.do(t, "GET", "/api/v1/audit?since=2026-06-01", nil, true)
+	if rec.Code != 400 {
+		t.Fatalf("malformed since: want 400, got %d body=%s", rec.Code, rec.Body)
 	}
 }

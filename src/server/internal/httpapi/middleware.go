@@ -62,15 +62,18 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		if s.verifier != nil {
-			if raw := bearerToken(r); raw != "" {
-				ctx2, ok := s.authenticateJWT(ctx, w, raw)
-				if !ok {
-					return
-				}
-				next.ServeHTTP(w, r.WithContext(ctx2))
+		if raw := bearerToken(r); raw != "" && s.authOn {
+			if s.jwtVerifier() == nil {
+				// IdP discovery hasn't succeeded yet (it retries in the background).
+				writeError(w, http.StatusServiceUnavailable, "identity provider unavailable; try again shortly.")
 				return
 			}
+			ctx2, ok := s.authenticateJWT(ctx, w, raw)
+			if !ok {
+				return
+			}
+			next.ServeHTTP(w, r.WithContext(ctx2))
+			return
 		}
 
 		s.emitAuthFailed(ctx, "no credential presented.")
@@ -79,7 +82,7 @@ func (s *Server) authenticate(next http.Handler) http.Handler {
 }
 
 func (s *Server) authenticateJWT(ctx context.Context, w http.ResponseWriter, raw string) (context.Context, bool) {
-	idToken, err := s.verifier.Verify(ctx, raw)
+	idToken, err := s.jwtVerifier().Verify(ctx, raw)
 	if err != nil {
 		s.emitAuthFailed(ctx, "invalid bearer token.")
 		writeError(w, http.StatusUnauthorized, "invalid bearer token.")

@@ -533,12 +533,12 @@ func (m *Mem) DeleteManifestCascade(_ context.Context, userID uuid.UUID, kind, k
 	}
 	if kind == "oauth" {
 		for id, c := range m.configs {
-			if c.ProviderID == target.ProviderID {
+			if c.ProviderID == target.ProviderID && c.UserID == userID {
 				delete(m.configs, id)
 			}
 		}
 		for id, t := range m.tokens {
-			if t.ProviderID == target.ProviderID {
+			if t.ProviderID == target.ProviderID && t.UserID == userID {
 				delete(m.tokens, id)
 			}
 		}

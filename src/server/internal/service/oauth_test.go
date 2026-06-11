@@ -335,3 +335,24 @@ func TestCompleteNoUserinfoEndpoint(t *testing.T) {
 		t.Fatalf("expected default account: %+v %v", done, err)
 	}
 }
+
+func TestCompleteWithoutRefreshTokenStoresEmptyCipher(t *testing.T) {
+	f := newOAuthFixture(t)
+	// Providers like GitHub OAuth apps return no refresh_token at all.
+	f.tokenResp = `{"access_token":"access-1","expires_in":3600,"scope":"openid"}`
+	res, err := f.flow.Begin(f.ctx, "acme", []string{"openid"}, "https://vault.example")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.flow.Complete(context.Background(), "auth-code", res.State); err != nil {
+		t.Fatalf("complete: %v", err)
+	}
+	rows, err := f.ms.ListOAuthTokens(f.ctx, contracts.CallerFrom(f.ctx).UserID)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("tokens %d err=%v", len(rows), err)
+	}
+	// The column is NOT NULL in Postgres: a nil slice would be encoded as SQL NULL and fail.
+	if rows[0].RefreshTokenCipher == nil || len(rows[0].RefreshTokenCipher) != 0 {
+		t.Fatalf("refresh cipher must be non-nil empty, got %v", rows[0].RefreshTokenCipher)
+	}
+}

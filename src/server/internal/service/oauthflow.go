@@ -258,7 +258,9 @@ func (s *OAuthFlowService) storeToken(ctx context.Context, stateRow *store.OAuth
 	if err != nil {
 		return err
 	}
-	var refreshBlob []byte
+	// Providers without refresh tokens (e.g. GitHub OAuth apps) store an empty — not NULL —
+	// cipher: the column is NOT NULL and the .NET service wrote zero-length bytea.
+	refreshBlob := []byte{}
 	if parsed.RefreshToken != "" {
 		if refreshBlob, err = s.cipher.EncryptString(parsed.RefreshToken); err != nil {
 			return err
