@@ -155,7 +155,7 @@ dwvault credentials create <name> --secret <v> \
         [--username <u>]                 # --username ⇒ HTTP Basic (secret is the password)
 
 # oauth — live access tokens (auto-refreshed)
-dwvault oauth list                       # connected providers (provider/account/expiry/scopes)
+dwvault oauth list                       # connected providers (provider/account/status/scopes)
 dwvault oauth get <provider> [--account <a>]   # a valid access token to stdout
 
 # keys — scoped access keys for scripts/agents

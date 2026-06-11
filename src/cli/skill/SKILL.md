@@ -69,7 +69,7 @@ dwvault credentials create <name> --secret <v> --kind <kind> [--description ..] 
                                        [--docs ..] [--header ..] [--prefix ..] [--username ..]
 dwvault credentials delete <name>        # remove a stored credential
 
-dwvault oauth list                       # connected OAuth providers (provider/account/expiry/scopes)
+dwvault oauth list                       # connected OAuth providers (provider/account/status/scopes)
 dwvault oauth get <provider> [--account <a>]   # a valid access token to stdout (auto-refreshed)
 
 dwvault keys list                        # access keys (scoped auth credentials)
