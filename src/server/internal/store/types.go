@@ -97,16 +97,16 @@ type OAuthToken struct {
 
 // ProviderManifest is a DB-stored custom OAuth provider manifest (serialized as JSON).
 type ProviderManifest struct {
-	ID          uuid.UUID
-	UserID      uuid.UUID
-	TenantID    uuid.UUID
-	Kind        string
-	Key         string
-	ProviderID  uuid.UUID
-	ParentID    uuid.UUID
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	TenantID     uuid.UUID
+	Kind         string
+	Key          string
+	ProviderID   uuid.UUID
+	ParentID     uuid.UUID
 	DocumentJSON string
-	CreatedAt   time.Time
-	UpdatedAt   *time.Time
+	CreatedAt    time.Time
+	UpdatedAt    *time.Time
 }
 
 // AuditEntry is one append-only audit row. It never carries secret material.
@@ -133,13 +133,13 @@ type AuditEntry struct {
 
 // AuditFilter is the parameter set for an audit query (already clamped by the caller).
 type AuditFilter struct {
-	UserID    uuid.UUID
-	TenantID  uuid.UUID
-	Limit     int
-	Offset    int
-	EventType *int
-	Outcome   *int
+	UserID       uuid.UUID
+	TenantID     uuid.UUID
+	Limit        int
+	Offset       int
+	EventType    *int
+	Outcome      *int
 	FilterUserID *uuid.UUID
-	Since     *time.Time
-	Until     *time.Time
+	Since        *time.Time
+	Until        *time.Time
 }

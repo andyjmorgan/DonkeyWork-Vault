@@ -15,13 +15,13 @@ const MaxLimit = 200
 
 // Query is the caller-facing filter for reading the trail. Paging is clamped by the service.
 type Query struct {
-	Limit     int
-	Offset    int
-	Type      *EventType
-	Outcome   *Outcome
-	UserID    *uuid.UUID
-	Since     *time.Time
-	Until     *time.Time
+	Limit   int
+	Offset  int
+	Type    *EventType
+	Outcome *Outcome
+	UserID  *uuid.UUID
+	Since   *time.Time
+	Until   *time.Time
 }
 
 // Result is a page of audit rows plus the total matching count.

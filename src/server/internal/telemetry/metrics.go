@@ -12,11 +12,11 @@ import (
 // so they record into whatever provider Setup installed (real OTLP or no-op). None of these
 // instruments carry secret material — only low-cardinality dimensions like outcome and target kind.
 type Metrics struct {
-	CredentialAccessed metric.Int64Counter   // credential/token reads, dim: target_kind, outcome
-	TokenRefreshed     metric.Int64Counter   // oauth refresh attempts, dim: outcome
-	AuthAttempts       metric.Int64Counter   // auth outcomes, dim: scheme, outcome
-	AuditDropped       metric.Int64Counter   // audit events dropped under back-pressure
-	AuditWritten       metric.Int64Counter   // audit events persisted
+	CredentialAccessed metric.Int64Counter     // credential/token reads, dim: target_kind, outcome
+	TokenRefreshed     metric.Int64Counter     // oauth refresh attempts, dim: outcome
+	AuthAttempts       metric.Int64Counter     // auth outcomes, dim: scheme, outcome
+	AuditDropped       metric.Int64Counter     // audit events dropped under back-pressure
+	AuditWritten       metric.Int64Counter     // audit events persisted
 	ServiceLatency     metric.Float64Histogram // service-method latency in ms, dim: operation
 }
 

@@ -27,10 +27,10 @@ type OAuthConfigSummary struct {
 
 // OAuthConfigService manages per-user OAuth app credentials (client id/secret are envelope-encrypted).
 type OAuthConfigService struct {
-	store     store.Store
-	cipher    crypto.Cipher
-	audit     *audit.Log
-	resolver  *manifests.Resolver
+	store    store.Store
+	cipher   crypto.Cipher
+	audit    *audit.Log
+	resolver *manifests.Resolver
 }
 
 // NewOAuthConfigService builds the service.

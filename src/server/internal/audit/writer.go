@@ -137,4 +137,3 @@ func toEntry(e Event) store.AuditEntry {
 		CreatedAt:       e.CreatedAt,
 	}
 }
-
