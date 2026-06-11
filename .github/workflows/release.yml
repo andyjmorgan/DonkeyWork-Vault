@@ -30,7 +30,19 @@ jobs:
               go build -ldflags "-s -w -X main.version=${GITHUB_REF_NAME}" \
               -o "$GITHUB_WORKSPACE/dist/dwvault-$os-$arch" .
           done
-          ( cd "$GITHUB_WORKSPACE/dist" && sha256sum dwvault-* > SHA256SUMS )
+
+      - name: Sign & notarize macOS binaries
+        uses: ./.github/actions/sign-macos
+        with:
+          dist-dir: dist
+          p12-base64:   ${{ secrets.MACOS_DEVID_P12_BASE64 }}
+          p12-password: ${{ secrets.MACOS_DEVID_P12_PASSWORD }}
+          notary-p8:    ${{ secrets.MACOS_NOTARY_P8 }}
+          issuer-id: 69a6de86-6cb1-47e3-e053-5b8c7c11a4d1
+          key-id: 84826SWSQ2
+
+      - name: Checksums
+        run: ( cd "$GITHUB_WORKSPACE/dist" && sha256sum dwvault-* > SHA256SUMS )
 
       - name: Publish release
         uses: softprops/action-gh-release@v2
