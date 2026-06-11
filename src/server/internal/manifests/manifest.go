@@ -1,7 +1,7 @@
 // Package manifests owns the OAuth provider catalog: the embedded YAML library of templates and the
 // per-user DB-backed resolver. The embedded YAML is a library only — it is never seeded and never
 // resolved against directly; adding a provider copies the whole manifest into a self-contained
-// per-user row with its own stable provider id. This mirrors the C# ManifestResolver exactly.
+// per-user row with its own stable provider id.
 package manifests
 
 import (
@@ -20,9 +20,8 @@ var embeddedFS embed.FS
 
 // ScopeDef is a curated, described OAuth scope for a "pick your access" UI.
 //
-// The yaml tags match the embedded templates (UnderscoredNamingConvention); the json tags are
-// camelCase to match the document_json the .NET service serialized (System.Text.Json Web defaults),
-// so existing rows round-trip through both services unchanged.
+// The yaml tags match the embedded templates (underscored naming); the json tags are camelCase to
+// match the document_json wire form, so existing rows round-trip unchanged.
 type ScopeDef struct {
 	Value       string `json:"value" yaml:"value"`
 	Description string `json:"description" yaml:"description"`
@@ -54,7 +53,7 @@ type Loader struct {
 }
 
 // NewLoader reads and validates the embedded OAuth templates, failing fast on a missing/duplicate id
-// or a missing key/token endpoint (the same invariants the C# loader enforces).
+// or a missing key/token endpoint.
 func NewLoader() (*Loader, error) {
 	byKey := make(map[string]Manifest)
 	byID := make(map[uuid.UUID]Manifest)

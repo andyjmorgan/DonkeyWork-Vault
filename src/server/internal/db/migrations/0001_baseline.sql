@@ -1,14 +1,13 @@
 -- Baseline schema for the Go vault service.
 --
--- This is intentionally idempotent (CREATE ... IF NOT EXISTS): against a database the .NET/EF
--- service already provisioned it is a no-op and every existing row is retained; against a fresh
--- database it creates the full `vault` schema. Column names and types match the EF model snapshot
--- exactly so both services interoperate on the same data.
+-- This is intentionally idempotent (CREATE ... IF NOT EXISTS): against an already-provisioned
+-- database it is a no-op and every existing row is retained; against a fresh database it creates the
+-- full `vault` schema. Column names and types match the existing tables exactly so deployments
+-- upgrade in place on the same data.
 --
--- The two EF/framework-only tables are dropped: they hold nothing the application reads back
--- (__ef_migrations_history is EF bookkeeping; data_protection_keys backed ASP.NET DataProtection,
--- which was registered but never used to protect any persisted column — the real secret encryption
--- is the envelope cipher).
+-- Two legacy framework tables are dropped: they hold nothing the application reads back
+-- (__ef_migrations_history was migration bookkeeping; data_protection_keys backed a key-ring that
+-- never protected any persisted column — the real secret encryption is the envelope cipher).
 
 CREATE SCHEMA IF NOT EXISTS vault;
 

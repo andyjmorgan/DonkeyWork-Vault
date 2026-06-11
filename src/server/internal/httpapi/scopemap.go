@@ -2,8 +2,7 @@ package httpapi
 
 // Vault scope sets granted to interactive OIDC callers, by requesting OAuth client. A web/portal
 // user is the trusted human/admin (full set incl. audit); the CLI (device authorization) gets the
-// operational subset. This mirrors the C# OidcVaultScopeMapper so both backends authorize JWTs
-// identically.
+// operational subset.
 var (
 	webVaultScopes = []string{"vault:read", "vault:readwrite", "vault:audit"}
 	cliVaultScopes = []string{"vault:read", "vault:readwrite"}
@@ -23,7 +22,7 @@ func vaultScopesFor(clientID string, audiences []string, webClientID, cliClientI
 }
 
 // clientIDFromClaims resolves the requesting OAuth client: Keycloak's azp, then client_id, then a
-// sole audience (matching the C# resolution order).
+// sole audience.
 func clientIDFromClaims(azp, clientID string, audiences []string) string {
 	if azp != "" {
 		return azp

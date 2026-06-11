@@ -1,7 +1,7 @@
 name: Codegen Drift
 
-# api/openapi.json is the hand-maintained, authoritative wire contract (originally emitted from
-# the retired .NET service; the Go server's contract test pins its route table to it). This gate
+# api/openapi.json is the hand-maintained, authoritative wire contract (the Go server's contract
+# test pins its route table to it). This gate
 # regenerates the Go + TS clients from the committed document and fails if any generated artifact
 # is stale — so a contract change can never land without its regenerated clients.
 on:

@@ -1,11 +1,11 @@
 // Package store is the persistence layer. It deliberately uses hand-written SQL over pgx rather than
 // an ORM: the schema is small and CRUD-shaped, and for a credential vault the exact SQL that touches
 // the secret and audit tables should be visible and auditable. Every query is scoped to a user id
-// passed explicitly (the Go equivalent of the C# per-user query filter); a handful of methods take
-// an explicit owner id for the anonymous OAuth callback, which has no ambient caller.
+// passed explicitly (a per-user query filter); a handful of methods take an explicit owner id for
+// the anonymous OAuth callback, which has no ambient caller.
 //
-// The structs below map 1:1 to the existing `vault` schema tables that the .NET service created;
-// column names and types are unchanged so the two services can read each other's data.
+// The structs below map 1:1 to the existing `vault` schema tables; column names and types are
+// unchanged so deployments upgrade in place on the same data.
 package store
 
 import (

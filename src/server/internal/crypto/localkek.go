@@ -11,7 +11,7 @@ import (
 
 // LocalKekProvider is the default KEK provider for dev and small self-host deployments. It reads KEK
 // material from configuration and AES-256-GCM-wraps DEKs. A wrapped DEK is laid out as
-// nonce(12) || tag(16) || ciphertext(dek length) — identical to the C# LocalKekProvider.
+// nonce(12) || tag(16) || ciphertext(dek length).
 type LocalKekProvider struct {
 	keks      map[string][]byte
 	activeKek string

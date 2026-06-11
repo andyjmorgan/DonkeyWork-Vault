@@ -6,8 +6,8 @@ import (
 	"time"
 )
 
-// Request-shedding limits, ported from the .NET host: a fixed-window per-client-IP rate limit on
-// /api (rejected with 429 before any auth/DB work) and a request-body size cap (413).
+// Request-shedding limits: a fixed-window per-client-IP rate limit on /api (rejected with 429
+// before any auth/DB work) and a request-body size cap (413).
 
 const (
 	rateLimitPerWindow = 600

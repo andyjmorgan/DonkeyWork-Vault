@@ -38,8 +38,8 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
-// TestBlobLayout asserts the exact on-disk header the .NET service also writes, so a blob produced
-// here is binary-compatible with one produced by EnvelopeCipherService (and vice versa).
+// TestBlobLayout asserts the exact on-disk header of the DWV1 envelope format, so a blob produced
+// here stays binary-compatible with existing stored ciphertext.
 func TestBlobLayout(t *testing.T) {
 	c := newTestCipher(t)
 	blob, err := c.EncryptString("payload")
@@ -70,7 +70,7 @@ func TestBlobLayout(t *testing.T) {
 	}
 }
 
-// TestCrossDecrypt decrypts a blob assembled by hand to the documented C# layout, proving the
+// TestCrossDecrypt decrypts a blob assembled by hand to the documented DWV1 layout, proving the
 // reader matches the spec rather than just its own writer.
 func TestCrossDecrypt(t *testing.T) {
 	kek, err := NewLocalKekProvider(testKekID, map[string]string{testKekID: testKekB64})

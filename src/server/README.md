@@ -1,18 +1,18 @@
 # DonkeyWork Vault — Go server
 
-A Go port of the .NET `DonkeyWork.Vault.Api` service: the REST API, OAuth flows, and (optionally)
-the React SPA, backed by the **existing** Postgres `vault` schema. It is wire-compatible with the
-current CLI and SPA (same camelCase JSON contract) and reads/writes the same encrypted data as the
-.NET service (identical `DWV1` envelope format).
+The DonkeyWork Vault server: a single static Go binary (module `donkeywork.dev/vault-server`) that
+serves the REST API, OAuth flows, and the React SPA, backed by a Postgres `vault` schema. The CLI
+and SPA speak its camelCase JSON contract, and stored secrets use the `DWV1` encrypted envelope
+format.
 
 ## Layout
 
 | Package | Responsibility |
 |---|---|
 | `cmd/vault` | Entrypoint: config, telemetry, pool, migrations, services, audit workers, graceful shutdown |
-| `internal/crypto` | AES-256-GCM envelope cipher + local KEK provider (byte-compatible with the C# `DWV1` blob) |
+| `internal/crypto` | AES-256-GCM envelope cipher + local KEK provider (the `DWV1` blob format) |
 | `internal/store` | pgx-backed `Store` (hand-written SQL, per-user scoping, `otelpgx` query spans) + `memstore` |
-| `internal/db` | Embedded SQL migrations + tiny runner (idempotent baseline; drops the EF-only tables) |
+| `internal/db` | Embedded SQL migrations + tiny runner (idempotent baseline) |
 | `internal/service` | Domain logic: API keys, access keys, OAuth configs/tokens/flow (PKCE S256 + refresh) |
 | `internal/manifests` | Embedded OAuth provider catalog, per-user resolver, OIDC discovery |
 | `internal/audit` | Fire-and-forget sink, batch writer, retention sweeper, redactor, trusted-proxy IP resolver, query |
@@ -22,10 +22,9 @@ current CLI and SPA (same camelCase JSON contract) and reads/writes the same enc
 
 ## Database
 
-The Go service points at the **same** `vault` schema the .NET/EF service created. The baseline
-migration is idempotent (`CREATE … IF NOT EXISTS`): a no-op against an existing database (all rows
-retained), full provisioning on a fresh one. It also drops the two EF/framework-only tables
-(`__ef_migrations_history`, `data_protection_keys`) — neither holds data the application reads.
+The server owns the `vault` schema. The baseline migration is idempotent (`CREATE … IF NOT EXISTS`):
+it fully provisions a fresh database and is a no-op against an existing one (all rows retained).
+Migrations are embedded and run on startup unless `VAULT_RUN_MIGRATIONS=false`.
 
 ## Configuration (environment)
 

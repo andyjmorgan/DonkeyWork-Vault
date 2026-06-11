@@ -7,7 +7,7 @@ import (
 
 // CredentialKind is the discriminator that tells an agent how to use a stored secret. It is
 // serialized as a snake_case string on both the API (JSON) and the entity (a text column), never as
-// an integer — matching the C# JsonStringEnumConverter wire form the CLI/SPA already consume.
+// an integer — the wire form the CLI/SPA consume.
 type CredentialKind string
 
 const (
@@ -26,7 +26,7 @@ const (
 )
 
 // CredentialKindFromWire maps a stored/text value to a CredentialKind, defaulting to opaque for any
-// unknown or empty input (matching the C# FromWire fallback).
+// unknown or empty input.
 func CredentialKindFromWire(s string) CredentialKind {
 	switch CredentialKind(s) {
 	case KindHeaderAPIKey, KindHTTPBasic, KindUsernamePassword, KindSSH, KindConnectionString:
