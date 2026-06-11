@@ -1,6 +1,12 @@
-import { Github, BookOpen, LogIn, ArrowRight, Timer, ShieldCheck, Terminal, RefreshCw, Boxes, Zap, Check } from 'lucide-react'
+import { Github, BookOpen, LogIn, ArrowRight, Timer, ShieldCheck, Terminal, RefreshCw, Boxes, Zap, Check, Menu } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { Button } from '../ui/components/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '../ui/components/dropdown-menu'
 import { CopyButton } from '../components/CopyButton'
 import { isAuthed, login } from '../auth'
 
@@ -102,28 +108,45 @@ export function LandingPage() {
           <span>DonkeyWork <span className="text-accent">Vault</span></span>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="ghost" asChild>
-            <a href={DOCS} target="_blank" rel="noreferrer"><BookOpen className="size-4" /> Docs</a>
-          </Button>
-          <Button variant="ghost" size="icon" asChild aria-label="GitHub">
-            <a href={REPO} target="_blank" rel="noreferrer"><Github /></a>
-          </Button>
-          <Button onClick={enter}><LogIn className="size-4" /> {authed ? 'Open app' : 'Log in'}</Button>
+          {/* full nav — inline on ≥sm, folded into the menu below that */}
+          <div className="hidden items-center gap-2 sm:flex">
+            <Button variant="ghost" asChild>
+              <a href={DOCS} target="_blank" rel="noreferrer"><BookOpen className="size-4" /> Docs</a>
+            </Button>
+            <Button variant="ghost" size="icon" asChild aria-label="GitHub">
+              <a href={REPO} target="_blank" rel="noreferrer"><Github /></a>
+            </Button>
+            <Button onClick={enter}><LogIn className="size-4" /> {authed ? 'Open app' : 'Log in'}</Button>
+          </div>
+          {/* mobile-only overflow menu collapsing the whole nav */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild className="sm:hidden">
+              <Button variant="ghost" size="icon" aria-label="Menu"><Menu /></Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onSelect={enter}>
+                <LogIn className="size-4" /> {authed ? 'Open app' : 'Log in'}
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href={DOCS} target="_blank" rel="noreferrer"><BookOpen className="size-4" /> Docs</a>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <a href={REPO} target="_blank" rel="noreferrer"><Github className="size-4" /> GitHub</a>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
       {/* hero */}
       <section className="mx-auto max-w-4xl px-4 pb-10 pt-12 text-center sm:px-6 sm:pt-20">
-        <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
-          Self-hosted · envelope-encrypted · vendor-neutral
-        </span>
-        <h1 className="mt-6 text-4xl font-semibold tracking-tight sm:text-6xl">
+        <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">
           The secrets &amp; OAuth broker<br />
           <span className="bg-gradient-to-r from-cyan-500 to-blue-600 bg-clip-text text-transparent">built for agents</span>
         </h1>
         <p className="mx-auto mt-5 max-w-2xl text-balance text-base text-muted-foreground sm:text-lg">
           One vault for your API keys and OAuth connections. Stores them encrypted, hands agents
-          short-lived tokens on demand, and refreshes them for you — so credentials never live in code.
+          short-lived tokens on demand, and refreshes them for you — so credentials never live in skills or code.
         </p>
 
         {/* install command — front and center */}
