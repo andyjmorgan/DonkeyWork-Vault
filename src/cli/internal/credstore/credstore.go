@@ -243,7 +243,9 @@ func fileDelete(host string) error {
 		return nil
 	}
 	b, _ := json.MarshalIndent(m, "", "  ")
-	return os.WriteFile(p, b, 0o600)
+	// Rewrite atomically (temp + rename), matching fileSet, so a crash mid-write
+	// can't leave a truncated/corrupt creds file behind.
+	return writeFileAtomic(p, b)
 }
 
 // checkPerms refuses to read a secrets file that group/other can access.
