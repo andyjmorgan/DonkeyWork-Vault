@@ -40,20 +40,24 @@ jobs:
 
       - name: Start ephemeral Postgres
         run: |
-          docker rm -f vault-ci-pg 2>/dev/null || true
-          docker run -d --name vault-ci-pg \
+          # Unique name + an OS-assigned host port so concurrent runs on a shared self-hosted
+          # runner don't collide.
+          NAME="vault-ci-pg-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          echo "PG_NAME=$NAME" >> "$GITHUB_ENV"
+          docker rm -f "$NAME" 2>/dev/null || true
+          docker run -d --name "$NAME" \
             -e POSTGRES_USER=vault -e POSTGRES_PASSWORD=vault -e POSTGRES_DB=vault_test \
-            -p 127.0.0.1:55433:5432 postgres:17-alpine
+            -p 127.0.0.1:0:5432 postgres:17-alpine
           for i in $(seq 1 30); do
-            docker exec vault-ci-pg pg_isready -U vault && break
+            docker exec "$NAME" pg_isready -U vault && break
             sleep 1
           done
+          PORT=$(docker port "$NAME" 5432/tcp | head -1 | sed 's/.*://')
+          echo "VAULT_TEST_DSN=postgres://vault:vault@127.0.0.1:${PORT}/vault_test?sslmode=disable" >> "$GITHUB_ENV"
 
       - name: Test (unit + Postgres integration)
-        env:
-          VAULT_TEST_DSN: postgres://vault:vault@127.0.0.1:55433/vault_test?sslmode=disable
         run: go test ./...
 
       - name: Stop ephemeral Postgres
         if: always()
-        run: docker rm -f vault-ci-pg 2>/dev/null || true
+        run: docker rm -f "$PG_NAME" 2>/dev/null || true

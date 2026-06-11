@@ -24,8 +24,13 @@ func postForm(ctx context.Context, client *http.Client, endpoint string, form ur
 		return 0, nil, err
 	}
 	defer resp.Body.Close()
-	body, err := io.ReadAll(resp.Body)
+	// Cap the provider response: a token endpoint JSON body is small; an unbounded read of a
+	// hostile/compromised endpoint could OOM the process.
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxTokenResponseBytes))
 	return resp.StatusCode, body, err
 }
+
+// maxTokenResponseBytes bounds an OAuth token/userinfo response body (1 MiB is far above any real one).
+const maxTokenResponseBytes = 1 << 20
 
 func httpOK(status int) bool { return status >= 200 && status < 300 }

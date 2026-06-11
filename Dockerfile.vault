@@ -23,4 +23,6 @@ COPY --from=frontend /web/dist/ /app/web/
 ENV VAULT_LISTEN_ADDR=:8080
 ENV VAULT_WEBROOT=/app/web
 EXPOSE 8080
+# Run unprivileged (distroless ships the nonroot user as uid/gid 65532).
+USER 65532:65532
 ENTRYPOINT ["/app/vault"]

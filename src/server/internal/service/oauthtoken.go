@@ -40,11 +40,12 @@ type OAuthTokenSummary struct {
 
 // OAuthTokenService reads connected tokens and refreshes them server-to-server on demand.
 type OAuthTokenService struct {
-	store    store.Store
-	cipher   crypto.Cipher
-	audit    *audit.Log
-	resolver *manifests.Resolver
-	client   *http.Client
+	store        store.Store
+	cipher       crypto.Cipher
+	audit        *audit.Log
+	resolver     *manifests.Resolver
+	client       *http.Client
+	refreshLocks *keyedMutex // serialises refreshes per token id (avoids rotating-token clobber)
 }
 
 // NewOAuthTokenService builds the service.
@@ -52,7 +53,7 @@ func NewOAuthTokenService(s store.Store, c crypto.Cipher, a *audit.Log, r *manif
 	if client == nil {
 		client = http.DefaultClient
 	}
-	return &OAuthTokenService{store: s, cipher: c, audit: a, resolver: r, client: client}
+	return &OAuthTokenService{store: s, cipher: c, audit: a, resolver: r, client: client, refreshLocks: newKeyedMutex()}
 }
 
 // List returns the caller's connected tokens.
@@ -153,6 +154,22 @@ func (s *OAuthTokenService) GetAccessToken(ctx context.Context, provider, accoun
 func (s *OAuthTokenService) refresh(ctx context.Context, manifest *manifests.Manifest, config *store.OAuthProviderConfig, token *store.OAuthToken) (*OAuthAccessToken, error) {
 	ctx, span := startSpan(ctx, "oauthtoken.refresh")
 	defer span.End()
+
+	// Serialise refreshes of the same token: a refresh_token may rotate, so two concurrent
+	// refreshes would race and the loser would persist a now-invalid refresh token. Once the
+	// lock is held, re-read the row — a sibling may have already refreshed it.
+	unlock := s.refreshLocks.lock(token.ID)
+	defer unlock()
+	if fresh, err := s.store.FindOAuthToken(ctx, token.UserID, token.ProviderID, token.Account); err == nil && fresh != nil {
+		if fresh.ExpiresAt != nil && fresh.ExpiresAt.After(time.Now().Add(refreshWindow)) {
+			access, derr := s.cipher.DecryptToString(fresh.AccessTokenCipher)
+			if derr != nil {
+				return nil, derr
+			}
+			return &OAuthAccessToken{AccessToken: access, ExpiresAt: fresh.ExpiresAt, Scopes: decodeScopes(fresh.ScopesJSON)}, nil
+		}
+		token = fresh
+	}
 
 	refreshTok, err := s.cipher.DecryptToString(token.RefreshTokenCipher)
 	if err != nil {

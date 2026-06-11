@@ -8,7 +8,10 @@ import (
 )
 
 func TestVerifierAndChallenge(t *testing.T) {
-	v := GenerateVerifier()
+	v, err := GenerateVerifier()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(v) != 43 { // 32 bytes base64url unpadded
 		t.Fatalf("verifier length %d", len(v))
 	}
@@ -23,7 +26,15 @@ func TestVerifierAndChallenge(t *testing.T) {
 }
 
 func TestRandomStateUnique(t *testing.T) {
-	if RandomState() == RandomState() {
+	a, err := RandomState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := RandomState()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a == b {
 		t.Fatal("states should differ")
 	}
 }

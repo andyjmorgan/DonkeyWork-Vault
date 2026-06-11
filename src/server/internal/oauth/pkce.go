@@ -8,7 +8,7 @@ import (
 )
 
 // GenerateVerifier returns a PKCE code verifier (43-char base64url of 32 random bytes).
-func GenerateVerifier() string { return base64url(randomBytes(32)) }
+func GenerateVerifier() (string, error) { return randomBase64url(32) }
 
 // Challenge returns the S256 PKCE code challenge for a verifier.
 func Challenge(verifier string) string {
@@ -17,12 +17,16 @@ func Challenge(verifier string) string {
 }
 
 // RandomState returns an opaque anti-forgery state value.
-func RandomState() string { return base64url(randomBytes(32)) }
+func RandomState() (string, error) { return randomBase64url(32) }
 
-func randomBytes(n int) []byte {
+// randomBase64url returns n CSPRNG bytes as base64url. A rand.Read failure is surfaced rather than
+// silently producing a guessable (zero-padded) value, which would weaken PKCE/state CSRF defence.
+func randomBase64url(n int) (string, error) {
 	b := make([]byte, n)
-	_, _ = rand.Read(b)
-	return b
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return base64url(b), nil
 }
 
 func base64url(b []byte) string { return base64.RawURLEncoding.EncodeToString(b) }

@@ -97,8 +97,14 @@ func (s *OAuthFlowService) Begin(ctx context.Context, provider string, scopes []
 	}
 	scopeList = kept
 
-	verifier := oauth.GenerateVerifier()
-	state := oauth.RandomState()
+	verifier, err := oauth.GenerateVerifier()
+	if err != nil {
+		return nil, err
+	}
+	state, err := oauth.RandomState()
+	if err != nil {
+		return nil, err
+	}
 	redirectURI := strings.TrimRight(publicBaseURL, "/") + "/api/oauth/callback"
 
 	if err := s.store.InsertOAuthState(ctx, &store.OAuthState{
