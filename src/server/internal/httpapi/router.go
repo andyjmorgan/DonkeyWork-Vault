@@ -18,6 +18,10 @@ func (s *Server) Handler() http.Handler {
 func (s *Server) router() chi.Router {
 	r := chi.NewRouter()
 
+	// Outermost so the defense-in-depth headers apply to every response — health, the API group,
+	// the SPA fallback and error responses alike.
+	r.Use(securityHeaders)
+
 	r.Get("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
