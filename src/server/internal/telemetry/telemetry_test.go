@@ -5,7 +5,34 @@ import (
 	"log/slog"
 	"testing"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
 )
+
+func TestBuildResourceServiceName(t *testing.T) {
+	res := buildResource(Config{ServiceVersion: "1.2.3", Environment: "prod"})
+
+	set := res.Set()
+
+	name, ok := set.Value(semconv.ServiceNameKey)
+	if !ok {
+		t.Fatal("service.name attribute missing")
+	}
+	if got := name.AsString(); got != ServiceName {
+		t.Fatalf("service.name = %q, want %q", got, ServiceName)
+	}
+
+	ver, ok := set.Value(semconv.ServiceVersionKey)
+	if !ok || ver.AsString() != "1.2.3" {
+		t.Fatalf("service.version = %q (present=%v), want %q", ver.AsString(), ok, "1.2.3")
+	}
+
+	env, ok := set.Value(attribute.Key("deployment.environment.name"))
+	if !ok || env.AsString() != "prod" {
+		t.Fatalf("deployment.environment.name = %q (present=%v), want %q", env.AsString(), ok, "prod")
+	}
+}
 
 func TestSetupNoEndpoint(t *testing.T) {
 	p, err := Setup(context.Background(), Config{ServiceVersion: "test", Environment: "ci"})

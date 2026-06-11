@@ -64,15 +64,7 @@ func (p *Providers) Shutdown(ctx context.Context) error {
 // hard on a missing collector: without an endpoint it installs no-op-ish providers so the service
 // still runs and logs to stderr.
 func Setup(ctx context.Context, cfg Config) (*Providers, error) {
-	res, err := resource.Merge(resource.Default(), resource.NewWithAttributes(
-		semconv.SchemaURL,
-		semconv.ServiceName(ServiceName),
-		semconv.ServiceVersion(cfg.ServiceVersion),
-		attribute.String("deployment.environment.name", cfg.Environment),
-	))
-	if err != nil {
-		res = resource.Default()
-	}
+	res := buildResource(cfg)
 
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
 		propagation.TraceContext{}, propagation.Baggage{},
@@ -154,6 +146,26 @@ func Setup(ctx context.Context, cfg Config) (*Providers, error) {
 			return errors.Join(errs...)
 		},
 	}, nil
+}
+
+// buildResource assembles the OTel resource describing this service. The custom attributes are
+// built schemaless so they merge cleanly onto resource.Default() — a plain resource.NewWithAttributes
+// carries the v1.26.0 schema URL, which conflicts with the SDK's baked-in schema URL and makes
+// resource.Merge return an error. On that error the old code fell back to resource.Default(), which
+// drops service.name entirely (reporting unknown_service:<binary>). Here, if the merge still fails
+// for any reason, we fall back to the schemaless attribute resource itself so service.name is never
+// lost.
+func buildResource(cfg Config) *resource.Resource {
+	attrs := resource.NewSchemaless(
+		semconv.ServiceName(ServiceName),
+		semconv.ServiceVersion(cfg.ServiceVersion),
+		attribute.String("deployment.environment.name", cfg.Environment),
+	)
+	res, err := resource.Merge(resource.Default(), attrs)
+	if err != nil {
+		return attrs
+	}
+	return res
 }
 
 // normalizeEndpoint accepts either bare host:port or a full http(s):// URL for the OTLP endpoint,
