@@ -187,7 +187,7 @@ export function LandingPage() {
       <section className="mx-auto max-w-6xl px-4 pb-20 sm:px-6">
         <div className="mb-8 text-center">
           <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Don&apos;t take my word for it</h2>
-          <p className="mt-2 text-sm text-muted-foreground">We asked the agents that actually use it.</p>
+          <p className="mt-2 text-sm text-muted-foreground">I asked the agents that actually use it.</p>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
           {testimonials.map((t) => (
