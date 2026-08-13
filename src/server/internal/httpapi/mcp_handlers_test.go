@@ -32,13 +32,23 @@ func createMCPConnection(t *testing.T, h *harness, upstream string) mcpConnectio
 func TestMCPConfigurationHandlers(t *testing.T) {
 	h := newHarness(t)
 	connection := createMCPConnection(t, h, "https://example.com/mcp")
+	if connection.UpstreamProtocolMode != "modern_2026_07" || connection.LegacyProtocolVersion != "2025-06-18" {
+		t.Fatalf("default upstream protocol config: %+v", connection)
+	}
 	if rows := decode[[]mcpConnectionDTO](t, h.do(t, http.MethodGet, "/api/v1/mcp/connections", nil, true)); len(rows) != 1 {
 		t.Fatal("list")
 	}
 	connection.Name = "Updated"
-	rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL, AuthMode: "headers", AuditMode: "metadata", Enabled: boolPtr(true)}, true)
-	if rec.Code != http.StatusOK || decode[mcpConnectionDTO](t, rec).Name != "Updated" {
+	rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL, AuthMode: "headers", AuditMode: "metadata", UpstreamProtocolMode: "legacy_session", LegacyProtocolVersion: "2025-11-25", Enabled: boolPtr(true)}, true)
+	updated := decode[mcpConnectionDTO](t, rec)
+	if rec.Code != http.StatusOK || updated.Name != "Updated" || updated.UpstreamProtocolMode != "legacy_session" || updated.LegacyProtocolVersion != "2025-11-25" {
 		t.Fatal("update")
+	}
+	if rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections", upsertMCPConnectionRequest{Slug: "invalid-mode", Name: "Invalid", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "redacted", UpstreamProtocolMode: "future", Enabled: boolPtr(true)}, true); rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid upstream protocol mode: %d %s", rec.Code, rec.Body)
+	}
+	if rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections", upsertMCPConnectionRequest{Slug: "invalid-version", Name: "Invalid", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "redacted", LegacyProtocolVersion: "2024-01-01", Enabled: boolPtr(true)}, true); rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid legacy protocol version: %d %s", rec.Code, rec.Body)
 	}
 	if rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/bad", map[string]string{}, true); rec.Code != 400 {
 		t.Fatal("bad id")
@@ -154,13 +164,13 @@ func TestMCPProtocolProbeClassifications(t *testing.T) {
 				got.Name = "Edited after probe"
 				update := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
 					Slug: got.Slug, Name: got.Name, Description: got.Description, UpstreamURL: got.UpstreamURL,
-					AuthMode: got.AuthMode, AuditMode: got.AuditMode, Enabled: boolPtr(got.Enabled),
+					AuthMode: got.AuthMode, AuditMode: got.AuditMode, UpstreamProtocolMode: "legacy_session", LegacyProtocolVersion: "2025-03-26", Enabled: boolPtr(got.Enabled),
 				}, true)
 				if update.Code != http.StatusOK {
 					t.Fatalf("edit after probe %d: %s", update.Code, update.Body)
 				}
 				edited := decode[mcpConnectionDTO](t, update)
-				if edited.Name != got.Name || edited.ProbeStatus != got.ProbeStatus ||
+				if edited.Name != got.Name || edited.UpstreamProtocolMode != "legacy_session" || edited.LegacyProtocolVersion != "2025-03-26" || edited.ProbeStatus != got.ProbeStatus ||
 					edited.ProbeCheckedAt == nil || edited.ServerName == nil ||
 					len(edited.SupportedVersions) != len(got.SupportedVersions) {
 					t.Fatalf("edit response lost probe metadata: %+v", edited)
@@ -194,7 +204,8 @@ func TestMCPProtocolProbeOAuthAuthorizationUnavailable(t *testing.T) {
 	connection := createMCPConnection(t, h, "https://example.com/mcp")
 	rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
 		Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL,
-		AuthMode: "oauth", AuditMode: connection.AuditMode, Enabled: boolPtr(true),
+		AuthMode: "oauth", AuditMode: connection.AuditMode, UpstreamProtocolMode: connection.UpstreamProtocolMode,
+		LegacyProtocolVersion: connection.LegacyProtocolVersion, Enabled: boolPtr(true),
 	}, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("set OAuth mode %d: %s", rec.Code, rec.Body)
@@ -310,7 +321,9 @@ func TestMCPProtocolProbeDisabledConnection(t *testing.T) {
 	connection := createMCPConnection(t, h, upstream.URL)
 	disabled := false
 	rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
-		Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL, AuthMode: connection.AuthMode, AuditMode: connection.AuditMode, Enabled: &disabled,
+		Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL,
+		AuthMode: connection.AuthMode, AuditMode: connection.AuditMode,
+		UpstreamProtocolMode: connection.UpstreamProtocolMode, LegacyProtocolVersion: connection.LegacyProtocolVersion, Enabled: &disabled,
 	}, true)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("disable %d: %s", rec.Code, rec.Body)

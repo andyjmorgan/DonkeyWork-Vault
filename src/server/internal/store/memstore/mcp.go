@@ -34,6 +34,12 @@ func (m *Mem) InsertMCPConnection(_ context.Context, c *store.MCPConnection) err
 	if c.ProbeStatus == "" {
 		c.ProbeStatus = "not_checked"
 	}
+	if c.UpstreamProtocolMode == "" {
+		c.UpstreamProtocolMode = "modern_2026_07"
+	}
+	if c.LegacyProtocolVersion == "" {
+		c.LegacyProtocolVersion = "2025-06-18"
+	}
 	m.mcpConnections[c.ID] = *c
 	return nil
 }

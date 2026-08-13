@@ -28,6 +28,19 @@ const (
 	UsernamePassword CredentialKind = "username_password"
 )
 
+// Defines values for MCPLegacyProtocolVersion.
+const (
+	N20250326 MCPLegacyProtocolVersion = "2025-03-26"
+	N20250618 MCPLegacyProtocolVersion = "2025-06-18"
+	N20251125 MCPLegacyProtocolVersion = "2025-11-25"
+)
+
+// Defines values for MCPUpstreamProtocolMode.
+const (
+	LegacySession MCPUpstreamProtocolMode = "legacy_session"
+	Modern202607  MCPUpstreamProtocolMode = "modern_2026_07"
+)
+
 // AccessKeyDto defines model for AccessKeyDto.
 type AccessKeyDto struct {
 	CreatedAt   time.Time          `json:"createdAt"`
@@ -170,6 +183,12 @@ type ErrorResponse struct {
 type KeyResponse struct {
 	Key string `json:"key"`
 }
+
+// MCPLegacyProtocolVersion defines model for MCPLegacyProtocolVersion.
+type MCPLegacyProtocolVersion string
+
+// MCPUpstreamProtocolMode defines model for MCPUpstreamProtocolMode.
+type MCPUpstreamProtocolMode string
 
 // MeResponse defines model for MeResponse.
 type MeResponse struct {

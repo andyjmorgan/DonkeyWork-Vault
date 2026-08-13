@@ -42,6 +42,8 @@ export interface MCPConnection {
   id: string; slug: string; name: string; description?: string; upstreamUrl: string
   authMode: 'none' | 'headers' | 'oauth'; auditMode: 'metadata' | 'redacted'
   protocolVersion: string
+  upstreamProtocolMode: 'modern_2026_07' | 'legacy_session'
+  legacyProtocolVersion: '2025-03-26' | '2025-06-18' | '2025-11-25'
   protocolEra: 'unknown' | 'modern_2026_07' | 'legacy_session_likely' | 'incompatible'
   probeStatus: 'not_checked' | 'compatible' | 'incompatible' | 'auth_required' | 'unreachable' | 'error'
   probeCheckedAt?: string; probeError?: string; probeDetail?: string; supportedVersions: string[]

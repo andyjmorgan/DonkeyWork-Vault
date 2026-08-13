@@ -238,36 +238,40 @@ type auditPageResponse struct {
 }
 
 type mcpConnectionDTO struct {
-	ID                uuid.UUID  `json:"id"`
-	Slug              string     `json:"slug"`
-	Name              string     `json:"name"`
-	Description       *string    `json:"description"`
-	UpstreamURL       string     `json:"upstreamUrl"`
-	AuthMode          string     `json:"authMode"`
-	AuditMode         string     `json:"auditMode"`
-	ProtocolVersion   string     `json:"protocolVersion"`
-	ProtocolEra       string     `json:"protocolEra"`
-	ProbeStatus       string     `json:"probeStatus"`
-	ProbeCheckedAt    *time.Time `json:"probeCheckedAt"`
-	ProbeError        *string    `json:"probeError"`
-	ProbeDetail       *string    `json:"probeDetail"`
-	SupportedVersions []string   `json:"supportedVersions"`
-	ServerName        *string    `json:"serverName"`
-	ServerVersion     *string    `json:"serverVersion"`
-	Enabled           bool       `json:"enabled"`
-	CreatedAt         time.Time  `json:"createdAt"`
-	UpdatedAt         *time.Time `json:"updatedAt"`
+	ID                    uuid.UUID  `json:"id"`
+	Slug                  string     `json:"slug"`
+	Name                  string     `json:"name"`
+	Description           *string    `json:"description"`
+	UpstreamURL           string     `json:"upstreamUrl"`
+	AuthMode              string     `json:"authMode"`
+	AuditMode             string     `json:"auditMode"`
+	ProtocolVersion       string     `json:"protocolVersion"`
+	UpstreamProtocolMode  string     `json:"upstreamProtocolMode"`
+	LegacyProtocolVersion string     `json:"legacyProtocolVersion"`
+	ProtocolEra           string     `json:"protocolEra"`
+	ProbeStatus           string     `json:"probeStatus"`
+	ProbeCheckedAt        *time.Time `json:"probeCheckedAt"`
+	ProbeError            *string    `json:"probeError"`
+	ProbeDetail           *string    `json:"probeDetail"`
+	SupportedVersions     []string   `json:"supportedVersions"`
+	ServerName            *string    `json:"serverName"`
+	ServerVersion         *string    `json:"serverVersion"`
+	Enabled               bool       `json:"enabled"`
+	CreatedAt             time.Time  `json:"createdAt"`
+	UpdatedAt             *time.Time `json:"updatedAt"`
 }
 
 type upsertMCPConnectionRequest struct {
-	ID          uuid.UUID `json:"id"`
-	Slug        string    `json:"slug"`
-	Name        string    `json:"name"`
-	Description *string   `json:"description"`
-	UpstreamURL string    `json:"upstreamUrl"`
-	AuthMode    string    `json:"authMode"`
-	AuditMode   string    `json:"auditMode"`
-	Enabled     *bool     `json:"enabled"`
+	ID                    uuid.UUID `json:"id"`
+	Slug                  string    `json:"slug"`
+	Name                  string    `json:"name"`
+	Description           *string   `json:"description"`
+	UpstreamURL           string    `json:"upstreamUrl"`
+	AuthMode              string    `json:"authMode"`
+	AuditMode             string    `json:"auditMode"`
+	UpstreamProtocolMode  string    `json:"upstreamProtocolMode"`
+	LegacyProtocolVersion string    `json:"legacyProtocolVersion"`
+	Enabled               *bool     `json:"enabled"`
 }
 
 type mcpGrantDTO struct {
@@ -431,7 +435,8 @@ func toAuditDTO(e store.AuditEntry) auditEventDTO {
 func toMCPConnectionDTO(c store.MCPConnection) mcpConnectionDTO {
 	return mcpConnectionDTO{ID: c.ID, Slug: c.Slug, Name: c.Name, Description: c.Description,
 		UpstreamURL: c.UpstreamURL, AuthMode: c.AuthMode, AuditMode: c.AuditMode,
-		ProtocolVersion: c.ProtocolVersion, ProtocolEra: c.ProtocolEra, ProbeStatus: c.ProbeStatus,
+		ProtocolVersion: c.ProtocolVersion, UpstreamProtocolMode: c.UpstreamProtocolMode,
+		LegacyProtocolVersion: c.LegacyProtocolVersion, ProtocolEra: c.ProtocolEra, ProbeStatus: c.ProbeStatus,
 		ProbeCheckedAt: c.ProbeCheckedAt, ProbeError: c.ProbeError, ProbeDetail: c.ProbeDetail,
 		SupportedVersions: orEmpty(c.SupportedVersions), ServerName: c.ServerName, ServerVersion: c.ServerVersion,
 		Enabled: c.Enabled, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}

@@ -41,7 +41,7 @@ export function MCPPage() {
           {connections.map((connection) => (
             <div key={connection.id} className="flex items-center justify-between rounded-xl border border-border p-3">
               <button className="min-w-0 text-left" onClick={() => setSelected(connection)}>
-                <div className="flex items-center gap-2 font-medium">{connection.name}<Badge variant="secondary">{connection.authMode}</Badge>{!connection.enabled && <Badge variant="destructive">disabled</Badge>}</div>
+                <div className="flex items-center gap-2 font-medium">{connection.name}<Badge variant="secondary">{connection.authMode}</Badge>{connection.upstreamProtocolMode === 'legacy_session' && <Badge variant="outline">legacy</Badge>}{!connection.enabled && <Badge variant="destructive">disabled</Badge>}</div>
                 <div className="truncate text-xs text-muted-foreground">{connection.upstreamUrl}</div>
                 <code className="text-xs text-accent">/api/v1/mcp/proxy/{connection.slug}</code>
               </button>
@@ -78,13 +78,39 @@ function ConnectionEditor({ value, onClose, onSaved }: { value: Partial<MCPConne
   const save = () => api.saveMcpConnection(connection).then(onSaved).catch((e) => setError(String(e)))
   return (
     <Dialog open onOpenChange={(open) => { if (!open) onClose() }}>
-      <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>{value.id ? 'Edit MCP connection' : 'New MCP connection'}</DialogTitle><DialogDescription>July 2026 Streamable HTTP uses one stateless POST per JSON-RPC message.</DialogDescription></DialogHeader>
+      <DialogContent className="sm:max-w-2xl"><DialogHeader><DialogTitle>{value.id ? 'Edit MCP connection' : 'New MCP connection'}</DialogTitle><DialogDescription>The gateway presents one stateless endpoint while adapting to the selected upstream protocol.</DialogDescription></DialogHeader>
         <div className="grid gap-3 sm:grid-cols-2">
           <div><Label className={lbl}>Slug</Label><Input disabled={!!value.id} value={connection.slug || ''} onChange={(e) => set({ slug: e.target.value })} placeholder="datadog" /></div>
           <div><Label className={lbl}>Name</Label><Input value={connection.name || ''} onChange={(e) => set({ name: e.target.value })} placeholder="Datadog" /></div>
           <div className="sm:col-span-2"><Label className={lbl}>Upstream HTTPS endpoint</Label><Input value={connection.upstreamUrl || ''} onChange={(e) => set({ upstreamUrl: e.target.value })} placeholder="https://example.com/mcp" /></div>
+          <div>
+            <Label className={lbl}>Upstream protocol</Label>
+            <Select value={connection.upstreamProtocolMode || 'modern_2026_07'} onValueChange={(value) => set({ upstreamProtocolMode: value as MCPConnection['upstreamProtocolMode'] })}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="modern_2026_07">July 2026 stateless</SelectItem>
+                <SelectItem value="legacy_session">Legacy session</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {connection.upstreamProtocolMode === 'legacy_session' && (
+            <div>
+              <Label className={lbl}>Legacy protocol version</Label>
+              <Select value={connection.legacyProtocolVersion || '2025-06-18'} onValueChange={(value) => set({ legacyProtocolVersion: value as MCPConnection['legacyProtocolVersion'] })}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2025-11-25">2025-11-25</SelectItem>
+                  <SelectItem value="2025-06-18">2025-06-18</SelectItem>
+                  <SelectItem value="2025-03-26">2025-03-26</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
           <div><Label className={lbl}>Authentication</Label><Select value={connection.authMode || 'none'} onValueChange={(value) => set({ authMode: value as MCPConnection['authMode'] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="none">None</SelectItem><SelectItem value="headers">Stored headers</SelectItem><SelectItem value="oauth">OAuth</SelectItem></SelectContent></Select></div>
           <div><Label className={lbl}>Audit payload</Label><Select value={connection.auditMode || 'redacted'} onValueChange={(value) => set({ auditMode: value as MCPConnection['auditMode'] })}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><SelectItem value="redacted">Redacted JSON</SelectItem><SelectItem value="metadata">Metadata only</SelectItem></SelectContent></Select></div>
+          <p className="text-xs text-muted-foreground sm:col-span-2">
+            This selects the upstream adapter. Access grants and centrally stored header or OAuth credentials are reused in either mode.
+          </p>
           <label className="flex items-center gap-2 text-sm"><Switch checked={connection.enabled ?? true} onCheckedChange={(enabled) => set({ enabled })} /> Enabled</label>
           {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
           <div className="sm:col-span-2"><Button onClick={save} disabled={!connection.slug || !connection.name || !connection.upstreamUrl}>Save</Button></div>
@@ -162,6 +188,7 @@ function ProtocolCompatibility({ connection }: { connection: MCPConnection }) {
     <section className="space-y-2 lg:col-span-3">
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-medium">Protocol compatibility</h3>
+        <Badge variant="outline">{connection.upstreamProtocolMode === 'legacy_session' ? 'legacy session adapter' : 'July 2026 adapter'}</Badge>
         <Badge variant={connection.probeStatus === 'compatible' ? 'secondary' : neutral ? 'outline' : 'destructive'}>{status}</Badge>
         {connection.protocolEra !== 'unknown' && <code className="text-xs text-muted-foreground">{era}</code>}
       </div>
@@ -187,4 +214,4 @@ function ProtocolCompatibility({ connection }: { connection: MCPConnection }) {
 }
 
 function Row({ label, onDelete }: { label: string; onDelete: () => void }) { return <div className="flex items-center justify-between rounded-lg border border-border px-2 py-1 text-xs"><span className="truncate">{label}</span><Button variant="ghost" size="icon" onClick={onDelete}><Trash2 className="size-3.5 text-destructive" /></Button></div> }
-const blankConnection = (): Partial<MCPConnection> => ({ slug: '', name: '', upstreamUrl: '', authMode: 'none', auditMode: 'redacted', enabled: true })
+const blankConnection = (): Partial<MCPConnection> => ({ slug: '', name: '', upstreamUrl: '', authMode: 'none', auditMode: 'redacted', upstreamProtocolMode: 'modern_2026_07', legacyProtocolVersion: '2025-06-18', enabled: true })

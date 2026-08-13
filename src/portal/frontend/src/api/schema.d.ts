@@ -1767,6 +1767,10 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** @enum {string} */
+        MCPUpstreamProtocolMode: "modern_2026_07" | "legacy_session";
+        /** @enum {string} */
+        MCPLegacyProtocolVersion: "2025-03-26" | "2025-06-18" | "2025-11-25";
         AccessKeyDto: {
             /** Format: date-time */
             createdAt: string;

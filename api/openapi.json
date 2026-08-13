@@ -1,6 +1,21 @@
 {
   "components": {
     "schemas": {
+      "MCPUpstreamProtocolMode": {
+        "enum": [
+          "modern_2026_07",
+          "legacy_session"
+        ],
+        "type": "string"
+      },
+      "MCPLegacyProtocolVersion": {
+        "enum": [
+          "2025-03-26",
+          "2025-06-18",
+          "2025-11-25"
+        ],
+        "type": "string"
+      },
       "AccessKeyDto": {
         "properties": {
           "createdAt": {
