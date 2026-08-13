@@ -455,7 +455,7 @@ func (s *Server) handleConnectMCPOAuth(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	redirectURI := strings.TrimSuffix(s.deps.PublicBaseURL, "/") + "/api/mcp/oauth/callback"
-	result, err := s.deps.MCPOAuth.Begin(r.Context(), id, redirectURI)
+	result, err := s.deps.MCPOAuth.BeginWithDynamicRegistration(r.Context(), id, redirectURI)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return

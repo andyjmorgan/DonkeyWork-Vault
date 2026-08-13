@@ -140,8 +140,10 @@ type AuthorizationServerMetadata struct {
 	Issuer                string   `json:"issuer"`
 	AuthorizationEndpoint string   `json:"authorization_endpoint"`
 	TokenEndpoint         string   `json:"token_endpoint"`
+	RegistrationEndpoint  string   `json:"registration_endpoint"`
 	TokenAuthMethods      []string `json:"token_endpoint_auth_methods_supported"`
 	CodeChallengeMethods  []string `json:"code_challenge_methods_supported"`
+	ScopesSupported       []string `json:"scopes_supported"`
 }
 
 // Discovery is validated metadata for an MCP connection.
@@ -563,6 +565,173 @@ type tokenResponse struct {
 	ExpiresIn    int64  `json:"expires_in"`
 	Scope        string `json:"scope"`
 	Scopes       []string
+}
+
+type registrationRequest struct {
+	ClientName              string   `json:"client_name"`
+	RedirectURIs            []string `json:"redirect_uris"`
+	GrantTypes              []string `json:"grant_types"`
+	ResponseTypes           []string `json:"response_types"`
+	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
+	Scope                   string   `json:"scope,omitempty"`
+	ApplicationType         string   `json:"application_type"`
+}
+
+type registrationResponse struct {
+	ClientID                string   `json:"client_id"`
+	ClientSecret            string   `json:"client_secret"`
+	RedirectURIs            []string `json:"redirect_uris"`
+	GrantTypes              []string `json:"grant_types"`
+	ResponseTypes           []string `json:"response_types"`
+	TokenEndpointAuthMethod string   `json:"token_endpoint_auth_method"`
+}
+
+func (s *Service) ensureClient(ctx context.Context, connectionID uuid.UUID, redirectURI string) error {
+	caller := contracts.CallerFrom(ctx)
+	config, err := s.repository.GetConnectionOAuth(ctx, caller.UserID, connectionID)
+	if err != nil {
+		return err
+	}
+	if config == nil {
+		return fmt.Errorf("MCP connection %s not found", connectionID)
+	}
+	if len(config.ClientIDCipher) > 0 {
+		return nil
+	}
+	unlock := s.locks.lock(connectionID)
+	defer unlock()
+	return s.repository.WithRefreshLock(ctx, connectionID, func() error {
+		current, loadErr := s.repository.GetConnectionOAuth(ctx, caller.UserID, connectionID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if current == nil {
+			return fmt.Errorf("MCP connection %s not found", connectionID)
+		}
+		if len(current.ClientIDCipher) > 0 {
+			return nil
+		}
+		discovery, discoverErr := s.discover(ctx, current)
+		if discoverErr != nil {
+			return discoverErr
+		}
+		registered, registerErr := s.register(ctx, discovery, redirectURI)
+		if registerErr != nil {
+			return registerErr
+		}
+		clientIDCipher, encryptErr := s.cipher.EncryptString(registered.ClientID)
+		if encryptErr != nil {
+			return encryptErr
+		}
+		var clientSecretCipher []byte
+		if registered.ClientSecret != "" {
+			clientSecretCipher, encryptErr = s.cipher.EncryptString(registered.ClientSecret)
+			if encryptErr != nil {
+				return encryptErr
+			}
+		}
+		scopes := normalizeScopes(discovery.Resource.ScopesSupported)
+		if len(scopes) == 0 {
+			scopes = normalizeScopes(discovery.AuthorizationServer.ScopesSupported)
+		}
+		return s.repository.SaveClientConfiguration(ctx, &ClientConfiguration{
+			ConnectionID: connectionID, UserID: caller.UserID, TenantID: caller.TenantID,
+			Issuer: discovery.AuthorizationServer.Issuer, ClientIDCipher: clientIDCipher,
+			ClientSecretCipher: clientSecretCipher, Scopes: scopes,
+		})
+	})
+}
+
+// BeginWithDynamicRegistration provisions a public OAuth client when the connection has no manual
+// client configuration, then starts the browser authorization-code flow.
+func (s *Service) BeginWithDynamicRegistration(ctx context.Context, connectionID uuid.UUID, redirectURI string) (*BeginResult, error) {
+	if err := validateRedirectURI(redirectURI); err != nil {
+		return nil, err
+	}
+	if err := s.ensureClient(ctx, connectionID, redirectURI); err != nil {
+		return nil, err
+	}
+	return s.Begin(ctx, connectionID, redirectURI)
+}
+
+func (s *Service) register(ctx context.Context, discovery *Discovery, redirectURI string) (*registrationResponse, error) {
+	endpoint := discovery.AuthorizationServer.RegistrationEndpoint
+	if endpoint == "" {
+		return nil, errors.New("authorization server does not support dynamic client registration")
+	}
+	if err := validateEndpoint(endpoint); err != nil {
+		return nil, fmt.Errorf("invalid registration endpoint: %w", err)
+	}
+	authMethod, err := chooseRegistrationAuthMethod(discovery.AuthorizationServer.TokenAuthMethods)
+	if err != nil {
+		return nil, err
+	}
+	scopes := discovery.Resource.ScopesSupported
+	if len(scopes) == 0 {
+		scopes = discovery.AuthorizationServer.ScopesSupported
+	}
+	payload, err := json.Marshal(registrationRequest{
+		ClientName: "DonkeyWork Vault MCP Gateway", RedirectURIs: []string{redirectURI},
+		GrantTypes: []string{"authorization_code", "refresh_token"}, ResponseTypes: []string{"code"},
+		TokenEndpointAuthMethod: authMethod, Scope: strings.Join(normalizeScopes(scopes), " "), ApplicationType: "web",
+	})
+	if err != nil {
+		return nil, err //coverage:ignore fixed registration request contains only JSON-safe values
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("User-Agent", "donkeywork-vault")
+	response, err := s.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("OAuth client registration: %w", err)
+	}
+	defer func() { _ = response.Body.Close() }()
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxMetadataBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if len(body) > maxMetadataBytes {
+		return nil, errors.New("OAuth client registration response is too large")
+	}
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		return nil, fmt.Errorf("OAuth client registration returned HTTP %d", response.StatusCode)
+	}
+	var registered registrationResponse
+	if err := json.Unmarshal(body, &registered); err != nil {
+		return nil, errors.New("OAuth client registration response is not valid JSON")
+	}
+	if registered.ClientID == "" {
+		return nil, errors.New("OAuth client registration response omits client_id")
+	}
+	if registered.TokenEndpointAuthMethod != authMethod {
+		return nil, errors.New("OAuth client registration returned an unexpected token authentication method")
+	}
+	if !slices.Contains(registered.RedirectURIs, redirectURI) {
+		return nil, errors.New("OAuth client registration response omits the callback redirect URI")
+	}
+	if !slices.Contains(registered.GrantTypes, "authorization_code") || !slices.Contains(registered.ResponseTypes, "code") {
+		return nil, errors.New("OAuth client registration response omits the authorization code flow")
+	}
+	if authMethod != "none" && registered.ClientSecret == "" {
+		return nil, errors.New("OAuth client registration response omits client_secret")
+	}
+	return &registered, nil
+}
+
+func chooseRegistrationAuthMethod(supported []string) (string, error) {
+	if len(supported) == 0 || slices.Contains(supported, "none") {
+		return "none", nil
+	}
+	for _, method := range []string{"client_secret_post", "client_secret_basic"} {
+		if slices.Contains(supported, method) {
+			return method, nil
+		}
+	}
+	return "", errors.New("authorization server supports no usable dynamic client authentication method")
 }
 
 func (s *Service) exchange(ctx context.Context, config *ConnectionOAuth, endpoint, authMethod string, values url.Values) (*tokenResponse, error) {

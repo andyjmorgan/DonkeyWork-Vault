@@ -103,8 +103,14 @@ func (r *StoreRepository) GetConnectionOAuth(ctx context.Context, userID, connec
 		return nil, err
 	}
 	authorization, err := r.store.GetMCPOAuthAuthorization(ctx, userID, connectionID)
-	if err != nil || authorization == nil {
+	if err != nil {
 		return nil, err
+	}
+	if authorization == nil {
+		return &ConnectionOAuth{
+			ConnectionID: connection.ID, UserID: connection.UserID, TenantID: connection.TenantID,
+			Resource: connection.UpstreamURL,
+		}, nil
 	}
 	issuer := dereference(authorization.IssuerURL)
 	resource := dereference(authorization.Resource)
