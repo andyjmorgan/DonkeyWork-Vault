@@ -454,13 +454,31 @@ func (s *Server) handleConnectMCPOAuth(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	redirectURI := strings.TrimSuffix(s.deps.PublicBaseURL, "/") + "/api/mcp/oauth/callback"
+	redirectURI := strings.TrimSpace(r.URL.Query().Get("redirectUri"))
+	if redirectURI == "" {
+		redirectURI = strings.TrimSuffix(s.deps.PublicBaseURL, "/") + "/api/mcp/oauth/callback"
+	} else if !isLoopbackOAuthRedirect(redirectURI) {
+		writeError(w, http.StatusBadRequest, "redirectUri must be an HTTP loopback callback.")
+		return
+	}
 	result, err := s.deps.MCPOAuth.BeginWithDynamicRegistration(r.Context(), id, redirectURI)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 	writeJSON(w, http.StatusOK, mcpOAuthConnectResponse{AuthorizeURL: result.AuthorizationURL, ExpiresAt: result.ExpiresAt})
+}
+
+func isLoopbackOAuthRedirect(raw string) bool {
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme != "http" || parsed.User != nil || parsed.Fragment != "" || parsed.Hostname() != "127.0.0.1" {
+		return false
+	}
+	if parsed.Path != "/oauth/callback" || parsed.RawQuery != "" {
+		return false
+	}
+	port, err := strconv.Atoi(parsed.Port())
+	return err == nil && (port == 8000 || port == 8080 || port == 8888 || port == 9000)
 }
 
 func (s *Server) handleDeleteMCPOAuth(w http.ResponseWriter, r *http.Request) {
