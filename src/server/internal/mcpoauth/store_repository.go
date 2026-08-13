@@ -3,6 +3,7 @@ package mcpoauth
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 
 	"github.com/google/uuid"
@@ -44,9 +45,10 @@ func (r *StoreRepository) GetStatus(ctx context.Context, userID, connectionID uu
 		return status, nil
 	}
 	status.Configured = len(row.ClientIDCipher) > 0
-	status.Authorized = len(row.AccessTokenCipher) > 0
+	storedResource := dereference(row.Resource)
+	status.Authorized = len(row.AccessTokenCipher) > 0 && storedResource == connection.UpstreamURL
 	status.Issuer = dereference(row.IssuerURL)
-	status.Resource = dereference(row.Resource)
+	status.Resource = storedResource
 	if status.Resource == "" {
 		status.Resource = connection.UpstreamURL
 	}
@@ -106,6 +108,9 @@ func (r *StoreRepository) GetConnectionOAuth(ctx context.Context, userID, connec
 	}
 	issuer := dereference(authorization.IssuerURL)
 	resource := dereference(authorization.Resource)
+	if resource != "" && resource != connection.UpstreamURL {
+		return nil, fmt.Errorf("%w: stored resource %q does not match connection upstream %q", ErrBindingMismatch, resource, connection.UpstreamURL)
+	}
 	if resource == "" {
 		resource = connection.UpstreamURL
 	}
