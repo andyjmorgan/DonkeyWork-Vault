@@ -14,6 +14,11 @@
           "enabled": {
             "type": "boolean"
           },
+          "expiresAt": {
+            "format": "date-time",
+            "nullable": true,
+            "type": "string"
+          },
           "id": {
             "format": "uuid",
             "type": "string"
@@ -44,7 +49,8 @@
           "enabled",
           "prefix",
           "createdAt",
-          "lastUsedAt"
+          "lastUsedAt",
+          "expiresAt"
         ],
         "type": "object"
       },
@@ -287,6 +293,11 @@
       "CreateAccessKeyRequest": {
         "properties": {
           "description": {
+            "nullable": true,
+            "type": "string"
+          },
+          "expiresAt": {
+            "format": "date-time",
             "nullable": true,
             "type": "string"
           },
@@ -898,6 +909,51 @@
   },
   "openapi": "3.0.4",
   "paths": {
+    "/api/mcp/oauth/callback": {
+      "get": {"parameters": [{"in":"query","name":"code","schema":{"type":"string"}},{"in":"query","name":"state","schema":{"type":"string"}},{"in":"query","name":"error","schema":{"type":"string"}}],"responses":{"302":{"description":"OAuth authorization completed"},"400":{"description":"OAuth authorization failed"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/connections": {
+      "get": {"responses":{"200":{"description":"MCP connections","content":{"application/json":{"schema":{"type":"array","items":{"type":"object"}}}}}},"tags":["DonkeyWork Vault"]},
+      "post": {"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"MCP connection"},"400":{"description":"Invalid connection"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/connections/{id}": {
+      "put": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"MCP connection"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]},
+      "delete": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/connections/{connectionID}/grants": {
+      "get": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"Connection grants"}},"tags":["DonkeyWork Vault"]},
+      "post": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"Grant created"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/grants/{id}": {
+      "delete": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/connections/{connectionID}/headers": {
+      "get": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"Header bindings"}},"tags":["DonkeyWork Vault"]},
+      "post": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"Header bound"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/headers/{id}": {
+      "delete": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/connections/{connectionID}/policies": {
+      "get": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"Policy rules"}},"tags":["DonkeyWork Vault"]},
+      "put": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"Policy rule saved"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/policies/{id}": {
+      "delete": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/connections/{connectionID}/oauth": {
+      "put": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"204":{"description":"OAuth client configured"},"400":{"description":"Invalid OAuth client"}},"tags":["DonkeyWork Vault"]},
+      "delete": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/connections/{connectionID}/oauth/connect": {
+      "get": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"OAuth authorization URL"},"400":{"description":"OAuth discovery failed"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/proxy/{slug}": {
+      "post": {"parameters":[{"in":"path","name":"slug","required":true,"schema":{"type":"string"}},{"in":"header","name":"MCP-Protocol-Version","required":true,"schema":{"type":"string"}},{"in":"header","name":"Mcp-Method","required":true,"schema":{"type":"string"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"MCP JSON-RPC response or SSE stream"},"202":{"description":"Notification accepted"},"400":{"description":"Invalid MCP request"},"403":{"description":"Not granted or denied by policy"},"502":{"description":"Upstream failure"},"503":{"description":"Audit unavailable"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/audit": {
+      "get": {"parameters":[{"in":"query","name":"connectionId","schema":{"type":"string","format":"uuid"}},{"in":"query","name":"evalRunId","schema":{"type":"string"}},{"in":"query","name":"direction","schema":{"type":"string"}},{"in":"query","name":"method","schema":{"type":"string"}},{"in":"query","name":"toolName","schema":{"type":"string"}},{"in":"query","name":"policyDecision","schema":{"type":"string"}},{"in":"query","name":"limit","schema":{"type":"integer"}},{"in":"query","name":"offset","schema":{"type":"integer"}}],"responses":{"200":{"description":"Inspected MCP messages"}},"tags":["DonkeyWork Vault"]}
+    },
     "/api/config": {
       "get": {
         "responses": {

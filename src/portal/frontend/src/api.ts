@@ -32,12 +32,27 @@ export interface NewApiKey { name: string; secret: string; description?: string;
 export interface OAuthTokenItem { id: string; provider: string; account: string; expiresAt: string; lastRefreshedAt: string; scopes: string[] }
 export interface OAuthConfigItem { id: string; provider: string; clientIdMasked: string; scopes: string[]; redirectUri: string; createdAt: string }
 export interface Me { userId: string; tenantId: string; email?: string; name?: string }
-export type AccessScope = 'vault:read' | 'vault:readwrite' | 'vault:audit'
+export type AccessScope = 'vault:read' | 'vault:readwrite' | 'vault:audit' | 'vault:mcp'
 export interface AccessKey {
   id: string; name: string; description?: string; scopes: AccessScope[]
-  enabled: boolean; prefix: string; createdAt: string; lastUsedAt: string
+  enabled: boolean; prefix: string; createdAt: string; lastUsedAt: string; expiresAt?: string
 }
-export interface NewAccessKey { name: string; description?: string; scopes: AccessScope[] }
+export interface NewAccessKey { name: string; description?: string; scopes: AccessScope[]; expiresAt?: string }
+export interface MCPConnection {
+  id: string; slug: string; name: string; description?: string; upstreamUrl: string
+  authMode: 'none' | 'headers' | 'oauth'; auditMode: 'metadata' | 'redacted'
+  protocolVersion: string; enabled: boolean; createdAt: string; updatedAt?: string
+}
+export interface MCPGrant { id: string; connectionId: string; accessKeyId: string; createdAt: string }
+export interface MCPHeaderBinding { id: string; connectionId: string; credentialId: string; headerName?: string; createdAt: string }
+export interface MCPToolPolicy { id: string; connectionId: string; method: string; toolName: string; allow: boolean; createdAt: string; updatedAt?: string }
+export interface MCPAuditMessage {
+  id: string; exchangeId: string; connectionId: string; sequenceNo: number; observedAt: string
+  direction: string; messageKind: string; policyDecision: string; jsonrpcIdType?: string
+  jsonrpcIdText?: string; method?: string; toolName?: string; policyRule?: string
+  resultType?: string; subscriptionId?: string; errorCode?: number; payloadRedacted?: string
+  payloadBytes: number; payloadTruncated: boolean; redactionPaths: string[]
+}
 
 export const api = {
   me: () => authed('/me') as Promise<Me>,
@@ -59,6 +74,32 @@ export const api = {
   setAccessKeyEnabled: (id: string, enabled: boolean) =>
     authed(`/access-keys/${id}`, { method: 'PATCH', body: JSON.stringify({ enabled }) }),
   deleteAccessKey: (id: string) => authed(`/access-keys/${id}`, { method: 'DELETE' }),
+
+  mcpConnections: () => authed('/mcp/connections') as Promise<MCPConnection[]>,
+  saveMcpConnection: (c: Partial<MCPConnection>) =>
+    authed(c.id ? `/mcp/connections/${c.id}` : '/mcp/connections', { method: c.id ? 'PUT' : 'POST', body: JSON.stringify(c) }) as Promise<MCPConnection>,
+  deleteMcpConnection: (id: string) => authed(`/mcp/connections/${id}`, { method: 'DELETE' }),
+  mcpGrants: (connectionId: string) => authed(`/mcp/connections/${connectionId}/grants`) as Promise<MCPGrant[]>,
+  createMcpGrant: (connectionId: string, accessKeyId: string) =>
+    authed(`/mcp/connections/${connectionId}/grants`, { method: 'POST', body: JSON.stringify({ accessKeyId }) }) as Promise<MCPGrant>,
+  deleteMcpGrant: (id: string) => authed(`/mcp/grants/${id}`, { method: 'DELETE' }),
+  mcpHeaders: (connectionId: string) => authed(`/mcp/connections/${connectionId}/headers`) as Promise<MCPHeaderBinding[]>,
+  createMcpHeader: (connectionId: string, credentialId: string, headerName?: string) =>
+    authed(`/mcp/connections/${connectionId}/headers`, { method: 'POST', body: JSON.stringify({ credentialId, headerName }) }) as Promise<MCPHeaderBinding>,
+  deleteMcpHeader: (id: string) => authed(`/mcp/headers/${id}`, { method: 'DELETE' }),
+  mcpPolicies: (connectionId: string) => authed(`/mcp/connections/${connectionId}/policies`) as Promise<MCPToolPolicy[]>,
+  saveMcpPolicy: (connectionId: string, method: string, toolName: string, allow: boolean) =>
+    authed(`/mcp/connections/${connectionId}/policies`, { method: 'PUT', body: JSON.stringify({ method, toolName, allow }) }) as Promise<MCPToolPolicy>,
+  deleteMcpPolicy: (id: string) => authed(`/mcp/policies/${id}`, { method: 'DELETE' }),
+  configureMcpOAuth: (connectionId: string, config: { issuer?: string; clientId: string; clientSecret?: string; scopes: string[] }) =>
+    authed(`/mcp/connections/${connectionId}/oauth`, { method: 'PUT', body: JSON.stringify(config) }),
+  connectMcpOAuth: (connectionId: string) => authed(`/mcp/connections/${connectionId}/oauth/connect`) as Promise<{ authorizeUrl: string; expiresAt: string }>,
+  deleteMcpOAuth: (connectionId: string) => authed(`/mcp/connections/${connectionId}/oauth`, { method: 'DELETE' }),
+  mcpAudit: (q: Record<string, string | number | undefined> = {}) => {
+    const p = new URLSearchParams()
+    for (const [k, v] of Object.entries(q)) if (v !== undefined && v !== '') p.set(k, String(v))
+    return authed(`/mcp/audit${p.size ? `?${p}` : ''}`) as Promise<{ items: MCPAuditMessage[]; total: number; limit: number; offset: number }>
+  },
 
   // OAuth provider manifests (catalog CRUD)
   oauthProviders: () => authed('/manifests') as Promise<OAuthProvider[]>,

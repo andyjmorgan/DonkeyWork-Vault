@@ -22,7 +22,9 @@ import (
 const SecretPrefix = "dwv_"
 
 // ValidScopes are the scopes an access key may carry.
-var ValidScopes = map[string]bool{"vault:read": true, "vault:readwrite": true, "vault:audit": true}
+var ValidScopes = map[string]bool{
+	"vault:read": true, "vault:readwrite": true, "vault:audit": true, "vault:mcp": true,
+}
 
 // StoredAccessKey is the non-secret metadata for a scoped access key.
 type StoredAccessKey struct {
@@ -34,6 +36,7 @@ type StoredAccessKey struct {
 	Prefix      string
 	CreatedAt   time.Time
 	LastUsedAt  *time.Time
+	ExpiresAt   *time.Time
 }
 
 // AccessKeyPrincipal is the result of authenticating a presented secret.
@@ -59,6 +62,12 @@ func NewAccessKeyService(s store.Store, a *audit.Log) *AccessKeyService {
 
 // Create mints a key and returns its metadata plus the plaintext secret (shown ONCE).
 func (s *AccessKeyService) Create(ctx context.Context, name string, description *string, scopes []string) (*StoredAccessKey, string, error) {
+	return s.CreateWithExpiry(ctx, name, description, scopes, nil)
+}
+
+// CreateWithExpiry mints a key that stops authenticating after expiresAt. A nil expiry creates a
+// persistent key; callers use short expiries for disposable eval sandboxes.
+func (s *AccessKeyService) CreateWithExpiry(ctx context.Context, name string, description *string, scopes []string, expiresAt *time.Time) (*StoredAccessKey, string, error) {
 	ctx, span := startSpan(ctx, "accesskey.create")
 	defer span.End()
 	span.SetAttributes(attribute.String("credential.name", name))
@@ -79,6 +88,9 @@ func (s *AccessKeyService) Create(ctx context.Context, name string, description 
 	if len(invalid) > 0 {
 		return nil, "", ValidationError{"unknown scope(s): " + strings.Join(invalid, ", ") + "."}
 	}
+	if expiresAt != nil && !expiresAt.After(time.Now()) {
+		return nil, "", ValidationError{"expiresAt must be in the future."}
+	}
 
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
@@ -93,7 +105,7 @@ func (s *AccessKeyService) Create(ctx context.Context, name string, description 
 	caller := contracts.CallerFrom(ctx)
 	entity := &store.AccessKey{
 		UserID: caller.UserID, TenantID: caller.TenantID, Name: name, Description: description,
-		KeyHash: hashSecret(secret), KeyPrefix: prefix, Scopes: normalized, Enabled: true,
+		KeyHash: hashSecret(secret), KeyPrefix: prefix, Scopes: normalized, Enabled: true, ExpiresAt: expiresAt,
 	}
 	if err := s.store.InsertAccessKey(ctx, entity); err != nil {
 		return nil, "", err
@@ -148,7 +160,7 @@ func (s *AccessKeyService) Authenticate(ctx context.Context, secret string) (*Ac
 	if err != nil {
 		return nil, err
 	}
-	if entity == nil || !entity.Enabled {
+	if entity == nil || !entity.Enabled || (entity.ExpiresAt != nil && !entity.ExpiresAt.After(time.Now())) {
 		return nil, nil
 	}
 	// last_used_at is best-effort bookkeeping — a failed touch must not reject a valid key.
@@ -182,6 +194,6 @@ func hashSecret(secret string) []byte {
 func toStoredAccessKey(k *store.AccessKey) *StoredAccessKey {
 	return &StoredAccessKey{
 		ID: k.ID, Name: k.Name, Description: k.Description, Scopes: k.Scopes,
-		Enabled: k.Enabled, Prefix: k.KeyPrefix, CreatedAt: k.CreatedAt, LastUsedAt: k.LastUsedAt,
+		Enabled: k.Enabled, Prefix: k.KeyPrefix, CreatedAt: k.CreatedAt, LastUsedAt: k.LastUsedAt, ExpiresAt: k.ExpiresAt,
 	}
 }

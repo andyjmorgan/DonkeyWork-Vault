@@ -2,6 +2,7 @@ package store_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"strings"
 	"testing"
@@ -99,6 +100,9 @@ func TestAPIKeyCRUD(t *testing.T) {
 	if got == nil {
 		t.Fatal("get by name")
 	}
+	if byID, _ := pg.GetAPIKeyByID(ctx(), u, k.ID); byID == nil {
+		t.Fatal("get by ID")
+	}
 	got.FieldsCipher = []byte{4, 5}
 	got.Username = sp("bob")
 	if err := pg.UpdateAPIKey(ctx(), got); err != nil {
@@ -110,6 +114,178 @@ func TestAPIKeyCRUD(t *testing.T) {
 	}
 	if ok, _ := pg.DeleteAPIKey(ctx(), u, k.ID); !ok {
 		t.Fatal("delete")
+	}
+}
+
+func TestMCPStore(t *testing.T) {
+	u, tenant := uuid.New(), uuid.New()
+	other := uuid.New()
+	expires := time.Now().Add(time.Hour)
+	accessKey := &store.AccessKey{UserID: u, TenantID: tenant, Name: "mcp-run-" + u.String(),
+		KeyHash: []byte("mcp-hash-" + u.String()), KeyPrefix: "dwv_mcp", Scopes: []string{"vault:mcp"}, Enabled: true, ExpiresAt: &expires}
+	if err := pg.InsertAccessKey(ctx(), accessKey); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := pg.GetAccessKeyByID(ctx(), u, accessKey.ID); got == nil || got.ExpiresAt == nil {
+		t.Fatalf("access key expiry: %+v", got)
+	}
+	credential := &store.APIKey{UserID: u, TenantID: tenant, Name: "mcp-upstream-" + u.String(), FieldsCipher: []byte{1}, Kind: "opaque"}
+	if err := pg.InsertAPIKey(ctx(), credential); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := pg.GetAPIKeyByID(ctx(), u, credential.ID); got == nil {
+		t.Fatal("get API key by ID")
+	}
+	if got, _ := pg.GetAPIKeyByID(ctx(), other, credential.ID); got != nil {
+		t.Fatal("API key owner scope")
+	}
+
+	connection := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "datadog-" + u.String(), Name: "Datadog", UpstreamURL: "https://mcp.datadoghq.com/mcp", AuthMode: "headers", AuditMode: "redacted", ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), connection); err != nil {
+		t.Fatal(err)
+	}
+	connection.Name = "Datadog Updated"
+	if ok, err := pg.UpdateMCPConnection(ctx(), connection); err != nil || !ok || connection.UpdatedAt == nil {
+		t.Fatalf("update connection: %v %v", ok, err)
+	}
+	if got, _ := pg.GetMCPConnectionByID(ctx(), u, connection.ID); got == nil {
+		t.Fatal("get connection by ID")
+	}
+	if got, _ := pg.GetMCPConnectionBySlug(ctx(), u, connection.Slug); got == nil {
+		t.Fatal("get connection by slug")
+	}
+	if got, _ := pg.GetMCPConnectionBySlug(ctx(), other, connection.Slug); got != nil {
+		t.Fatal("connection owner scope")
+	}
+	if list, err := pg.ListMCPConnections(ctx(), u); err != nil || len(list) != 1 {
+		t.Fatalf("list connections: %d %v", len(list), err)
+	}
+
+	grant := &store.MCPConnectionGrant{UserID: u, TenantID: tenant, ConnectionID: connection.ID, AccessKeyID: accessKey.ID}
+	if err := pg.InsertMCPConnectionGrant(ctx(), grant); err != nil {
+		t.Fatal(err)
+	}
+	if allowed, err := pg.HasMCPConnectionGrant(ctx(), accessKey.ID, connection.ID); err != nil || !allowed {
+		t.Fatalf("grant lookup: %v %v", allowed, err)
+	}
+	if list, err := pg.ListMCPConnectionGrants(ctx(), u, connection.ID); err != nil || len(list) != 1 {
+		t.Fatalf("grant list: %d %v", len(list), err)
+	}
+	badGrant := &store.MCPConnectionGrant{UserID: other, TenantID: tenant, ConnectionID: connection.ID, AccessKeyID: accessKey.ID}
+	if err := pg.InsertMCPConnectionGrant(ctx(), badGrant); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("cross-owner grant: %v", err)
+	}
+
+	headerName := "DD-API-KEY"
+	header := &store.MCPHeaderBinding{UserID: u, TenantID: tenant, ConnectionID: connection.ID, CredentialID: credential.ID, HeaderName: &headerName}
+	if err := pg.InsertMCPHeaderBinding(ctx(), header); err != nil {
+		t.Fatal(err)
+	}
+	if list, err := pg.ListMCPHeaderBindings(ctx(), u, connection.ID); err != nil || len(list) != 1 {
+		t.Fatalf("header list: %d %v", len(list), err)
+	}
+	badHeader := &store.MCPHeaderBinding{UserID: other, TenantID: tenant, ConnectionID: connection.ID, CredentialID: credential.ID}
+	if err := pg.InsertMCPHeaderBinding(ctx(), badHeader); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("cross-owner header: %v", err)
+	}
+
+	policy := &store.MCPToolPolicy{UserID: u, TenantID: tenant, ConnectionID: connection.ID, Method: "tools/call", ToolName: "search_logs", Allow: true}
+	if err := pg.UpsertMCPToolPolicy(ctx(), policy); err != nil {
+		t.Fatal(err)
+	}
+	policy.Allow = false
+	if err := pg.UpsertMCPToolPolicy(ctx(), policy); err != nil || policy.UpdatedAt == nil {
+		t.Fatalf("update policy: %v", err)
+	}
+	if list, err := pg.ListMCPToolPolicies(ctx(), u, connection.ID); err != nil || len(list) != 1 || list[0].Allow {
+		t.Fatalf("policy list: %+v %v", list, err)
+	}
+	badPolicy := &store.MCPToolPolicy{UserID: other, TenantID: tenant, ConnectionID: connection.ID, Method: "tools/call"}
+	if err := pg.UpsertMCPToolPolicy(ctx(), badPolicy); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("cross-owner policy: %v", err)
+	}
+
+	issuer := "https://auth.example"
+	oauth := &store.MCPOAuthAuthorization{UserID: u, TenantID: tenant, ConnectionID: connection.ID,
+		IssuerURL: &issuer, TokenAuthMethod: "client_secret_post", ClientIDCipher: []byte{1},
+		ClientSecretCipher: []byte{2}, AccessTokenCipher: []byte{3}, RefreshTokenCipher: []byte{4},
+		Scopes: []string{"mcp"}, ExpiresAt: &expires}
+	if err := pg.InsertMCPOAuthAuthorization(ctx(), oauth); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := pg.GetMCPOAuthAuthorization(ctx(), u, connection.ID); err != nil || got == nil || got.TokenAuthMethod != "client_secret_post" {
+		t.Fatalf("get OAuth: %+v %v", got, err)
+	}
+	oauth.AccessTokenCipher = []byte{9}
+	if ok, err := pg.UpdateMCPOAuthAuthorization(ctx(), oauth); err != nil || !ok || oauth.UpdatedAt == nil {
+		t.Fatalf("update OAuth: %v %v", ok, err)
+	}
+
+	state := &store.MCPOAuthState{State: "mcp-state-" + u.String(), ConnectionID: connection.ID,
+		UserID: u, TenantID: tenant, CodeVerifier: "verifier", RedirectURI: "https://vault.example/callback",
+		Resource: connection.UpstreamURL, IssuerURL: issuer, AuthEndpoint: issuer + "/authorize",
+		TokenEndpoint: issuer + "/token", TokenAuthMethod: "client_secret_post", Scopes: []string{"mcp"}, ExpiresAt: expires}
+	if err := pg.InsertMCPOAuthState(ctx(), state); err != nil {
+		t.Fatal(err)
+	}
+	if claimed, err := pg.ClaimMCPOAuthState(ctx(), state.State); err != nil || claimed == nil || claimed.TokenEndpoint == "" {
+		t.Fatalf("claim state: %+v %v", claimed, err)
+	}
+	if claimed, err := pg.ClaimMCPOAuthState(ctx(), state.State); err != nil || claimed != nil {
+		t.Fatalf("claim state replay: %+v %v", claimed, err)
+	}
+
+	evalRun := "eval-" + u.String()
+	exchange := &store.MCPAuditExchange{ConnectionID: connection.ID, UserID: u, TenantID: tenant,
+		AccessKeyID: accessKey.ID, EvalRunID: &evalRun, HTTPMethod: "POST", ProtocolVersion: "2026-07-28",
+		Outcome: "started", StartedAt: time.Now().Add(-time.Second)}
+	if err := pg.InsertMCPAuditExchange(ctx(), exchange); err != nil {
+		t.Fatal(err)
+	}
+	method, tool, decision := "tools/call", "search_logs", "allowed"
+	payload := `{"jsonrpc":"2.0","method":"tools/call"}`
+	message := &store.MCPAuditMessage{ExchangeID: exchange.ID, ConnectionID: connection.ID, UserID: u,
+		TenantID: tenant, SequenceNo: 1, ObservedAt: time.Now(), Direction: "client_to_server",
+		MessageKind: "request", PolicyDecision: decision, Method: &method, ToolName: &tool,
+		PayloadRedacted: &payload, PayloadSHA256: []byte{1, 2}, PayloadBytes: int64(len(payload)),
+		RedactionPaths: []string{"/params/token"}}
+	if err := pg.InsertMCPAuditMessage(ctx(), message); err != nil {
+		t.Fatal(err)
+	}
+	direction := "client_to_server"
+	filter := store.MCPAuditFilter{UserID: u, TenantID: tenant, Limit: 10, ConnectionID: &connection.ID,
+		AccessKeyID: &accessKey.ID, EvalRunID: &evalRun, Direction: &direction, Method: &method,
+		ToolName: &tool, PolicyDecision: &decision}
+	if list, total, err := pg.QueryMCPAudit(ctx(), filter); err != nil || total != 1 || len(list) != 1 || list[0].PayloadRedacted == nil {
+		t.Fatalf("query MCP audit: %d %d %v", len(list), total, err)
+	}
+	badMessage := *message
+	badMessage.ID, badMessage.UserID = uuid.Nil, other
+	if err := pg.InsertMCPAuditMessage(ctx(), &badMessage); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("cross-owner audit message: %v", err)
+	}
+	completed := time.Now()
+	status := 200
+	exchange.CompletedAt, exchange.StatusCode, exchange.Outcome = &completed, &status, "success"
+	if ok, err := pg.CompleteMCPAuditExchange(ctx(), exchange); err != nil || !ok {
+		t.Fatalf("complete exchange: %v %v", ok, err)
+	}
+
+	for name, remove := range map[string]func() (bool, error){
+		"grant":  func() (bool, error) { return pg.DeleteMCPConnectionGrant(ctx(), u, grant.ID) },
+		"header": func() (bool, error) { return pg.DeleteMCPHeaderBinding(ctx(), u, header.ID) },
+		"policy": func() (bool, error) { return pg.DeleteMCPToolPolicy(ctx(), u, policy.ID) },
+		"oauth":  func() (bool, error) { return pg.DeleteMCPOAuthAuthorization(ctx(), u, connection.ID) },
+	} {
+		if ok, err := remove(); err != nil || !ok {
+			t.Fatalf("delete %s: %v %v", name, ok, err)
+		}
+		if ok, err := remove(); err != nil || ok {
+			t.Fatalf("double delete %s: %v %v", name, ok, err)
+		}
+	}
+	if ok, err := pg.DeleteMCPConnection(ctx(), u, connection.ID); err != nil || !ok {
+		t.Fatalf("delete connection: %v %v", ok, err)
 	}
 }
 
@@ -295,6 +471,9 @@ func TestNotFoundPaths(t *testing.T) {
 	if g, err := pg.GetAPIKeyByName(ctx(), u, "no-such-name"); g != nil || err != nil {
 		t.Fatalf("api by name miss: %+v %v", g, err)
 	}
+	if g, err := pg.GetAPIKeyByID(ctx(), u, missing); g != nil || err != nil {
+		t.Fatalf("api by ID miss: %+v %v", g, err)
+	}
 	if ok, err := pg.DeleteAPIKey(ctx(), u, missing); ok || err != nil {
 		t.Fatalf("delete api miss: %v %v", ok, err)
 	}
@@ -349,7 +528,87 @@ func TestNotFoundPaths(t *testing.T) {
 	if err := pg.TouchAPIKeyLastUsed(ctx(), missing); err != nil {
 		t.Fatalf("touch api miss: %v", err)
 	}
+
+	if g, err := pg.GetMCPConnectionByID(ctx(), u, missing); g != nil || err != nil {
+		t.Fatalf("MCP connection ID miss: %+v %v", g, err)
+	}
+	if g, err := pg.GetMCPConnectionBySlug(ctx(), u, "missing"); g != nil || err != nil {
+		t.Fatalf("MCP connection slug miss: %+v %v", g, err)
+	}
+	if ok, err := pg.UpdateMCPConnection(ctx(), &store.MCPConnection{ID: missing, UserID: u}); ok || err != nil {
+		t.Fatalf("update MCP connection miss: %v %v", ok, err)
+	}
+	if ok, err := pg.DeleteMCPConnection(ctx(), u, missing); ok || err != nil {
+		t.Fatalf("delete MCP connection miss: %v %v", ok, err)
+	}
+	if g, err := pg.GetMCPOAuthAuthorization(ctx(), u, missing); g != nil || err != nil {
+		t.Fatalf("MCP OAuth miss: %+v %v", g, err)
+	}
+	if ok, err := pg.UpdateMCPOAuthAuthorization(ctx(), &store.MCPOAuthAuthorization{ID: missing, UserID: u, ConnectionID: missing}); ok || err != nil {
+		t.Fatalf("update MCP OAuth miss: %v %v", ok, err)
+	}
+	if state, err := pg.ClaimMCPOAuthState(ctx(), "missing"); state != nil || err != nil {
+		t.Fatalf("claim MCP OAuth state miss: %+v %v", state, err)
+	}
+	if ok, err := pg.CompleteMCPAuditExchange(ctx(), &store.MCPAuditExchange{ID: missing, UserID: u, TenantID: u}); ok || err != nil {
+		t.Fatalf("complete MCP audit miss: %v %v", ok, err)
+	}
 }
+
+func TestQueryMCPAuditFilters(t *testing.T) {
+	u, tenant, connectionID, accessKeyID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	evalRun := "filter-run"
+	exchange := &store.MCPAuditExchange{ConnectionID: connectionID, UserID: u, TenantID: tenant,
+		AccessKeyID: accessKeyID, EvalRunID: &evalRun, HTTPMethod: "POST", ProtocolVersion: "2026-07-28",
+		Outcome: "success", StartedAt: time.Now()}
+	if err := pg.InsertMCPAuditExchange(ctx(), exchange); err != nil {
+		t.Fatal(err)
+	}
+	method, tool := "tools/call", "search"
+	for i, direction := range []string{"client_to_server", "server_to_client"} {
+		decision := "allowed"
+		if i == 1 {
+			decision = "denied"
+		}
+		message := &store.MCPAuditMessage{ExchangeID: exchange.ID, ConnectionID: connectionID,
+			UserID: u, TenantID: tenant, SequenceNo: int64(i + 1), ObservedAt: time.Now().Add(time.Duration(i) * time.Second),
+			Direction: direction, MessageKind: "request", PolicyDecision: decision, Method: &method,
+			ToolName: &tool, PayloadSHA256: []byte{byte(i)}, PayloadBytes: 1}
+		if err := pg.InsertMCPAuditMessage(ctx(), message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	tests := []struct {
+		name   string
+		filter store.MCPAuditFilter
+		want   int
+	}{
+		{name: "connection", filter: store.MCPAuditFilter{ConnectionID: &connectionID}, want: 2},
+		{name: "access key", filter: store.MCPAuditFilter{AccessKeyID: &accessKeyID}, want: 2},
+		{name: "eval run", filter: store.MCPAuditFilter{EvalRunID: &evalRun}, want: 2},
+		{name: "direction", filter: store.MCPAuditFilter{Direction: sp("client_to_server")}, want: 1},
+		{name: "method", filter: store.MCPAuditFilter{Method: &method}, want: 2},
+		{name: "tool", filter: store.MCPAuditFilter{ToolName: &tool}, want: 2},
+		{name: "decision", filter: store.MCPAuditFilter{PolicyDecision: sp("denied")}, want: 1},
+		{name: "since", filter: store.MCPAuditFilter{Since: timePtr(time.Now().Add(-time.Minute))}, want: 2},
+		{name: "until", filter: store.MCPAuditFilter{Until: timePtr(time.Now().Add(time.Minute))}, want: 2},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			test.filter.UserID, test.filter.TenantID, test.filter.Limit = u, tenant, 10
+			items, total, err := pg.QueryMCPAudit(ctx(), test.filter)
+			if err != nil || total != test.want || len(items) != test.want {
+				t.Fatalf("query: items=%d total=%d err=%v", len(items), total, err)
+			}
+		})
+	}
+	items, total, err := pg.QueryMCPAudit(ctx(), store.MCPAuditFilter{UserID: u, TenantID: tenant, Limit: 1, Offset: 1})
+	if err != nil || total != 2 || len(items) != 1 {
+		t.Fatalf("paging: items=%d total=%d err=%v", len(items), total, err)
+	}
+}
+
+func timePtr(value time.Time) *time.Time { return &value }
 
 // TestQueryAuditFilters drives every optional WHERE clause (Outcome, FilterUserID, Since, Until)
 // and the offset/limit paging path so QueryAudit's filter assembly is fully covered.
@@ -415,6 +674,39 @@ func TestQueryErrorPaths(t *testing.T) {
 	}
 	if _, err := bad.ListOAuthManifests(ctx(), u); err == nil {
 		t.Fatal("list manifests should error")
+	}
+	if _, err := bad.GetAPIKeyByID(ctx(), u, u); err == nil {
+		t.Fatal("get API key by ID should error")
+	}
+	if err := bad.InsertMCPConnection(ctx(), &store.MCPConnection{}); err == nil {
+		t.Fatal("insert MCP connection should error")
+	}
+	if _, err := bad.UpdateMCPConnection(ctx(), &store.MCPConnection{}); err == nil {
+		t.Fatal("update MCP connection should error")
+	}
+	if _, err := bad.ListMCPConnections(ctx(), u); err == nil {
+		t.Fatal("list MCP connections should error")
+	}
+	if _, err := bad.GetMCPConnectionByID(ctx(), u, u); err == nil {
+		t.Fatal("get MCP connection should error")
+	}
+	if err := bad.InsertMCPOAuthAuthorization(ctx(), &store.MCPOAuthAuthorization{}); err == nil {
+		t.Fatal("insert MCP OAuth should error")
+	}
+	if _, err := bad.UpdateMCPOAuthAuthorization(ctx(), &store.MCPOAuthAuthorization{}); err == nil {
+		t.Fatal("update MCP OAuth should error")
+	}
+	if _, err := bad.GetMCPOAuthAuthorization(ctx(), u, u); err == nil {
+		t.Fatal("get MCP OAuth should error")
+	}
+	if err := bad.InsertMCPOAuthState(ctx(), &store.MCPOAuthState{}); err == nil {
+		t.Fatal("insert MCP OAuth state should error")
+	}
+	if _, err := bad.ClaimMCPOAuthState(ctx(), "state"); err == nil {
+		t.Fatal("claim MCP OAuth state should error")
+	}
+	if _, _, err := bad.QueryMCPAudit(ctx(), store.MCPAuditFilter{}); err == nil {
+		t.Fatal("query MCP audit should error")
 	}
 	if _, _, err := bad.QueryAudit(ctx(), store.AuditFilter{UserID: u, TenantID: u, Limit: 1}); err == nil {
 		t.Fatal("query audit should error")

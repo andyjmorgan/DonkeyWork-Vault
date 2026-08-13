@@ -20,6 +20,7 @@ const SCOPES: { value: AccessScope; label: string; hint: string }[] = [
   { value: 'vault:read', label: 'vault:read', hint: 'Read credentials, tokens, and config (GET).' },
   { value: 'vault:readwrite', label: 'vault:readwrite', hint: 'Read + create/update/delete credentials.' },
   { value: 'vault:audit', label: 'vault:audit', hint: 'Read the audit trail.' },
+  { value: 'vault:mcp', label: 'vault:mcp', hint: 'Use explicitly granted MCP connections.' },
 ]
 
 export function ProfilePage() {
@@ -155,6 +156,7 @@ function CreateKey({ onCreated }: { onCreated: (c: { name: string; secret: strin
   const [name, setName] = useState('')
   const [description, setDescription] = useState('')
   const [scopes, setScopes] = useState<AccessScope[]>([])
+  const [expiresAt, setExpiresAt] = useState('')
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
 
@@ -165,7 +167,7 @@ function CreateKey({ onCreated }: { onCreated: (c: { name: string; secret: strin
     setMsg(undefined)
     setBusy(true)
     try {
-      const r = await api.createAccessKey({ name, description: description || undefined, scopes })
+      const r = await api.createAccessKey({ name, description: description || undefined, scopes, expiresAt: expiresAt ? new Date(expiresAt).toISOString() : undefined })
       onCreated({ name: r.name, secret: r.secret })
     } catch (e) {
       setMsg(String(e))
@@ -178,6 +180,7 @@ function CreateKey({ onCreated }: { onCreated: (c: { name: string; secret: strin
     <div className="grid gap-3">
       <div><Label className={lbl}>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. agent-bot" /></div>
       <div><Label className={lbl}>Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="what this key is for" /></div>
+      <div><Label className={lbl}>Expires at (optional)</Label><Input type="datetime-local" value={expiresAt} onChange={(e) => setExpiresAt(e.target.value)} /></div>
       <div>
         <Label className={lbl}>Scopes *</Label>
         <div className="grid gap-2 sm:grid-cols-2">

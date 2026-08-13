@@ -132,7 +132,7 @@ func (s *Server) handleCreateAccessKey(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body.")
 		return
 	}
-	key, secret, err := s.deps.AccessKeys.Create(r.Context(), dto.Name, dto.Description, dto.Scopes)
+	key, secret, err := s.deps.AccessKeys.CreateWithExpiry(r.Context(), dto.Name, dto.Description, dto.Scopes, dto.ExpiresAt)
 	if writeServiceError(w, err) {
 		return
 	}

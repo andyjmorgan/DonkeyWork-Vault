@@ -23,6 +23,7 @@ import (
 	"donkeywork.dev/vault-server/internal/httpapi"
 	"donkeywork.dev/vault-server/internal/httpx"
 	"donkeywork.dev/vault-server/internal/manifests"
+	"donkeywork.dev/vault-server/internal/mcpoauth"
 	"donkeywork.dev/vault-server/internal/service"
 	"donkeywork.dev/vault-server/internal/store"
 	"donkeywork.dev/vault-server/internal/telemetry"
@@ -97,19 +98,31 @@ func run() error {
 	// Outbound HTTP for OAuth/discovery, traced via otelhttp so exchanges are child spans. The
 	// transport blocks link-local/metadata destinations (SSRF guard for user-stored endpoints).
 	oauthClient := &http.Client{Timeout: 30 * time.Second, Transport: otelhttp.NewTransport(httpx.DefaultSafeTransport())}
+	// MCP subscriptions are intentionally long-lived. Cancellation is bound to the downstream
+	// request context rather than a client-wide timeout.
+	mcpClient := &http.Client{
+		Transport: otelhttp.NewTransport(httpx.DefaultSafeTransport()),
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
+			return http.ErrUseLastResponse
+		},
+	}
 
 	deps := httpapi.Deps{
-		APIKeys:      service.NewAPIKeyService(pg, cipher, auditLog),
-		AccessKeys:   service.NewAccessKeyService(pg, auditLog),
-		OAuthConfigs: service.NewOAuthConfigService(pg, cipher, auditLog, resolver),
-		OAuthTokens:  service.NewOAuthTokenService(pg, cipher, auditLog, resolver, oauthClient),
-		OAuthFlow:    service.NewOAuthFlowService(pg, cipher, resolver, auditLog, oauthClient, logger),
-		Resolver:     resolver,
-		Discovery:    manifests.NewDiscovery(oauthClient),
-		AuditLog:     auditLog,
-		AuditQuery:   auditQuery,
-		IPResolver:   audit.NewForwardedIPResolver(cfg.TrustedProxies),
-		Logger:       logger,
+		APIKeys:         service.NewAPIKeyService(pg, cipher, auditLog),
+		AccessKeys:      service.NewAccessKeyService(pg, auditLog),
+		OAuthConfigs:    service.NewOAuthConfigService(pg, cipher, auditLog, resolver),
+		OAuthTokens:     service.NewOAuthTokenService(pg, cipher, auditLog, resolver, oauthClient),
+		OAuthFlow:       service.NewOAuthFlowService(pg, cipher, resolver, auditLog, oauthClient, logger),
+		MCP:             service.NewMCPService(pg, cipher),
+		MCPOAuth:        mcpoauth.NewService(mcpoauth.NewStoreRepository(pg), cipher, oauthClient),
+		MCPClient:       mcpClient,
+		MCPAuditHMACKey: []byte(cfg.Keks[cfg.ActiveKekID]),
+		Resolver:        resolver,
+		Discovery:       manifests.NewDiscovery(oauthClient),
+		AuditLog:        auditLog,
+		AuditQuery:      auditQuery,
+		IPResolver:      audit.NewForwardedIPResolver(cfg.TrustedProxies),
+		Logger:          logger,
 		OIDC: httpapi.OIDCConfig{
 			Authority: cfg.OIDCAuthority, InternalAuthority: cfg.OIDCInternal, Audience: cfg.OIDCAudience,
 			ClientID: cfg.OIDCClientID, Scopes: cfg.OIDCScopes,
@@ -142,7 +155,7 @@ func run() error {
 		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      60 * time.Second,
+		WriteTimeout:      0, // MCP subscriptions/listen streams remain open until either peer cancels.
 		IdleTimeout:       120 * time.Second,
 	}
 

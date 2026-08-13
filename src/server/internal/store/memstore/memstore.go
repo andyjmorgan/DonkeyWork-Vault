@@ -17,14 +17,22 @@ import (
 
 // Mem is a goroutine-safe in-memory Store.
 type Mem struct {
-	mu         sync.Mutex
-	accessKeys map[uuid.UUID]store.AccessKey
-	apiKeys    map[uuid.UUID]store.APIKey
-	configs    map[uuid.UUID]store.OAuthProviderConfig
-	states     map[uuid.UUID]store.OAuthState
-	tokens     map[uuid.UUID]store.OAuthToken
-	manifests  map[uuid.UUID]store.ProviderManifest
-	audit      []store.AuditEntry
+	mu             sync.Mutex
+	accessKeys     map[uuid.UUID]store.AccessKey
+	apiKeys        map[uuid.UUID]store.APIKey
+	configs        map[uuid.UUID]store.OAuthProviderConfig
+	states         map[uuid.UUID]store.OAuthState
+	tokens         map[uuid.UUID]store.OAuthToken
+	manifests      map[uuid.UUID]store.ProviderManifest
+	audit          []store.AuditEntry
+	mcpConnections map[uuid.UUID]store.MCPConnection
+	mcpGrants      map[uuid.UUID]store.MCPConnectionGrant
+	mcpHeaders     map[uuid.UUID]store.MCPHeaderBinding
+	mcpPolicies    map[uuid.UUID]store.MCPToolPolicy
+	mcpOAuth       map[uuid.UUID]store.MCPOAuthAuthorization
+	mcpOAuthStates map[string]store.MCPOAuthState
+	mcpExchanges   map[uuid.UUID]store.MCPAuditExchange
+	mcpMessages    map[uuid.UUID]store.MCPAuditMessage
 
 	// FailNext, when non-nil, makes the next call to any method return it (for error-path tests).
 	FailNext error
@@ -33,12 +41,20 @@ type Mem struct {
 // New builds an empty store.
 func New() *Mem {
 	return &Mem{
-		accessKeys: map[uuid.UUID]store.AccessKey{},
-		apiKeys:    map[uuid.UUID]store.APIKey{},
-		configs:    map[uuid.UUID]store.OAuthProviderConfig{},
-		states:     map[uuid.UUID]store.OAuthState{},
-		tokens:     map[uuid.UUID]store.OAuthToken{},
-		manifests:  map[uuid.UUID]store.ProviderManifest{},
+		accessKeys:     map[uuid.UUID]store.AccessKey{},
+		apiKeys:        map[uuid.UUID]store.APIKey{},
+		configs:        map[uuid.UUID]store.OAuthProviderConfig{},
+		states:         map[uuid.UUID]store.OAuthState{},
+		tokens:         map[uuid.UUID]store.OAuthToken{},
+		manifests:      map[uuid.UUID]store.ProviderManifest{},
+		mcpConnections: map[uuid.UUID]store.MCPConnection{},
+		mcpGrants:      map[uuid.UUID]store.MCPConnectionGrant{},
+		mcpHeaders:     map[uuid.UUID]store.MCPHeaderBinding{},
+		mcpPolicies:    map[uuid.UUID]store.MCPToolPolicy{},
+		mcpOAuth:       map[uuid.UUID]store.MCPOAuthAuthorization{},
+		mcpOAuthStates: map[string]store.MCPOAuthState{},
+		mcpExchanges:   map[uuid.UUID]store.MCPAuditExchange{},
+		mcpMessages:    map[uuid.UUID]store.MCPAuditMessage{},
 	}
 }
 
@@ -129,6 +145,11 @@ func (m *Mem) DeleteAccessKey(_ context.Context, userID, id uuid.UUID) (bool, er
 	}
 	if k, ok := m.accessKeys[id]; ok && k.UserID == userID {
 		delete(m.accessKeys, id)
+		for grantID, grant := range m.mcpGrants {
+			if grant.AccessKeyID == id {
+				delete(m.mcpGrants, grantID)
+			}
+		}
 		return true, nil
 	}
 	return false, nil
@@ -228,6 +249,19 @@ func (m *Mem) GetAPIKeyByName(_ context.Context, userID uuid.UUID, name string) 
 	return nil, nil
 }
 
+// GetAPIKeyByID returns a user's API key by ID, or nil if none matches.
+func (m *Mem) GetAPIKeyByID(_ context.Context, userID, id uuid.UUID) (*store.APIKey, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return nil, err
+	}
+	if k, ok := m.apiKeys[id]; ok && k.UserID == userID {
+		return &k, nil
+	}
+	return nil, nil
+}
+
 // DeleteAPIKey removes a user's API key and reports whether a row was deleted.
 func (m *Mem) DeleteAPIKey(_ context.Context, userID, id uuid.UUID) (bool, error) {
 	m.mu.Lock()
@@ -237,6 +271,11 @@ func (m *Mem) DeleteAPIKey(_ context.Context, userID, id uuid.UUID) (bool, error
 	}
 	if k, ok := m.apiKeys[id]; ok && k.UserID == userID {
 		delete(m.apiKeys, id)
+		for bindingID, binding := range m.mcpHeaders {
+			if binding.CredentialID == id {
+				delete(m.mcpHeaders, bindingID)
+			}
+		}
 		return true, nil
 	}
 	return false, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"donkeywork.dev/vault-server/internal/audit"
 	"donkeywork.dev/vault-server/internal/manifests"
+	"donkeywork.dev/vault-server/internal/mcpoauth"
 	"donkeywork.dev/vault-server/internal/service"
 )
 
@@ -54,17 +56,21 @@ func (o OIDCConfig) effectiveCliScopes() string {
 
 // Deps are the constructed dependencies the server needs.
 type Deps struct {
-	APIKeys      *service.APIKeyService
-	AccessKeys   *service.AccessKeyService
-	OAuthConfigs *service.OAuthConfigService
-	OAuthTokens  *service.OAuthTokenService
-	OAuthFlow    *service.OAuthFlowService
-	Resolver     *manifests.Resolver
-	Discovery    *manifests.Discovery
-	AuditLog     *audit.Log
-	AuditQuery   *audit.QueryService
-	IPResolver   *audit.ForwardedIPResolver
-	Logger       *slog.Logger
+	APIKeys         *service.APIKeyService
+	AccessKeys      *service.AccessKeyService
+	OAuthConfigs    *service.OAuthConfigService
+	OAuthTokens     *service.OAuthTokenService
+	OAuthFlow       *service.OAuthFlowService
+	MCP             *service.MCPService
+	MCPOAuth        *mcpoauth.Service
+	MCPClient       *http.Client
+	MCPAuditHMACKey []byte
+	Resolver        *manifests.Resolver
+	Discovery       *manifests.Discovery
+	AuditLog        *audit.Log
+	AuditQuery      *audit.QueryService
+	IPResolver      *audit.ForwardedIPResolver
+	Logger          *slog.Logger
 
 	OIDC          OIDCConfig
 	PublicBaseURL string
@@ -97,6 +103,12 @@ func NewServer(ctx context.Context, deps Deps) (*Server, error) {
 		logger = slog.Default()
 	}
 	s := &Server{deps: deps, logger: logger, rate: newIPRateLimiter(rateLimitPerWindow, rateLimitWindow)}
+	if s.deps.MCPClient == nil {
+		s.deps.MCPClient = http.DefaultClient
+	}
+	if s.deps.MCPAuditHMACKey == nil {
+		s.deps.MCPAuditHMACKey = []byte("donkeywork-vault-mcp-audit")
+	}
 
 	s.webClientID = deps.OIDC.effectiveWebClientID()
 	s.cliClientID = deps.OIDC.effectiveCliClientID()
