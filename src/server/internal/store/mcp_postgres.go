@@ -16,6 +16,13 @@ func nonNilStrings(values []string) []string {
 	return values
 }
 
+func nonNilBytes(value []byte) []byte {
+	if value == nil {
+		return []byte{}
+	}
+	return value
+}
+
 const mcpConnectionCols = `id, user_id, tenant_id, slug, name, description, upstream_url, auth_mode, audit_mode, protocol_version, upstream_protocol_mode, legacy_protocol_version, protocol_era, probe_status, probe_checked_at, probe_error, probe_detail, supported_versions, server_name, server_version, enabled, created_at, updated_at`
 
 func scanMCPConnection(row pgx.Row) (*MCPConnection, error) {
@@ -394,8 +401,9 @@ func (p *Postgres) InsertMCPOAuthAuthorization(ctx context.Context, a *MCPOAuthA
 		SELECT $1,$2,c.id,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16 FROM vault.mcp_connections c
 		WHERE c.id=$3 AND c.user_id=$1 AND c.tenant_id=$2 RETURNING id, created_at`,
 		a.UserID, a.TenantID, a.ConnectionID, a.IssuerURL, a.AuthorizationEndpoint, a.TokenEndpoint,
-		a.Resource, a.TokenType, a.TokenAuthMethod, a.ClientIDCipher, a.ClientSecretCipher, a.AccessTokenCipher,
-		a.RefreshTokenCipher, nonNilStrings(a.Scopes), a.ExpiresAt, a.LastRefreshedAt).Scan(&a.ID, &a.CreatedAt)
+		a.Resource, a.TokenType, a.TokenAuthMethod, nonNilBytes(a.ClientIDCipher), nonNilBytes(a.ClientSecretCipher),
+		nonNilBytes(a.AccessTokenCipher), nonNilBytes(a.RefreshTokenCipher), nonNilStrings(a.Scopes),
+		a.ExpiresAt, a.LastRefreshedAt).Scan(&a.ID, &a.CreatedAt)
 	if noRows(err) {
 		return ErrOwnershipMismatch
 	}
@@ -411,7 +419,8 @@ func (p *Postgres) UpdateMCPOAuthAuthorization(ctx context.Context, a *MCPOAuthA
 			scopes=$14, expires_at=$15, last_refreshed_at=$16, updated_at=now()
 		WHERE user_id=$1 AND id=$2 AND connection_id=$3 RETURNING updated_at`, a.UserID, a.ID,
 		a.ConnectionID, a.IssuerURL, a.AuthorizationEndpoint, a.TokenEndpoint, a.Resource, a.TokenType,
-		a.TokenAuthMethod, a.ClientIDCipher, a.ClientSecretCipher, a.AccessTokenCipher, a.RefreshTokenCipher, nonNilStrings(a.Scopes),
+		a.TokenAuthMethod, nonNilBytes(a.ClientIDCipher), nonNilBytes(a.ClientSecretCipher),
+		nonNilBytes(a.AccessTokenCipher), nonNilBytes(a.RefreshTokenCipher), nonNilStrings(a.Scopes),
 		a.ExpiresAt, a.LastRefreshedAt).Scan(&a.UpdatedAt)
 	if noRows(err) {
 		return false, nil
