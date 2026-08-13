@@ -3,11 +3,14 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,8 +28,46 @@ type evalRunLookupStore struct {
 	err error
 }
 
+type failNthMCPAuditStore struct {
+	store.Store
+	failAt int
+	calls  int
+}
+
+func (s *failNthMCPAuditStore) InsertMCPAuditMessage(ctx context.Context, message *store.MCPAuditMessage) error {
+	s.calls++
+	if s.calls == s.failAt {
+		return errors.New("audit insert failed")
+	}
+	return s.Store.InsertMCPAuditMessage(ctx, message)
+}
+
+type rejectUpstreamAuditStore struct {
+	store.Store
+}
+
+func (s rejectUpstreamAuditStore) InsertMCPAuditMessage(ctx context.Context, message *store.MCPAuditMessage) error {
+	if message.Direction == "server_to_client" {
+		return errors.New("audit unavailable")
+	}
+	return s.Store.InsertMCPAuditMessage(ctx, message)
+}
+
 func (s evalRunLookupStore) GetMCPEvalRunByAccessKey(context.Context, uuid.UUID) (*store.MCPEvalRun, error) {
 	return s.run, s.err
+}
+
+type failMCPResponseAuditStore struct {
+	store.Store
+	inserts int
+}
+
+func (s *failMCPResponseAuditStore) InsertMCPAuditMessage(ctx context.Context, message *store.MCPAuditMessage) error {
+	s.inserts++
+	if s.inserts > 1 {
+		return errors.New("response audit failed")
+	}
+	return s.Store.InsertMCPAuditMessage(ctx, message)
 }
 
 func createMCPConnection(t *testing.T, h *harness, upstream string) mcpConnectionDTO {
@@ -402,6 +443,134 @@ func TestMCPProxyJSONAndPolicy(t *testing.T) {
 	}
 }
 
+func TestMCPGatewayErrorsAreAuditedWithWireIDs(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		body       []byte
+		method     string
+		wantStatus int
+		wantCode   int
+		wantID     any
+		wantIDType string
+		wantIDText *string
+		configure  func(*testing.T, *harness, mcpConnectionDTO)
+	}{
+		{
+			name: "malformed", body: []byte(`{"bad":true}`), method: "tools/list",
+			wantStatus: http.StatusBadRequest, wantCode: -32600, wantID: nil, wantIDType: "none",
+		},
+		{
+			name:   "denied string id",
+			body:   []byte(`{"jsonrpc":"2.0","id":"request-7","method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`),
+			method: "tools/list", wantStatus: http.StatusForbidden, wantCode: -32600, wantID: "request-7", wantIDType: "string", wantIDText: strPtr("request-7"),
+			configure: func(t *testing.T, h *harness, connection mcpConnectionDTO) {
+				t.Helper()
+				if err := h.ms.UpsertMCPToolPolicy(t.Context(), &store.MCPToolPolicy{UserID: h.userID, ConnectionID: connection.ID, Method: "tools/list", Allow: false}); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+		{
+			name:   "denied numeric id",
+			body:   []byte(`{"jsonrpc":"2.0","id":42,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`),
+			method: "tools/list", wantStatus: http.StatusForbidden, wantCode: -32600, wantID: float64(42), wantIDType: "number", wantIDText: strPtr("42"),
+			configure: func(t *testing.T, h *harness, connection mcpConnectionDTO) {
+				t.Helper()
+				if err := h.ms.UpsertMCPToolPolicy(t.Context(), &store.MCPToolPolicy{UserID: h.userID, ConnectionID: connection.ID, Method: "tools/list", Allow: false}); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newHarness(t)
+			connection := createMCPConnection(t, h, "https://example.com/mcp")
+			key := firstAccessKey(t, h)
+			if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+				t.Fatal(err)
+			}
+			if test.configure != nil {
+				test.configure(t, h, connection)
+			}
+			rec := mcpRequest(t, h, test.body, test.method, "")
+			if rec.Code != test.wantStatus {
+				t.Fatalf("status=%d body=%s", rec.Code, rec.Body)
+			}
+			var wire struct {
+				JSONRPC string `json:"jsonrpc"`
+				ID      any    `json:"id"`
+				Error   struct {
+					Code int `json:"code"`
+				} `json:"error"`
+			}
+			if err := json.Unmarshal(rec.Body.Bytes(), &wire); err != nil {
+				t.Fatal(err)
+			}
+			if wire.JSONRPC != "2.0" || wire.Error.Code != test.wantCode || !reflect.DeepEqual(wire.ID, test.wantID) {
+				t.Fatalf("wire=%+v", wire)
+			}
+			page := decode[mcpAuditPageResponse](t, h.do(t, http.MethodGet, "/api/v1/mcp/audit?connectionId="+connection.ID.String(), nil, true))
+			if page.Total != 2 {
+				t.Fatalf("audit total=%d", page.Total)
+			}
+			var outbound *mcpAuditMessageDTO
+			for i := range page.Items {
+				if page.Items[i].Direction == "server_to_client" {
+					outbound = &page.Items[i]
+				}
+			}
+			if outbound == nil || outbound.SequenceNo != 2 || outbound.MessageKind != "error" || outbound.ErrorCode == nil || *outbound.ErrorCode != test.wantCode ||
+				outbound.JSONRPCIDType == nil || *outbound.JSONRPCIDType != test.wantIDType || !equalStringPtr(outbound.JSONRPCIDText, test.wantIDText) ||
+				outbound.PayloadRedacted == nil || *outbound.PayloadRedacted != strings.TrimSpace(rec.Body.String()) {
+				t.Fatalf("outbound audit=%+v wire=%q", outbound, rec.Body.String())
+			}
+		})
+	}
+}
+
+func TestMCPGatewayErrorFailsClosedWhenResponseAuditFails(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		body      []byte
+		method    string
+		configure func(*testing.T, *harness, mcpConnectionDTO)
+	}{
+		{name: "malformed", body: []byte(`{"bad":true}`), method: "tools/list"},
+		{
+			name: "denied", method: "tools/list",
+			body: []byte(`{"jsonrpc":"2.0","id":"request-7","method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`),
+			configure: func(t *testing.T, h *harness, connection mcpConnectionDTO) {
+				t.Helper()
+				if err := h.ms.UpsertMCPToolPolicy(t.Context(), &store.MCPToolPolicy{UserID: h.userID, ConnectionID: connection.ID, Method: "tools/list", Allow: false}); err != nil {
+					t.Fatal(err)
+				}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			h := newHarness(t)
+			connection := createMCPConnection(t, h, "https://example.com/mcp")
+			key := firstAccessKey(t, h)
+			if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+				t.Fatal(err)
+			}
+			if test.configure != nil {
+				test.configure(t, h, connection)
+			}
+			failing := &failNthMCPAuditStore{Store: h.ms, failAt: 2}
+			h.server.deps.MCP = service.NewMCPService(failing, h.cipher)
+			rec := mcpRequest(t, h, test.body, test.method, "")
+			if rec.Code != http.StatusServiceUnavailable || bytes.Contains(rec.Body.Bytes(), []byte(`"jsonrpc"`)) || failing.calls != 2 {
+				t.Fatalf("status=%d calls=%d body=%s", rec.Code, failing.calls, rec.Body)
+			}
+		})
+	}
+}
+
+func equalStringPtr(left, right *string) bool {
+	return left == nil && right == nil || left != nil && right != nil && *left == *right
+}
+
 func TestMCPProxyEvalRunCorrelationIsAuthoritative(t *testing.T) {
 	for _, test := range []struct {
 		name       string
@@ -552,9 +721,10 @@ func TestMCPProxyEvalRunLookupFailureStopsBeforeUpstream(t *testing.T) {
 }
 
 func TestMCPProxySSE(t *testing.T) {
+	stream := ": keepalive\n\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\"}}\n\n"
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = w.Write([]byte(": keepalive\n\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\"}}\n\n"))
+		_, _ = w.Write([]byte(stream))
 	}))
 	defer upstream.Close()
 	h := newHarness(t)
@@ -566,12 +736,55 @@ func TestMCPProxySSE(t *testing.T) {
 	}
 	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
 	rec := mcpRequest(t, h, body, "subscriptions/listen", "")
-	if rec.Code != 200 || !bytes.Contains(rec.Body.Bytes(), []byte("notifications/progress")) {
+	if rec.Code != 200 || rec.Body.String() != stream {
 		t.Fatalf("SSE %d %s", rec.Code, rec.Body)
 	}
 	page := decode[mcpAuditPageResponse](t, h.do(t, http.MethodGet, "/api/v1/mcp/audit?connectionId="+connection.ID.String(), nil, true))
 	if page.Total != 3 {
 		t.Fatalf("SSE audit total %d", page.Total)
+	}
+}
+
+func TestMCPProxySSEFailsClosedBeforeHeaders(t *testing.T) {
+	tests := []struct {
+		name       string
+		stream     string
+		failAudit  bool
+		wantStatus int
+	}{
+		{name: "malformed event", stream: "data: not-json\n\n", wantStatus: http.StatusBadGateway},
+		{name: "incomplete event", stream: "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{}}", wantStatus: http.StatusBadGateway},
+		{name: "valid then malformed", stream: "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\ndata: not-json\n\n", wantStatus: http.StatusBadGateway},
+		{name: "audit failure", stream: "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\"}}\n\n", failAudit: true, wantStatus: http.StatusServiceUnavailable},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.Header().Set("X-Accel-Buffering", "no")
+				_, _ = w.Write([]byte(test.stream))
+			}))
+			defer upstream.Close()
+			h := newHarness(t)
+			h.server.deps.MCPClient = upstream.Client()
+			connection := createMCPConnection(t, h, upstream.URL)
+			key := firstAccessKey(t, h)
+			if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+				t.Fatal(err)
+			}
+			if test.failAudit {
+				failing := &failMCPResponseAuditStore{Store: h.ms}
+				h.server.deps.MCP = service.NewMCPService(failing, h.cipher)
+			}
+			body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+			rec := mcpRequest(t, h, body, "subscriptions/listen", "")
+			if rec.Code != test.wantStatus || strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") {
+				t.Fatalf("status=%d headers=%v body=%s", rec.Code, rec.Header(), rec.Body)
+			}
+			if !strings.Contains(rec.Body.String(), `"error"`) {
+				t.Fatalf("missing downstream error: %s", rec.Body)
+			}
+		})
 	}
 }
 
@@ -800,7 +1013,49 @@ func TestMCPProxyUpstreamFailures(t *testing.T) {
 			if rec.Code != http.StatusBadGateway {
 				t.Fatalf("upstream failure %d: %s", rec.Code, rec.Body)
 			}
+			rows, total, err := h.ms.QueryMCPAudit(t.Context(), store.MCPAuditFilter{
+				UserID: h.userID, Limit: 10, ConnectionID: &connection.ID,
+			})
+			if err != nil || total != 2 {
+				t.Fatalf("rejection audit: total=%d err=%v rows=%+v", total, err, rows)
+			}
+			var rejected *store.MCPAuditMessage
+			for i := range rows {
+				if rows[i].Direction == "server_to_client" {
+					rejected = &rows[i]
+				}
+			}
+			wantDigest := sha256.Sum256([]byte(test.body))
+			if rejected == nil || rejected.MessageKind != "malformed" || rejected.PolicyDecision != "upstream_rejected" ||
+				rejected.PayloadBytes != int64(len(test.body)) || !bytes.Equal(rejected.PayloadSHA256, wantDigest[:]) || rejected.PayloadRedacted == nil {
+				t.Fatalf("rejected response audit: %+v", rejected)
+			}
 		})
+	}
+}
+
+func TestMCPProxyRejectedResponseAuditFailure(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{bad}`))
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	h.server.deps.MCP = service.NewMCPService(rejectUpstreamAuditStore{Store: h.ms}, h.cipher)
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	rec := mcpRequest(t, h, body, "tools/list", "")
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("audit failure %d: %s", rec.Code, rec.Body)
+	}
+	rows, total, err := h.ms.QueryMCPAudit(t.Context(), store.MCPAuditFilter{UserID: h.userID, Limit: 10, ConnectionID: &connection.ID})
+	if err != nil || total != 1 || rows[0].Direction != "client_to_server" {
+		t.Fatalf("persisted audit after failure: total=%d err=%v rows=%+v", total, err, rows)
 	}
 }
 
