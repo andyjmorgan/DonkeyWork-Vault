@@ -1438,6 +1438,22 @@ func TestMCPOAuthCallbackSupersedesOlderBeginAndRejectsReplay(t *testing.T) {
 		t.Helper()
 		return h.do(t, http.MethodGet, "/api/mcp/oauth/callback?code="+url.QueryEscape(code)+"&state="+url.QueryEscape(state), nil, false)
 	}
+	loopbackRedirect := "http://127.0.0.1:8000/oauth/callback"
+	rec := h.do(t, http.MethodGet, oauthPath+"/connect?redirectUri="+url.QueryEscape(loopbackRedirect), nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("begin loopback OAuth %d: %s", rec.Code, rec.Body)
+	}
+	loopbackResult := decode[mcpOAuthConnectResponse](t, rec)
+	loopbackURL, err := url.Parse(loopbackResult.AuthorizeURL)
+	if err != nil || loopbackURL.Query().Get("redirect_uri") != loopbackRedirect {
+		t.Fatalf("loopback authorize URL=%q err=%v", loopbackResult.AuthorizeURL, err)
+	}
+	for _, rejected := range []string{"https://evil.example/callback", "http://127.0.0.1:7777/oauth/callback", "http://localhost:8000/oauth/callback"} {
+		rec = h.do(t, http.MethodGet, oauthPath+"/connect?redirectUri="+url.QueryEscape(rejected), nil, true)
+		if rec.Code != http.StatusBadRequest {
+			t.Fatalf("unsafe redirect %q status=%d", rejected, rec.Code)
+		}
+	}
 
 	oldState := begin()
 	latestState := begin()
