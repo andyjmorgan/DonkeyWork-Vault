@@ -111,7 +111,11 @@ type Store interface {
 	DeleteMCPOAuthAuthorization(ctx context.Context, userID, connectionID uuid.UUID) (bool, error)
 	// WithMCPOAuthRefreshLock serializes refresh work for a connection across service replicas.
 	WithMCPOAuthRefreshLock(ctx context.Context, connectionID uuid.UUID, fn func() error) error
+	// InsertMCPOAuthState atomically replaces any earlier state for the same connection.
 	InsertMCPOAuthState(ctx context.Context, s *MCPOAuthState) error
+	// GetMCPOAuthStateByState reads a state without consuming it. The opaque state is sufficient
+	// authorization because OAuth callbacks do not have an ambient authenticated caller.
+	GetMCPOAuthStateByState(ctx context.Context, state string) (*MCPOAuthState, error)
 	// ClaimMCPOAuthState atomically consumes a state so concurrent callback replays cannot succeed.
 	ClaimMCPOAuthState(ctx context.Context, state string) (*MCPOAuthState, error)
 

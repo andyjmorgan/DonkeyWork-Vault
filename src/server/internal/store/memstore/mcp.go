@@ -527,7 +527,7 @@ func (m *Mem) DeleteMCPOAuthAuthorization(_ context.Context, userID, connectionI
 	return false, nil
 }
 
-// InsertMCPOAuthState stores a same-owner in-flight OAuth state.
+// InsertMCPOAuthState atomically supersedes the prior state for a same-owner connection.
 func (m *Mem) InsertMCPOAuthState(_ context.Context, state *store.MCPOAuthState) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -537,11 +537,28 @@ func (m *Mem) InsertMCPOAuthState(_ context.Context, state *store.MCPOAuthState)
 	if c, ok := m.mcpConnections[state.ConnectionID]; !ok || c.UserID != state.UserID || c.TenantID != state.TenantID {
 		return store.ErrOwnershipMismatch
 	}
-	if state.CreatedAt.IsZero() {
-		state.CreatedAt = time.Now().UTC()
+	state.CreatedAt = time.Now().UTC()
+	for stateValue, existing := range m.mcpOAuthStates {
+		if existing.ConnectionID == state.ConnectionID {
+			delete(m.mcpOAuthStates, stateValue)
+		}
 	}
 	m.mcpOAuthStates[state.State] = *state
 	return nil
+}
+
+// GetMCPOAuthStateByState returns an OAuth state without consuming it.
+func (m *Mem) GetMCPOAuthStateByState(_ context.Context, state string) (*store.MCPOAuthState, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return nil, err
+	}
+	s, ok := m.mcpOAuthStates[state]
+	if !ok {
+		return nil, nil
+	}
+	return &s, nil
 }
 
 // ClaimMCPOAuthState atomically consumes an OAuth state.

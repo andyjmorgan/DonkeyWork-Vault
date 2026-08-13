@@ -132,18 +132,31 @@ func (r *StoreRepository) SaveState(ctx context.Context, state *State) error {
 	})
 }
 
+// GetState reads and maps an authorization state without consuming it.
+func (r *StoreRepository) GetState(ctx context.Context, state string) (*State, error) {
+	row, err := r.store.GetMCPOAuthStateByState(ctx, state)
+	if err != nil || row == nil {
+		return nil, err
+	}
+	return stateFromStore(row), nil
+}
+
 // ClaimState atomically consumes and maps an authorization state.
 func (r *StoreRepository) ClaimState(ctx context.Context, state string) (*State, error) {
 	row, err := r.store.ClaimMCPOAuthState(ctx, state)
 	if err != nil || row == nil {
 		return nil, err
 	}
+	return stateFromStore(row), nil
+}
+
+func stateFromStore(row *store.MCPOAuthState) *State {
 	return &State{
 		State: row.State, ConnectionID: row.ConnectionID, UserID: row.UserID, TenantID: row.TenantID,
 		CodeVerifier: row.CodeVerifier, RedirectURI: row.RedirectURI, Resource: row.Resource,
 		Issuer: row.IssuerURL, AuthorizationEndpoint: row.AuthEndpoint, TokenEndpoint: row.TokenEndpoint,
 		TokenAuthMethod: row.TokenAuthMethod, Scopes: row.Scopes, ExpiresAt: row.ExpiresAt,
-	}, nil
+	}
 }
 
 // GetAuthorization loads one owner-scoped encrypted upstream token set.
