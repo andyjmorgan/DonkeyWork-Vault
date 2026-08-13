@@ -339,6 +339,113 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/mcp/eval-runs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Eval runs */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MCPEvalRun"][];
+                    };
+                };
+            };
+        };
+        put?: never;
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateMCPEvalRunRequest"];
+                };
+            };
+            responses: {
+                /** @description Eval run credential created; secret is shown once */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["CreatedMCPEvalRunResponse"];
+                    };
+                };
+                /** @description Invalid eval run */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/mcp/eval-runs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Revoked */
+                204: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/mcp/connections/{connectionID}/headers": {
         parameters: {
             query?: never;
@@ -1856,6 +1963,37 @@ export interface components {
             expiresAt?: string | null;
             name: string;
             scopes: string[] | null;
+        };
+        CreateMCPEvalRunRequest: {
+            runId: string;
+            connectionIds: string[];
+            /** Format: date-time */
+            expiresAt: string;
+        };
+        MCPEvalRunConnection: {
+            /** Format: uuid */
+            id: string;
+            slug: string;
+            name: string;
+            /** Format: uri */
+            proxyUrl: string;
+        };
+        MCPEvalRun: {
+            /** Format: uuid */
+            id: string;
+            runId: string;
+            /** Format: uuid */
+            accessKeyId: string;
+            /** Format: date-time */
+            expiresAt: string;
+            /** Format: date-time */
+            revokedAt: string | null;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        CreatedMCPEvalRunResponse: components["schemas"]["MCPEvalRun"] & {
+            secret: string;
+            connections: components["schemas"]["MCPEvalRunConnection"][];
         };
         CreateApiKeyRequest: {
             baseUrl: string | null;

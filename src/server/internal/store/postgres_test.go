@@ -289,6 +289,124 @@ func TestMCPStore(t *testing.T) {
 	}
 }
 
+func TestMCPEvalRunLifecycle(t *testing.T) {
+	u, tenant := uuid.New(), uuid.New()
+	connection := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "eval-" + uuid.NewString(),
+		Name: "Eval upstream", UpstreamURL: "https://example.com/mcp", AuthMode: "none",
+		AuditMode: "redacted", ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), connection); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := time.Now().Add(time.Hour).UTC()
+	run := &store.MCPEvalRun{UserID: u, TenantID: tenant, RunID: "run-" + uuid.NewString(), ExpiresAt: expiresAt}
+	key := &store.AccessKey{UserID: u, TenantID: tenant, Name: "eval-key-" + uuid.NewString(),
+		KeyHash: []byte("eval-hash-" + uuid.NewString()), KeyPrefix: "dwv_eval", Scopes: []string{"vault:mcp"},
+		Enabled: true, ExpiresAt: &expiresAt}
+	if err := pg.CreateMCPEvalRun(ctx(), run, key, []uuid.UUID{connection.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if run.ID == uuid.Nil || key.ID == uuid.Nil || run.AccessKeyID != key.ID || run.CreatedAt.IsZero() || key.CreatedAt.IsZero() {
+		t.Fatalf("generated fields: run=%+v key=%+v", run, key)
+	}
+	if allowed, err := pg.HasMCPConnectionGrant(ctx(), key.ID, connection.ID); err != nil || !allowed {
+		t.Fatalf("grant: %v %v", allowed, err)
+	}
+	if got, err := pg.GetMCPEvalRunByAccessKey(ctx(), key.ID); err != nil || got == nil || got.RunID != run.RunID {
+		t.Fatalf("lookup: %+v %v", got, err)
+	}
+	if got, err := pg.GetMCPEvalRunByAccessKey(ctx(), uuid.New()); err != nil || got != nil {
+		t.Fatalf("missing lookup: %+v %v", got, err)
+	}
+	if list, err := pg.ListMCPEvalRuns(ctx(), u); err != nil || len(list) != 1 || list[0].ID != run.ID {
+		t.Fatalf("owner list: %+v %v", list, err)
+	}
+	if list, err := pg.ListMCPEvalRuns(ctx(), uuid.New()); err != nil || len(list) != 0 {
+		t.Fatalf("cross-owner list: %+v %v", list, err)
+	}
+	if ok, err := pg.RevokeMCPEvalRun(ctx(), uuid.New(), run.ID); err != nil || ok {
+		t.Fatalf("cross-owner revoke: %v %v", ok, err)
+	}
+	if ok, err := pg.RevokeMCPEvalRun(ctx(), u, run.ID); err != nil || !ok {
+		t.Fatalf("revoke: %v %v", ok, err)
+	}
+	persistedRun, _ := pg.GetMCPEvalRunByAccessKey(ctx(), key.ID)
+	persistedKey, _ := pg.GetAccessKeyByID(ctx(), u, key.ID)
+	if persistedRun.RevokedAt == nil || persistedKey == nil || persistedKey.Enabled || persistedKey.UpdatedAt == nil {
+		t.Fatalf("revoked run/key: %+v %+v", persistedRun, persistedKey)
+	}
+	if ok, err := pg.RevokeMCPEvalRun(ctx(), u, run.ID); err != nil || ok {
+		t.Fatalf("second revoke: %v %v", ok, err)
+	}
+	if ok, err := pg.DeleteAccessKey(ctx(), u, key.ID); err != nil || !ok {
+		t.Fatalf("delete key: %v %v", ok, err)
+	}
+	if got, err := pg.GetMCPEvalRunByAccessKey(ctx(), key.ID); err != nil || got != nil {
+		t.Fatalf("key cascade: %+v %v", got, err)
+	}
+}
+
+func TestMCPEvalRunCreationRollback(t *testing.T) {
+	u, tenant := uuid.New(), uuid.New()
+	connection := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "rollback-" + uuid.NewString(),
+		Name: "Rollback", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "redacted",
+		ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), connection); err != nil {
+		t.Fatal(err)
+	}
+	other := &store.MCPConnection{UserID: uuid.New(), TenantID: tenant, Slug: "other-" + uuid.NewString(),
+		Name: "Other", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "redacted",
+		ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), other); err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := time.Now().Add(time.Hour).UTC()
+	run := &store.MCPEvalRun{UserID: u, TenantID: tenant, RunID: "rollback-" + uuid.NewString(), ExpiresAt: expiresAt}
+	key := &store.AccessKey{UserID: u, TenantID: tenant, Name: "rollback-key-" + uuid.NewString(),
+		KeyHash: []byte("rollback-hash-" + uuid.NewString()), KeyPrefix: "dwv_eval", Scopes: []string{"vault:mcp"},
+		Enabled: true, ExpiresAt: &expiresAt}
+	if err := pg.CreateMCPEvalRun(ctx(), run, key, []uuid.UUID{connection.ID, other.ID}); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("cross-owner create: %v", err)
+	}
+	if got, err := pg.GetAccessKeyByHash(ctx(), key.KeyHash); err != nil || got != nil {
+		t.Fatalf("partial key: %+v %v", got, err)
+	}
+	if list, err := pg.ListMCPEvalRuns(ctx(), u); err != nil || len(list) != 0 {
+		t.Fatalf("partial run: %+v %v", list, err)
+	}
+	disabled := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "disabled-" + uuid.NewString(),
+		Name: "Disabled", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "redacted",
+		ProtocolVersion: "2026-07-28", Enabled: false}
+	if err := pg.InsertMCPConnection(ctx(), disabled); err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.CreateMCPEvalRun(ctx(), run, key, []uuid.UUID{disabled.ID}); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("disabled create: %v", err)
+	}
+	if got, err := pg.GetAccessKeyByHash(ctx(), key.KeyHash); err != nil || got != nil {
+		t.Fatalf("disabled partial key: %+v %v", got, err)
+	}
+	if err := pg.CreateMCPEvalRun(ctx(), run, key, []uuid.UUID{connection.ID}); err != nil {
+		t.Fatal(err)
+	}
+	duplicateKey := *key
+	duplicateKey.ID, duplicateKey.CreatedAt = uuid.Nil, time.Time{}
+	duplicateKey.Name = "duplicate-key-" + uuid.NewString()
+	duplicateKey.KeyHash = []byte("duplicate-hash-" + uuid.NewString())
+	duplicateRun := *run
+	duplicateRun.ID, duplicateRun.AccessKeyID, duplicateRun.CreatedAt = uuid.Nil, uuid.Nil, time.Time{}
+	if err := pg.CreateMCPEvalRun(ctx(), &duplicateRun, &duplicateKey, []uuid.UUID{connection.ID}); err == nil {
+		t.Fatal("duplicate run ID should fail")
+	} else if !errors.Is(err, store.ErrInvalidMCPEvalRun) {
+		t.Fatalf("duplicate run error: %v", err)
+	}
+	if got, err := pg.GetAccessKeyByHash(ctx(), duplicateKey.KeyHash); err != nil || got != nil {
+		t.Fatalf("duplicate rollback key: %+v %v", got, err)
+	}
+	if err := pg.CreateMCPEvalRun(ctx(), run, key, []uuid.UUID{connection.ID, connection.ID}); !errors.Is(err, store.ErrInvalidMCPEvalRun) {
+		t.Fatalf("duplicate connections: %v", err)
+	}
+}
+
 func TestOAuthConfigAndTokenAndState(t *testing.T) {
 	u := uuid.New()
 	pid := uuid.New()
@@ -882,6 +1000,21 @@ func TestQueryErrorPaths(t *testing.T) {
 	}
 	if _, err := bad.GetMCPConnectionByID(ctx(), u, u); err == nil {
 		t.Fatal("get MCP connection should error")
+	}
+	expiresAt := time.Now().Add(time.Hour)
+	if err := bad.CreateMCPEvalRun(ctx(), &store.MCPEvalRun{UserID: u, RunID: "run", ExpiresAt: expiresAt},
+		&store.AccessKey{UserID: u, Name: "run", KeyHash: []byte("hash"), KeyPrefix: "dwv_eval", Scopes: []string{"vault:mcp"}, Enabled: true, ExpiresAt: &expiresAt},
+		[]uuid.UUID{u}); err == nil {
+		t.Fatal("create MCP eval run should error")
+	}
+	if _, err := bad.ListMCPEvalRuns(ctx(), u); err == nil {
+		t.Fatal("list MCP eval runs should error")
+	}
+	if _, err := bad.GetMCPEvalRunByAccessKey(ctx(), u); err == nil {
+		t.Fatal("get MCP eval run should error")
+	}
+	if _, err := bad.RevokeMCPEvalRun(ctx(), u, u); err == nil {
+		t.Fatal("revoke MCP eval run should error")
 	}
 	if _, err := bad.RecordMCPProtocolProbe(ctx(), &store.MCPProtocolProbeResult{
 		ConnectionID: u, UserID: u, TenantID: u, ProtocolEra: "unknown", Status: "error", CheckedAt: time.Now(),

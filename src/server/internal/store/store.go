@@ -73,6 +73,13 @@ type Store interface {
 	DeleteMCPConnection(ctx context.Context, userID, id uuid.UUID) (bool, error)
 	// RecordMCPProtocolProbe updates only probe-owned fields, preserving concurrent config edits.
 	RecordMCPProtocolProbe(ctx context.Context, result *MCPProtocolProbeResult) (bool, error)
+	// CreateMCPEvalRun atomically creates the access key, run and requested connection grants.
+	CreateMCPEvalRun(ctx context.Context, run *MCPEvalRun, key *AccessKey, connectionIDs []uuid.UUID) error
+	ListMCPEvalRuns(ctx context.Context, userID uuid.UUID) ([]MCPEvalRun, error)
+	// GetMCPEvalRunByAccessKey bypasses user scoping because authentication supplies the key ID.
+	GetMCPEvalRunByAccessKey(ctx context.Context, accessKeyID uuid.UUID) (*MCPEvalRun, error)
+	// RevokeMCPEvalRun marks the run revoked and disables its access key in one transaction.
+	RevokeMCPEvalRun(ctx context.Context, userID, id uuid.UUID) (bool, error)
 
 	// --- MCP access grants and upstream credentials ---
 	InsertMCPConnectionGrant(ctx context.Context, g *MCPConnectionGrant) error

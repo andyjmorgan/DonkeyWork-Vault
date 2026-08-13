@@ -60,6 +60,7 @@ func newHarness(t *testing.T) *harness {
 		OAuthTokens:   service.NewOAuthTokenService(ms, cipher, auditLog, resolver, http.DefaultClient),
 		OAuthFlow:     service.NewOAuthFlowService(ms, cipher, resolver, auditLog, http.DefaultClient, nil),
 		MCP:           service.NewMCPService(ms, cipher),
+		MCPEvalRuns:   service.NewMCPEvalRunService(ms, auditLog),
 		MCPOAuth:      mcpoauth.NewService(mcpoauth.NewStoreRepository(ms), cipher, http.DefaultClient),
 		MCPClient:     http.DefaultClient,
 		Resolver:      resolver,

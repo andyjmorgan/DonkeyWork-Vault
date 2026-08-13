@@ -32,6 +32,8 @@ const mcpProbeRequestID = "dwv-probe"
 
 var errMCPGrantRequired = errors.New("MCP connection grant required")
 
+var errInvalidMCPEvalRunCorrelation = errors.New("invalid MCP eval-run correlation")
+
 func (s *Server) handleListMCPConnections(w http.ResponseWriter, r *http.Request) {
 	rows, err := s.deps.MCP.ListConnections(r.Context())
 	if writeServiceError(w, err) {
@@ -281,6 +283,51 @@ func (s *Server) handleDeleteMCPGrant(w http.ResponseWriter, r *http.Request) {
 	s.handleMCPChildDelete(w, r, s.deps.MCP.DeleteGrant)
 }
 
+func (s *Server) handleCreateMCPEvalRun(w http.ResponseWriter, r *http.Request) {
+	var dto createMCPEvalRunRequest
+	if err := decodeJSON(r, &dto); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request body.")
+		return
+	}
+	credential, err := s.deps.MCPEvalRuns.Create(r.Context(), dto.RunID, dto.ConnectionIDs, dto.ExpiresAt)
+	if writeServiceError(w, err) {
+		return
+	}
+	connections := make([]mcpEvalRunConnectionDTO, len(credential.Connections))
+	for i, connection := range credential.Connections {
+		connections[i] = mcpEvalRunConnectionDTO{
+			ID: connection.ID, Slug: connection.Slug, Name: connection.Name,
+			ProxyURL: strings.TrimSuffix(s.deps.PublicBaseURL, "/") + "/api/v1/mcp/proxy/" + connection.Slug,
+		}
+	}
+	writeJSON(w, http.StatusCreated, createdMCPEvalRunResponse{
+		mcpEvalRunDTO: toMCPEvalRunDTO(credential.Run), Secret: credential.Secret, Connections: connections,
+	})
+}
+
+func (s *Server) handleListMCPEvalRuns(w http.ResponseWriter, r *http.Request) {
+	runs, err := s.deps.MCPEvalRuns.List(r.Context())
+	if writeServiceError(w, err) {
+		return
+	}
+	out := make([]mcpEvalRunDTO, len(runs))
+	for i, run := range runs {
+		out[i] = toMCPEvalRunDTO(run)
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+func (s *Server) handleRevokeMCPEvalRun(w http.ResponseWriter, r *http.Request) {
+	s.handleMCPChildDelete(w, r, s.deps.MCPEvalRuns.Revoke)
+}
+
+func toMCPEvalRunDTO(run store.MCPEvalRun) mcpEvalRunDTO {
+	return mcpEvalRunDTO{
+		ID: run.ID, RunID: run.RunID, AccessKeyID: run.AccessKeyID, ExpiresAt: run.ExpiresAt,
+		RevokedAt: run.RevokedAt, CreatedAt: run.CreatedAt,
+	}
+}
+
 func (s *Server) handleListMCPHeaders(w http.ResponseWriter, r *http.Request) {
 	id, ok := mcpConnectionID(w, r)
 	if !ok {
@@ -499,7 +546,12 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "unable to read MCP request.")
 		return
 	}
-	exchange := newMCPExchange(r, resolved.Connection, *info.AccessKeyID, int64(len(body)))
+	evalRunID, err := s.authoritativeMCPEvalRunID(r.Context(), resolved.Connection, *info.AccessKeyID)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "MCP eval-run correlation unavailable.")
+		return
+	}
+	exchange := newMCPExchange(r, resolved.Connection, *info.AccessKeyID, evalRunID, int64(len(body)))
 	if err := s.deps.MCP.Store().InsertMCPAuditExchange(r.Context(), exchange); err != nil {
 		writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
 		return
@@ -896,18 +948,31 @@ func (s *Server) proxyMCPSSE(w http.ResponseWriter, r *http.Request, response *h
 	}
 }
 
-func newMCPExchange(r *http.Request, connection store.MCPConnection, accessKeyID uuid.UUID, requestBytes int64) *store.MCPAuditExchange {
+func (s *Server) authoritativeMCPEvalRunID(ctx context.Context, connection store.MCPConnection, accessKeyID uuid.UUID) (*string, error) {
+	run, err := s.deps.MCP.Store().GetMCPEvalRunByAccessKey(ctx, accessKeyID)
+	if err != nil || run == nil {
+		return nil, err
+	}
+	if run.AccessKeyID != accessKeyID || run.UserID != connection.UserID || run.TenantID != connection.TenantID || run.RunID == "" {
+		return nil, errInvalidMCPEvalRunCorrelation
+	}
+	if run.RevokedAt != nil || !run.ExpiresAt.After(time.Now()) {
+		return nil, nil
+	}
+	return &run.RunID, nil
+}
+
+func newMCPExchange(r *http.Request, connection store.MCPConnection, accessKeyID uuid.UUID, evalRunID *string, requestBytes int64) *store.MCPAuditExchange {
 	caller := contracts.CallerFrom(r.Context())
 	requestID := r.Header.Get("X-Request-ID")
 	remote := r.RemoteAddr
 	userAgent := r.UserAgent()
-	evalRunID := r.Header.Get("X-DWV-Eval-Run-ID")
 	traceID := ""
 	if sc := trace.SpanContextFromContext(r.Context()); sc.IsValid() {
 		traceID = sc.TraceID().String()
 	}
 	return &store.MCPAuditExchange{ConnectionID: connection.ID, UserID: caller.UserID, TenantID: caller.TenantID,
-		AccessKeyID: accessKeyID, EvalRunID: emptyStringPtr(evalRunID), DownstreamRequestID: emptyStringPtr(requestID),
+		AccessKeyID: accessKeyID, EvalRunID: evalRunID, DownstreamRequestID: emptyStringPtr(requestID),
 		RemoteAddress: emptyStringPtr(remote), UserAgent: emptyStringPtr(userAgent), TraceID: emptyStringPtr(traceID),
 		HTTPMethod: http.MethodPost, ProtocolVersion: connection.ProtocolVersion, Outcome: "started",
 		StartedAt: time.Now().UTC(), RequestBytes: requestBytes}
