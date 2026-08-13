@@ -214,6 +214,22 @@ func (s *MCPService) ResolveProxy(ctx context.Context, slug string, accessKeyID 
 	if !granted {
 		return nil, errors.New("MCP connection grant required")
 	}
+	return s.resolveConnection(ctx, connection)
+}
+
+// ResolveProbe loads a caller-owned connection with its upstream authentication but requires no
+// access-key grant because probing is an authenticated administrative action.
+func (s *MCPService) ResolveProbe(ctx context.Context, connectionID uuid.UUID) (*MCPResolvedConnection, error) {
+	caller := contracts.CallerFrom(ctx)
+	connection, err := s.store.GetMCPConnectionByID(ctx, caller.UserID, connectionID)
+	if err != nil || connection == nil {
+		return nil, err
+	}
+	return s.resolveConnection(ctx, connection)
+}
+
+func (s *MCPService) resolveConnection(ctx context.Context, connection *store.MCPConnection) (*MCPResolvedConnection, error) {
+	caller := contracts.CallerFrom(ctx)
 	resolved := &MCPResolvedConnection{Connection: *connection, Headers: make(http.Header), Policy: mcp.Policy{
 		Methods: mcp.AllowRule{Default: mcp.DefaultAllow}, Tools: mcp.AllowRule{Default: mcp.DefaultAllow},
 	}}

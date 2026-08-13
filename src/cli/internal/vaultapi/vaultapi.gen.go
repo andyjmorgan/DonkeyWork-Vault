@@ -578,6 +578,9 @@ type ClientInterface interface {
 
 	PutApiV1McpConnectionsConnectionIDPolicies(ctx context.Context, connectionID openapi_types.UUID, body PutApiV1McpConnectionsConnectionIDPoliciesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// PostApiV1McpConnectionsConnectionIDProbe request
+	PostApiV1McpConnectionsConnectionIDProbe(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteApiV1McpConnectionsId request
 	DeleteApiV1McpConnectionsId(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -1097,6 +1100,18 @@ func (c *Client) PutApiV1McpConnectionsConnectionIDPoliciesWithBody(ctx context.
 
 func (c *Client) PutApiV1McpConnectionsConnectionIDPolicies(ctx context.Context, connectionID openapi_types.UUID, body PutApiV1McpConnectionsConnectionIDPoliciesJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPutApiV1McpConnectionsConnectionIDPoliciesRequest(c.Server, connectionID, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiV1McpConnectionsConnectionIDProbe(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiV1McpConnectionsConnectionIDProbeRequest(c.Server, connectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -2723,6 +2738,40 @@ func NewPutApiV1McpConnectionsConnectionIDPoliciesRequestWithBody(server string,
 	return req, nil
 }
 
+// NewPostApiV1McpConnectionsConnectionIDProbeRequest generates requests for PostApiV1McpConnectionsConnectionIDProbe
+func NewPostApiV1McpConnectionsConnectionIDProbeRequest(server string, connectionID openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "connectionID", runtime.ParamLocationPath, connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/mcp/connections/%s/probe", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteApiV1McpConnectionsIdRequest generates requests for DeleteApiV1McpConnectionsId
 func NewDeleteApiV1McpConnectionsIdRequest(server string, id openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -3429,6 +3478,9 @@ type ClientWithResponsesInterface interface {
 
 	PutApiV1McpConnectionsConnectionIDPoliciesWithResponse(ctx context.Context, connectionID openapi_types.UUID, body PutApiV1McpConnectionsConnectionIDPoliciesJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiV1McpConnectionsConnectionIDPoliciesResponse, error)
 
+	// PostApiV1McpConnectionsConnectionIDProbeWithResponse request
+	PostApiV1McpConnectionsConnectionIDProbeWithResponse(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostApiV1McpConnectionsConnectionIDProbeResponse, error)
+
 	// DeleteApiV1McpConnectionsIdWithResponse request
 	DeleteApiV1McpConnectionsIdWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteApiV1McpConnectionsIdResponse, error)
 
@@ -4126,6 +4178,27 @@ func (r PutApiV1McpConnectionsConnectionIDPoliciesResponse) StatusCode() int {
 	return 0
 }
 
+type PostApiV1McpConnectionsConnectionIDProbeResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiV1McpConnectionsConnectionIDProbeResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiV1McpConnectionsConnectionIDProbeResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteApiV1McpConnectionsIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4776,6 +4849,15 @@ func (c *ClientWithResponses) PutApiV1McpConnectionsConnectionIDPoliciesWithResp
 		return nil, err
 	}
 	return ParsePutApiV1McpConnectionsConnectionIDPoliciesResponse(rsp)
+}
+
+// PostApiV1McpConnectionsConnectionIDProbeWithResponse request returning *PostApiV1McpConnectionsConnectionIDProbeResponse
+func (c *ClientWithResponses) PostApiV1McpConnectionsConnectionIDProbeWithResponse(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*PostApiV1McpConnectionsConnectionIDProbeResponse, error) {
+	rsp, err := c.PostApiV1McpConnectionsConnectionIDProbe(ctx, connectionID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiV1McpConnectionsConnectionIDProbeResponse(rsp)
 }
 
 // DeleteApiV1McpConnectionsIdWithResponse request returning *DeleteApiV1McpConnectionsIdResponse
@@ -5569,6 +5651,22 @@ func ParsePutApiV1McpConnectionsConnectionIDPoliciesResponse(rsp *http.Response)
 	}
 
 	response := &PutApiV1McpConnectionsConnectionIDPoliciesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParsePostApiV1McpConnectionsConnectionIDProbeResponse parses an HTTP response from a PostApiV1McpConnectionsConnectionIDProbeWithResponse call
+func ParsePostApiV1McpConnectionsConnectionIDProbeResponse(rsp *http.Response) (*PostApiV1McpConnectionsConnectionIDProbeResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiV1McpConnectionsConnectionIDProbeResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

@@ -143,6 +143,24 @@ func TestMCPServiceConfigurationAndResolve(t *testing.T) {
 	if decision := resolved.Policy.Evaluate(clientMessage("resources/read", "")); decision.Allowed {
 		t.Fatal("denied method allowed")
 	}
+	probeResolved, err := service.ResolveProbe(ctx, connection.ID)
+	if err != nil || probeResolved == nil || probeResolved.Headers.Get(header) != "Bearer secret" {
+		t.Fatalf("probe resolve %#v %v", probeResolved, err)
+	}
+	if missing, err := service.ResolveProbe(ctx, uuid.New()); err != nil || missing != nil {
+		t.Fatalf("missing probe resolve %#v %v", missing, err)
+	}
+	connection.Enabled = false
+	if _, err := memory.UpdateMCPConnection(ctx, connection); err != nil {
+		t.Fatal(err)
+	}
+	if disabled, err := service.ResolveProbe(ctx, connection.ID); err != nil || disabled == nil || disabled.Connection.Enabled {
+		t.Fatalf("disabled connection must remain admin-probeable: %#v %v", disabled, err)
+	}
+	connection.Enabled = true
+	if _, err := memory.UpdateMCPConnection(ctx, connection); err != nil {
+		t.Fatal(err)
+	}
 	if ok, _ := service.DeletePolicy(ctx, allow.ID); !ok {
 		t.Fatal("delete policy")
 	}

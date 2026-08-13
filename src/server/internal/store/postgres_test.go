@@ -722,6 +722,80 @@ func TestMCPToolParameterHeaders(t *testing.T) {
 	}
 }
 
+func TestMCPProtocolProbe(t *testing.T) {
+	u, tenant := uuid.New(), uuid.New()
+	connection := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "probe-" + u.String(),
+		Name: "Before", UpstreamURL: "https://example.test/mcp", AuthMode: "none", AuditMode: "redacted",
+		ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), connection); err != nil {
+		t.Fatal(err)
+	}
+	if connection.ProtocolEra != "unknown" || connection.ProbeStatus != "not_checked" {
+		t.Fatalf("probe defaults: %+v", connection)
+	}
+	checkedAt := time.Now().UTC().Truncate(time.Microsecond)
+	detail, serverName, serverVersion := "modern stateless endpoint", "Acme MCP", "1.2.3"
+	result := &store.MCPProtocolProbeResult{ConnectionID: connection.ID, UserID: u, TenantID: tenant,
+		ProtocolEra: "modern_2026_07", Status: "compatible", CheckedAt: checkedAt,
+		Detail: &detail, SupportedVersions: []string{"2026-07-28"}, ServerName: &serverName, ServerVersion: &serverVersion}
+	if ok, err := pg.RecordMCPProtocolProbe(ctx(), result); err != nil || !ok {
+		t.Fatalf("record probe: %v %v", ok, err)
+	}
+	got, err := pg.GetMCPConnectionByID(ctx(), u, connection.ID)
+	if err != nil || got == nil || got.ProtocolEra != result.ProtocolEra || got.ProbeStatus != result.Status ||
+		got.ProbeCheckedAt == nil || !got.ProbeCheckedAt.Equal(checkedAt) || len(got.SupportedVersions) != 1 ||
+		got.ServerName == nil || *got.ServerName != serverName {
+		t.Fatalf("probe round trip: %+v %v", got, err)
+	}
+
+	// Editable updates do not include probe-owned columns and must preserve the result.
+	connection.Name = "After"
+	if ok, err := pg.UpdateMCPConnection(ctx(), connection); err != nil || !ok {
+		t.Fatalf("config update: %v %v", ok, err)
+	}
+	if connection.ProbeStatus != "compatible" || connection.ServerVersion == nil ||
+		len(connection.SupportedVersions) != 1 {
+		t.Fatalf("updated entity lost probe result: %+v", connection)
+	}
+	got, _ = pg.GetMCPConnectionByID(ctx(), u, connection.ID)
+	if got.Name != "After" || got.ProbeStatus != "compatible" || got.ServerVersion == nil {
+		t.Fatalf("config update overwrote probe: %+v", got)
+	}
+
+	errorClass := "authentication_required"
+	failed := &store.MCPProtocolProbeResult{ConnectionID: connection.ID, UserID: u, TenantID: tenant,
+		ProtocolEra: "unknown", Status: "auth_required", CheckedAt: checkedAt.Add(time.Minute), Error: &errorClass}
+	if ok, err := pg.RecordMCPProtocolProbe(ctx(), failed); err != nil || !ok {
+		t.Fatalf("replace probe: %v %v", ok, err)
+	}
+	got, _ = pg.GetMCPConnectionByID(ctx(), u, connection.ID)
+	if got.ProbeError == nil || got.ProbeDetail != nil || got.ServerName != nil || len(got.SupportedVersions) != 0 {
+		t.Fatalf("replacement did not clear prior result: %+v", got)
+	}
+	if ok, err := pg.RecordMCPProtocolProbe(ctx(), &store.MCPProtocolProbeResult{
+		ConnectionID: connection.ID, UserID: uuid.New(), TenantID: tenant,
+		ProtocolEra: "unknown", Status: "error", CheckedAt: checkedAt,
+	}); err != nil || ok {
+		t.Fatalf("owner scope: %v %v", ok, err)
+	}
+	invalid := *failed
+	invalid.Status = "maybe"
+	if ok, err := pg.RecordMCPProtocolProbe(ctx(), &invalid); ok || !errors.Is(err, store.ErrInvalidMCPProtocolProbe) {
+		t.Fatalf("invalid result: %v %v", ok, err)
+	}
+	got, _ = pg.GetMCPConnectionByID(ctx(), u, connection.ID)
+	if got.ProbeStatus != "auth_required" {
+		t.Fatal("invalid result must not mutate probe state")
+	}
+	if ok, err := pg.RecordMCPProtocolProbe(ctx(), nil); ok || !errors.Is(err, store.ErrInvalidMCPProtocolProbe) {
+		t.Fatalf("nil result: %v %v", ok, err)
+	}
+	list, err := pg.ListMCPConnections(ctx(), u)
+	if err != nil || len(list) != 1 || list[0].ProbeCheckedAt == nil {
+		t.Fatalf("list probe result: %+v %v", list, err)
+	}
+}
+
 func timePtr(value time.Time) *time.Time { return &value }
 
 // TestQueryAuditFilters drives every optional WHERE clause (Outcome, FilterUserID, Since, Until)
@@ -803,6 +877,11 @@ func TestQueryErrorPaths(t *testing.T) {
 	}
 	if _, err := bad.GetMCPConnectionByID(ctx(), u, u); err == nil {
 		t.Fatal("get MCP connection should error")
+	}
+	if _, err := bad.RecordMCPProtocolProbe(ctx(), &store.MCPProtocolProbeResult{
+		ConnectionID: u, UserID: u, TenantID: u, ProtocolEra: "unknown", Status: "error", CheckedAt: time.Now(),
+	}); err == nil {
+		t.Fatal("record MCP protocol probe should error")
 	}
 	if err := bad.InsertMCPOAuthAuthorization(ctx(), &store.MCPOAuthAuthorization{}); err == nil {
 		t.Fatal("insert MCP OAuth should error")

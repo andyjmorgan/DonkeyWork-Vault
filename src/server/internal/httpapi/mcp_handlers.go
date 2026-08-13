@@ -27,6 +27,8 @@ import (
 
 const maxMCPAuditPayload = 256 << 10
 
+const mcpProbeRequestID = "dwv-probe"
+
 var errMCPGrantRequired = errors.New("MCP connection grant required")
 
 func (s *Server) handleListMCPConnections(w http.ResponseWriter, r *http.Request) {
@@ -88,6 +90,151 @@ func (s *Server) handleDeleteMCPConnection(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleMCPProtocolProbe(w http.ResponseWriter, r *http.Request) {
+	id, ok := mcpConnectionID(w, r)
+	if !ok {
+		return
+	}
+	resolved, err := s.deps.MCP.ResolveProbe(r.Context(), id)
+	if writeServiceError(w, err) {
+		return
+	}
+	if resolved == nil {
+		writeError(w, http.StatusNotFound, "MCP connection not found.")
+		return
+	}
+	body := mcpProbeRequestBody()
+	upstream, err := http.NewRequestWithContext(r.Context(), http.MethodPost, resolved.Connection.UpstreamURL, bytes.NewReader(body)) //nolint:gosec // G704: validated stored URL and safe client transport.
+	if err != nil {                                                                                                                   //coverage:ignore the stored URL and constant method/body were already validated.
+		writeError(w, http.StatusInternalServerError, "MCP protocol probe unavailable.")
+		return
+	}
+	upstream.Header.Set("Content-Type", "application/json")
+	upstream.Header.Set("Accept", "application/json, text/event-stream")
+	upstream.Header.Set("MCP-Protocol-Version", mcp.ProtocolVersion)
+	upstream.Header.Set("Mcp-Method", "server/discover")
+	for name, values := range resolved.Headers {
+		for _, value := range values {
+			upstream.Header.Add(name, value)
+		}
+	}
+	if resolved.Connection.AuthMode == "oauth" {
+		token, tokenErr := s.deps.MCPOAuth.AccessToken(r.Context(), resolved.Connection.ID)
+		if tokenErr != nil {
+			connection, recordErr := s.recordMCPProbe(r.Context(), resolved.Connection, mcp.ProbeResult{Class: mcp.ProbeAuthRequired, Reason: mcp.ProbeReasonAuthorizationUnavailable})
+			if recordErr != nil {
+				writeError(w, http.StatusServiceUnavailable, "MCP probe storage unavailable.")
+				return
+			}
+			writeJSON(w, http.StatusOK, toMCPConnectionDTO(connection))
+			return
+		}
+		upstream.Header.Set("Authorization", token.TokenType+" "+token.AccessToken)
+	}
+	probeClient := *s.deps.MCPClient
+	// Probe credentials must never be replayed to a redirect target. The returned 3xx is itself
+	// useful classifier evidence, and an operator can configure the canonical endpoint explicitly.
+	probeClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, requestErr := probeClient.Do(upstream) //nolint:gosec // G704: validated stored URL and SSRF-safe client.
+	if requestErr != nil {
+		result := mcp.ProbeResult{Class: mcp.ProbeUnavailable, Reason: mcp.ProbeReasonNetworkFailure}
+		connection, recordErr := s.recordMCPProbe(r.Context(), resolved.Connection, result)
+		if recordErr != nil {
+			writeError(w, http.StatusServiceUnavailable, "MCP probe storage unavailable.")
+			return
+		}
+		writeJSON(w, http.StatusOK, toMCPConnectionDTO(connection))
+		return
+	}
+	defer func() { _ = response.Body.Close() }()
+	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, maxRequestBody+1))
+	var result mcp.ProbeResult
+	switch {
+	case readErr != nil || len(responseBody) > maxRequestBody:
+		result = mcp.ProbeResult{Class: mcp.ProbeUnavailable, Reason: mcp.ProbeReasonResponseTooLarge}
+	case strings.HasPrefix(strings.ToLower(response.Header.Get("Content-Type")), "text/event-stream"):
+		result = classifyMCPProbeSSE(response.StatusCode, response.Header.Get("Content-Type"), responseBody)
+	default:
+		result = mcp.ClassifyProbe(mcp.ProbeInput{StatusCode: response.StatusCode, ContentType: response.Header.Get("Content-Type"), Body: responseBody, RequestID: mcp.ID{Kind: mcp.IDString, Value: mcpProbeRequestID}})
+	}
+	connection, err := s.recordMCPProbe(r.Context(), resolved.Connection, result)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "MCP probe storage unavailable.")
+		return
+	}
+	writeJSON(w, http.StatusOK, toMCPConnectionDTO(connection))
+}
+
+func mcpProbeRequestBody() []byte {
+	return []byte(`{"jsonrpc":"2.0","id":"` + mcpProbeRequestID + `","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"` + mcp.ProtocolVersion + `","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"DonkeyWork Vault","version":"probe"}}}}`)
+}
+
+func classifyMCPProbeSSE(status int, contentType string, body []byte) mcp.ProbeResult {
+	pending := bytes.NewBuffer(body)
+	for pending.Len() > 0 {
+		event, ok := takeSSEEvent(pending)
+		if !ok {
+			break
+		}
+		data := sseData(event)
+		if len(data) == 0 {
+			continue
+		}
+		message, err := mcp.InspectServer(data, nil)
+		if err == nil && message.Kind == mcp.KindNotification {
+			continue
+		}
+		result := mcp.ClassifyProbe(mcp.ProbeInput{StatusCode: status, ContentType: "application/json", Body: data, RequestID: mcp.ID{Kind: mcp.IDString, Value: mcpProbeRequestID}})
+		if result.Class != mcp.ProbeIncompatible || result.Reason != mcp.ProbeReasonMalformedSuccess {
+			return result
+		}
+	}
+	return mcp.ClassifyProbe(mcp.ProbeInput{StatusCode: status, ContentType: contentType, Body: body, RequestID: mcp.ID{Kind: mcp.IDString, Value: mcpProbeRequestID}})
+}
+
+func (s *Server) recordMCPProbe(ctx context.Context, connection store.MCPConnection, result mcp.ProbeResult) (store.MCPConnection, error) {
+	caller := contracts.CallerFrom(ctx)
+	era, status := string(result.Class), "error"
+	switch result.Class {
+	case mcp.ProbeModern202607:
+		status = "compatible"
+	case mcp.ProbeLegacySessionLikely, mcp.ProbeIncompatible:
+		status = "incompatible"
+	case mcp.ProbeAuthRequired:
+		era, status = "unknown", "auth_required"
+	case mcp.ProbeUnavailable:
+		era, status = "unknown", "unreachable"
+	case mcp.ProbeUnknown:
+		era = "unknown"
+	}
+	detail := string(result.Reason)
+	probe := &store.MCPProtocolProbeResult{ConnectionID: connection.ID, UserID: caller.UserID, TenantID: caller.TenantID,
+		ProtocolEra: era, Status: status, CheckedAt: time.Now().UTC(), Detail: &detail,
+		SupportedVersions: result.SupportedVersions}
+	if result.Server.Name != "" {
+		probe.ServerName = &result.Server.Name
+	}
+	if result.Server.Version != "" {
+		probe.ServerVersion = &result.Server.Version
+	}
+	updated, err := s.deps.MCP.Store().RecordMCPProtocolProbe(ctx, probe)
+	if err != nil {
+		return connection, err
+	}
+	if !updated { //coverage:ignore the owner-scoped connection was resolved immediately before recording.
+		return connection, errors.New("MCP connection no longer exists")
+	}
+	connection.ProtocolEra = probe.ProtocolEra
+	connection.ProbeStatus = probe.Status
+	connection.ProbeCheckedAt = &probe.CheckedAt
+	connection.ProbeError = probe.Error
+	connection.ProbeDetail = probe.Detail
+	connection.SupportedVersions = probe.SupportedVersions
+	connection.ServerName = probe.ServerName
+	connection.ServerVersion = probe.ServerVersion
+	return connection, nil
 }
 
 func (s *Server) handleListMCPGrants(w http.ResponseWriter, r *http.Request) {

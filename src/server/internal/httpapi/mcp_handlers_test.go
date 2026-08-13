@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/google/uuid"
 
 	"donkeywork.dev/vault-server/internal/contracts"
 	"donkeywork.dev/vault-server/internal/mcp"
@@ -99,6 +102,226 @@ func TestMCPConfigurationHandlers(t *testing.T) {
 	}
 	if rec := h.do(t, http.MethodDelete, "/api/v1/mcp/connections/"+connection.ID.String(), nil, true); rec.Code != 204 {
 		t.Fatal("delete connection")
+	}
+}
+
+func TestMCPProtocolProbeClassifications(t *testing.T) {
+	tests := []struct {
+		name       string
+		status     int
+		body       string
+		wantEra    string
+		wantStatus string
+		wantDetail string
+	}{
+		{
+			name: "modern July", status: http.StatusOK, wantEra: "modern_2026_07", wantStatus: "compatible", wantDetail: "discovery_valid",
+			body: `{"jsonrpc":"2.0","id":"dwv-probe","result":{"resultType":"complete","supportedVersions":["2026-07-28"],"capabilities":{"tools":{}},"_meta":{"io.modelcontextprotocol/serverInfo":{"name":"Example MCP","version":"2"}},"ttlMs":3600000,"cacheScope":"public"}}`,
+		},
+		{name: "legacy method not found", status: http.StatusOK, body: `{"jsonrpc":"2.0","id":"dwv-probe","error":{"code":-32601,"message":"Method not found"}}`, wantEra: "legacy_session_likely", wantStatus: "incompatible", wantDetail: "method_not_found"},
+		{name: "authorization required", status: http.StatusUnauthorized, body: `unauthorized`, wantEra: "unknown", wantStatus: "auth_required", wantDetail: "authorization_status"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.Header.Get("Mcp-Method") != "server/discover" || r.Header.Get("MCP-Protocol-Version") != mcp.ProtocolVersion {
+					t.Errorf("missing probe headers: %v", r.Header)
+				}
+				requestBody, _ := io.ReadAll(r.Body)
+				if !bytes.Contains(requestBody, []byte(`"id":"dwv-probe"`)) {
+					t.Errorf("wrong probe request: %s", requestBody)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(test.status)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer upstream.Close()
+			h := newHarness(t)
+			h.server.deps.MCPClient = upstream.Client()
+			connection := createMCPConnection(t, h, upstream.URL)
+			rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+connection.ID.String()+"/probe", nil, true)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("probe %d: %s", rec.Code, rec.Body)
+			}
+			got := decode[mcpConnectionDTO](t, rec)
+			if got.ProtocolEra != test.wantEra || got.ProbeStatus != test.wantStatus || got.ProbeDetail == nil || *got.ProbeDetail != test.wantDetail || got.ProbeCheckedAt == nil {
+				t.Fatalf("classification: %+v", got)
+			}
+			if test.wantStatus == "compatible" && (got.ServerName == nil || *got.ServerName != "Example MCP" || len(got.SupportedVersions) != 1) {
+				t.Fatalf("modern metadata: %+v", got)
+			}
+			if test.wantStatus == "compatible" {
+				got.Name = "Edited after probe"
+				update := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
+					Slug: got.Slug, Name: got.Name, Description: got.Description, UpstreamURL: got.UpstreamURL,
+					AuthMode: got.AuthMode, AuditMode: got.AuditMode, Enabled: boolPtr(got.Enabled),
+				}, true)
+				if update.Code != http.StatusOK {
+					t.Fatalf("edit after probe %d: %s", update.Code, update.Body)
+				}
+				edited := decode[mcpConnectionDTO](t, update)
+				if edited.Name != got.Name || edited.ProbeStatus != got.ProbeStatus ||
+					edited.ProbeCheckedAt == nil || edited.ServerName == nil ||
+					len(edited.SupportedVersions) != len(got.SupportedVersions) {
+					t.Fatalf("edit response lost probe metadata: %+v", edited)
+				}
+			}
+		})
+	}
+}
+
+func TestMCPProtocolProbeUnavailable(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}))
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	upstream.Close()
+	rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+connection.ID.String()+"/probe", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("probe %d: %s", rec.Code, rec.Body)
+	}
+	got := decode[mcpConnectionDTO](t, rec)
+	if got.ProtocolEra != "unknown" || got.ProbeStatus != "unreachable" || got.ProbeDetail == nil || *got.ProbeDetail != "network_failure" {
+		t.Fatalf("unavailable classification: %+v", got)
+	}
+	if rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+uuid.NewString()+"/probe", nil, true); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing probe %d", rec.Code)
+	}
+}
+
+func TestMCPProtocolProbeOAuthAuthorizationUnavailable(t *testing.T) {
+	h := newHarness(t)
+	connection := createMCPConnection(t, h, "https://example.com/mcp")
+	rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
+		Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL,
+		AuthMode: "oauth", AuditMode: connection.AuditMode, Enabled: boolPtr(true),
+	}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set OAuth mode %d: %s", rec.Code, rec.Body)
+	}
+
+	rec = h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+connection.ID.String()+"/probe", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("probe %d: %s", rec.Code, rec.Body)
+	}
+	got := decode[mcpConnectionDTO](t, rec)
+	if got.ProtocolEra != "unknown" || got.ProbeStatus != "auth_required" || got.ProbeDetail == nil || *got.ProbeDetail != "authorization_unavailable" || got.ProbeCheckedAt == nil {
+		t.Fatalf("OAuth-unavailable classification: %+v", got)
+	}
+	stored, err := h.ms.GetMCPConnectionByID(t.Context(), h.userID, connection.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if stored == nil || stored.ProbeStatus != "auth_required" {
+		t.Fatalf("probe result was not persisted: %+v", stored)
+	}
+}
+
+func TestMCPProtocolProbeSSEModern(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
+		_, _ = w.Write([]byte(": keepalive\n\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n" +
+			"event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":\"dwv-probe\",\"result\":{\"resultType\":\"complete\",\"supportedVersions\":[\"2026-07-28\"],\"capabilities\":{\"tools\":{}},\"_meta\":{\"io.modelcontextprotocol/serverInfo\":{\"name\":\"Streaming MCP\",\"version\":\"1\"}},\"ttlMs\":1000,\"cacheScope\":\"public\"}}\n\n"))
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+connection.ID.String()+"/probe", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("probe %d: %s", rec.Code, rec.Body)
+	}
+	got := decode[mcpConnectionDTO](t, rec)
+	if got.ProtocolEra != "modern_2026_07" || got.ProbeStatus != "compatible" || got.ServerName == nil || *got.ServerName != "Streaming MCP" {
+		t.Fatalf("SSE probe classification: %+v", got)
+	}
+}
+
+func TestMCPProtocolProbeRedirectDoesNotFollowOrLeakAuth(t *testing.T) {
+	redirectCalls := 0
+	redirectTarget := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		redirectCalls++
+		if r.Header.Get("X-Upstream") != "" {
+			t.Error("probe credential leaked to redirect target")
+		}
+	}))
+	defer redirectTarget.Close()
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-Upstream") != "Bearer static-secret" {
+			t.Fatalf("static auth missing at configured endpoint: %q", r.Header.Get("X-Upstream"))
+		}
+		http.Redirect(w, r, redirectTarget.URL, http.StatusFound)
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	secret, err := h.cipher.EncryptString("static-secret")
+	if err != nil {
+		t.Fatal(err)
+	}
+	headerName, prefix := "X-Upstream", "Bearer "
+	credential := &store.APIKey{UserID: h.userID, Name: "probe auth", FieldsCipher: secret, Kind: "header_api_key", HeaderName: &headerName, Prefix: &prefix}
+	if err := h.ms.InsertAPIKey(t.Context(), credential); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ms.InsertMCPHeaderBinding(t.Context(), &store.MCPHeaderBinding{UserID: h.userID, ConnectionID: connection.ID, CredentialID: credential.ID}); err != nil {
+		t.Fatal(err)
+	}
+	rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+connection.ID.String()+"/probe", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("probe %d: %s", rec.Code, rec.Body)
+	}
+	got := decode[mcpConnectionDTO](t, rec)
+	if redirectCalls != 0 || got.ProtocolEra != "unknown" || got.ProbeDetail == nil || *got.ProbeDetail != "redirect" {
+		t.Fatalf("redirect classification/calls: %d %+v", redirectCalls, got)
+	}
+}
+
+func TestMCPProtocolProbeOversizedResponse(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(bytes.Repeat([]byte{'x'}, maxRequestBody+1))
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	rec := h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+connection.ID.String()+"/probe", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("probe %d: %s", rec.Code, rec.Body)
+	}
+	got := decode[mcpConnectionDTO](t, rec)
+	if got.ProbeStatus != "unreachable" || got.ProbeDetail == nil || *got.ProbeDetail != "response_too_large" {
+		t.Fatalf("oversized classification: %+v", got)
+	}
+}
+
+func TestMCPProtocolProbeDisabledConnection(t *testing.T) {
+	upstreamCalls := 0
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls++
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"dwv-probe","result":{"resultType":"complete","supportedVersions":["2026-07-28"],"capabilities":{},"ttlMs":1000,"cacheScope":"public"}}`))
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	disabled := false
+	rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
+		Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL, AuthMode: connection.AuthMode, AuditMode: connection.AuditMode, Enabled: &disabled,
+	}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("disable %d: %s", rec.Code, rec.Body)
+	}
+	rec = h.do(t, http.MethodPost, "/api/v1/mcp/connections/"+connection.ID.String()+"/probe", nil, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("disabled admin probe failed: %d %s", rec.Code, rec.Body)
+	}
+	got := decode[mcpConnectionDTO](t, rec)
+	if upstreamCalls != 1 || got.ProbeStatus != "compatible" || got.Enabled {
+		t.Fatalf("disabled admin probe result/calls: %d %+v", upstreamCalls, got)
 	}
 }
 

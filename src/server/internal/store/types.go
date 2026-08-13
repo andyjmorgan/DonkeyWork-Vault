@@ -23,6 +23,9 @@ var ErrOwnershipMismatch = errors.New("store ownership mismatch")
 // ErrInvalidMCPToolParameterHeader reports malformed or duplicate parameter-header metadata.
 var ErrInvalidMCPToolParameterHeader = errors.New("invalid MCP tool parameter header")
 
+// ErrInvalidMCPProtocolProbe reports an unsupported persisted probe era or status.
+var ErrInvalidMCPProtocolProbe = errors.New("invalid MCP protocol probe")
+
 // AccessKey is a scoped authentication credential ("dwv_…"). Only the SHA-256 hash is stored.
 type AccessKey struct {
 	ID          uuid.UUID
@@ -156,19 +159,61 @@ type AuditFilter struct {
 
 // MCPConnection configures one stateless MCP upstream exposed through the gateway.
 type MCPConnection struct {
-	ID              uuid.UUID
-	UserID          uuid.UUID
-	TenantID        uuid.UUID
-	Slug            string
-	Name            string
-	Description     *string
-	UpstreamURL     string
-	AuthMode        string
-	AuditMode       string
-	ProtocolVersion string
-	Enabled         bool
-	CreatedAt       time.Time
-	UpdatedAt       *time.Time
+	ID                uuid.UUID
+	UserID            uuid.UUID
+	TenantID          uuid.UUID
+	Slug              string
+	Name              string
+	Description       *string
+	UpstreamURL       string
+	AuthMode          string
+	AuditMode         string
+	ProtocolVersion   string
+	ProtocolEra       string
+	ProbeStatus       string
+	ProbeCheckedAt    *time.Time
+	ProbeError        *string
+	ProbeDetail       *string
+	SupportedVersions []string
+	ServerName        *string
+	ServerVersion     *string
+	Enabled           bool
+	CreatedAt         time.Time
+	UpdatedAt         *time.Time
+}
+
+// MCPProtocolProbeResult is the bounded, secret-free result of probing one MCP connection.
+type MCPProtocolProbeResult struct {
+	ConnectionID      uuid.UUID
+	UserID            uuid.UUID
+	TenantID          uuid.UUID
+	ProtocolEra       string
+	Status            string
+	CheckedAt         time.Time
+	Error             *string
+	Detail            *string
+	SupportedVersions []string
+	ServerName        *string
+	ServerVersion     *string
+}
+
+// ValidateMCPProtocolProbe verifies the bounded enum and text values stored for a probe.
+func ValidateMCPProtocolProbe(result MCPProtocolProbeResult) error {
+	validEra := result.ProtocolEra == "unknown" || result.ProtocolEra == "modern_2026_07" || result.ProtocolEra == "legacy_session_likely" || result.ProtocolEra == "incompatible"
+	validStatus := result.Status == "not_checked" || result.Status == "compatible" || result.Status == "incompatible" || result.Status == "auth_required" || result.Status == "unreachable" || result.Status == "error"
+	if !validEra || !validStatus || result.CheckedAt.IsZero() {
+		return ErrInvalidMCPProtocolProbe
+	}
+	if result.Error != nil && len(*result.Error) > 255 || result.Detail != nil && len(*result.Detail) > 1024 ||
+		result.ServerName != nil && len(*result.ServerName) > 255 || result.ServerVersion != nil && len(*result.ServerVersion) > 255 {
+		return ErrInvalidMCPProtocolProbe
+	}
+	for _, version := range result.SupportedVersions {
+		if strings.TrimSpace(version) == "" || len(version) > 64 {
+			return ErrInvalidMCPProtocolProbe
+		}
+	}
+	return nil
 }
 
 // MCPConnectionGrant authorizes one vault access key to use one MCP connection.
