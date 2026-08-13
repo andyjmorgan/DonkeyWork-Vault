@@ -60,6 +60,7 @@ func (s *MCPService) UpsertConnection(ctx context.Context, p MCPConnectionParams
 	caller := contracts.CallerFrom(ctx)
 	p.Slug = strings.TrimSpace(strings.ToLower(p.Slug))
 	p.Name = strings.TrimSpace(p.Name)
+	p.UpstreamURL = strings.TrimSpace(p.UpstreamURL)
 	p.AuthMode = strings.TrimSpace(strings.ToLower(p.AuthMode))
 	p.AuditMode = strings.TrimSpace(strings.ToLower(p.AuditMode))
 	p.UpstreamProtocolMode = strings.TrimSpace(strings.ToLower(p.UpstreamProtocolMode))
