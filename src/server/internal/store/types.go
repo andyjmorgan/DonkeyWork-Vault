@@ -26,6 +26,9 @@ var ErrInvalidMCPToolParameterHeader = errors.New("invalid MCP tool parameter he
 // ErrInvalidMCPProtocolProbe reports an unsupported persisted probe era or status.
 var ErrInvalidMCPProtocolProbe = errors.New("invalid MCP protocol probe")
 
+// ErrInvalidMCPEvalRun reports an invalid atomic eval-run creation request.
+var ErrInvalidMCPEvalRun = errors.New("invalid MCP eval run")
+
 // AccessKey is a scoped authentication credential ("dwv_…"). Only the SHA-256 hash is stored.
 type AccessKey struct {
 	ID          uuid.UUID
@@ -226,6 +229,40 @@ type MCPConnectionGrant struct {
 	ConnectionID uuid.UUID
 	AccessKeyID  uuid.UUID
 	CreatedAt    time.Time
+}
+
+// MCPEvalRun owns a short-lived MCP access key and its connection grants.
+type MCPEvalRun struct {
+	ID          uuid.UUID
+	UserID      uuid.UUID
+	TenantID    uuid.UUID
+	RunID       string
+	AccessKeyID uuid.UUID
+	ExpiresAt   time.Time
+	RevokedAt   *time.Time
+	CreatedAt   time.Time
+}
+
+// ValidateMCPEvalRunCreation verifies the non-secret inputs to atomic eval-run creation.
+func ValidateMCPEvalRunCreation(run *MCPEvalRun, key *AccessKey, connectionIDs []uuid.UUID, now time.Time) error {
+	if run == nil || key == nil || strings.TrimSpace(run.RunID) == "" || len(run.RunID) > 255 ||
+		run.UserID == uuid.Nil || key.UserID != run.UserID || key.TenantID != run.TenantID ||
+		!key.Enabled || len(key.KeyHash) == 0 || key.KeyPrefix == "" || key.ExpiresAt == nil ||
+		!run.ExpiresAt.Equal(*key.ExpiresAt) || !run.ExpiresAt.After(now) || len(connectionIDs) == 0 ||
+		len(key.Scopes) != 1 || key.Scopes[0] != "vault:mcp" {
+		return ErrInvalidMCPEvalRun
+	}
+	seen := make(map[uuid.UUID]struct{}, len(connectionIDs))
+	for _, connectionID := range connectionIDs {
+		if connectionID == uuid.Nil {
+			return ErrInvalidMCPEvalRun
+		}
+		if _, exists := seen[connectionID]; exists {
+			return ErrInvalidMCPEvalRun
+		}
+		seen[connectionID] = struct{}{}
+	}
+	return nil
 }
 
 // MCPHeaderBinding maps an existing encrypted API-key credential to an upstream header.

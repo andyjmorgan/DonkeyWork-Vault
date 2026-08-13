@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -16,6 +18,16 @@ import (
 	"donkeywork.dev/vault-server/internal/service"
 	"donkeywork.dev/vault-server/internal/store"
 )
+
+type evalRunLookupStore struct {
+	store.Store
+	run *store.MCPEvalRun
+	err error
+}
+
+func (s evalRunLookupStore) GetMCPEvalRunByAccessKey(context.Context, uuid.UUID) (*store.MCPEvalRun, error) {
+	return s.run, s.err
+}
 
 func createMCPConnection(t *testing.T, h *harness, upstream string) mcpConnectionDTO {
 	t.Helper()
@@ -387,6 +399,155 @@ func TestMCPProxyJSONAndPolicy(t *testing.T) {
 	rec = mcpRequest(t, h, []byte(`{"bad":true}`), "tools/call", "allowed")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("malformed %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestMCPProxyEvalRunCorrelationIsAuthoritative(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		lookup     func(store.AccessKey, store.MCPConnection) *store.MCPEvalRun
+		wantTagged bool
+	}{
+		{
+			name: "active run",
+			lookup: func(key store.AccessKey, connection store.MCPConnection) *store.MCPEvalRun {
+				return &store.MCPEvalRun{RunID: "trusted-run", AccessKeyID: key.ID, UserID: connection.UserID,
+					TenantID: connection.TenantID, ExpiresAt: time.Now().Add(time.Hour)}
+			},
+			wantTagged: true,
+		},
+		{name: "no run", lookup: func(store.AccessKey, store.MCPConnection) *store.MCPEvalRun { return nil }},
+		{
+			name: "expired run",
+			lookup: func(key store.AccessKey, connection store.MCPConnection) *store.MCPEvalRun {
+				return &store.MCPEvalRun{RunID: "trusted-run", AccessKeyID: key.ID, UserID: connection.UserID,
+					TenantID: connection.TenantID, ExpiresAt: time.Now().Add(-time.Minute)}
+			},
+		},
+		{
+			name: "revoked run",
+			lookup: func(key store.AccessKey, connection store.MCPConnection) *store.MCPEvalRun {
+				revoked := time.Now()
+				return &store.MCPEvalRun{RunID: "trusted-run", AccessKeyID: key.ID, UserID: connection.UserID,
+					TenantID: connection.TenantID, ExpiresAt: time.Now().Add(time.Hour), RevokedAt: &revoked}
+			},
+		},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":[],"ttlMs":0,"cacheScope":"private"}}`))
+			}))
+			defer upstream.Close()
+			h := newHarness(t)
+			h.server.deps.MCPClient = upstream.Client()
+			created := createMCPConnection(t, h, upstream.URL)
+			key := firstAccessKey(t, h)
+			if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: created.ID, AccessKeyID: key.ID}); err != nil {
+				t.Fatal(err)
+			}
+			connection, err := h.ms.GetMCPConnectionByID(t.Context(), h.userID, created.ID)
+			if err != nil || connection == nil {
+				t.Fatalf("connection lookup: %v", err)
+			}
+			lookup := evalRunLookupStore{Store: h.ms, run: test.lookup(key, *connection)}
+			h.server.deps.MCP = service.NewMCPService(lookup, h.cipher)
+
+			body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+			rec := mcpRequestWithHeaders(t, h, body, "tools/list", "", map[string]string{"X-DWV-Eval-Run-ID": "spoofed-run"})
+			if rec.Code != http.StatusOK {
+				t.Fatalf("proxy %d: %s", rec.Code, rec.Body)
+			}
+
+			trusted := "trusted-run"
+			_, tagged, err := h.ms.QueryMCPAudit(t.Context(), store.MCPAuditFilter{
+				UserID: h.userID, TenantID: connection.TenantID, EvalRunID: &trusted, Limit: 10,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			spoofed := "spoofed-run"
+			_, spoofedCount, err := h.ms.QueryMCPAudit(t.Context(), store.MCPAuditFilter{
+				UserID: h.userID, TenantID: connection.TenantID, EvalRunID: &spoofed, Limit: 10,
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			wantTagged := 0
+			if test.wantTagged {
+				wantTagged = 2
+			}
+			if tagged != wantTagged || spoofedCount != 0 {
+				t.Fatalf("trusted audit=%d want %d; spoofed audit=%d", tagged, wantTagged, spoofedCount)
+			}
+		})
+	}
+}
+
+func TestMCPProxyEvalCredentialIgnoresSpoofedRunHeader(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":[],"ttlMs":0,"cacheScope":"private"}}`))
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+
+	ctx := contracts.WithCaller(t.Context(), contracts.Caller{UserID: h.userID})
+	credential, err := h.server.deps.MCPEvalRuns.Create(ctx, "authoritative-run", []uuid.UUID{connection.ID}, time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/proxy/example", bytes.NewReader(body))
+	for name, value := range map[string]string{
+		"X-Api-Key": credential.Secret, "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+		"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list", "X-DWV-Eval-Run-ID": "spoofed-run",
+	} {
+		req.Header.Set(name, value)
+	}
+	rec := httptest.NewRecorder()
+	h.h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("proxy %d: %s", rec.Code, rec.Body)
+	}
+
+	authoritative := "authoritative-run"
+	rows, authoritativeCount, err := h.ms.QueryMCPAudit(t.Context(), store.MCPAuditFilter{
+		UserID: h.userID, EvalRunID: &authoritative, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spoofed := "spoofed-run"
+	_, spoofedCount, err := h.ms.QueryMCPAudit(t.Context(), store.MCPAuditFilter{
+		UserID: h.userID, EvalRunID: &spoofed, Limit: 10,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authoritativeCount != 2 || len(rows) != 2 || spoofedCount != 0 {
+		t.Fatalf("authoritative rows=%d/%d; spoofed rows=%d", len(rows), authoritativeCount, spoofedCount)
+	}
+}
+
+func TestMCPProxyEvalRunLookupFailureStopsBeforeUpstream(t *testing.T) {
+	var upstreamCalls int
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { upstreamCalls++ }))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	h.server.deps.MCP = service.NewMCPService(evalRunLookupStore{Store: h.ms, err: errors.New("lookup failed")}, h.cipher)
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	rec := mcpRequestWithHeaders(t, h, body, "tools/list", "", map[string]string{"X-DWV-Eval-Run-ID": "spoofed-run"})
+	if rec.Code != http.StatusServiceUnavailable || upstreamCalls != 0 {
+		t.Fatalf("status=%d upstream=%d body=%s", rec.Code, upstreamCalls, rec.Body)
 	}
 }
 

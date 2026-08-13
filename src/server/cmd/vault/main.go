@@ -114,6 +114,7 @@ func run() error {
 		OAuthTokens:     service.NewOAuthTokenService(pg, cipher, auditLog, resolver, oauthClient),
 		OAuthFlow:       service.NewOAuthFlowService(pg, cipher, resolver, auditLog, oauthClient, logger),
 		MCP:             service.NewMCPService(pg, cipher),
+		MCPEvalRuns:     service.NewMCPEvalRunService(pg, auditLog),
 		MCPOAuth:        mcpoauth.NewService(mcpoauth.NewStoreRepository(pg), cipher, oauthClient),
 		MCPClient:       mcpClient,
 		MCPAuditHMACKey: []byte(cfg.Keks[cfg.ActiveKekID]),

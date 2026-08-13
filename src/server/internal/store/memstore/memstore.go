@@ -26,6 +26,7 @@ type Mem struct {
 	manifests      map[uuid.UUID]store.ProviderManifest
 	audit          []store.AuditEntry
 	mcpConnections map[uuid.UUID]store.MCPConnection
+	mcpEvalRuns    map[uuid.UUID]store.MCPEvalRun
 	mcpGrants      map[uuid.UUID]store.MCPConnectionGrant
 	mcpHeaders     map[uuid.UUID]store.MCPHeaderBinding
 	mcpPolicies    map[uuid.UUID]store.MCPToolPolicy
@@ -49,6 +50,7 @@ func New() *Mem {
 		tokens:         map[uuid.UUID]store.OAuthToken{},
 		manifests:      map[uuid.UUID]store.ProviderManifest{},
 		mcpConnections: map[uuid.UUID]store.MCPConnection{},
+		mcpEvalRuns:    map[uuid.UUID]store.MCPEvalRun{},
 		mcpGrants:      map[uuid.UUID]store.MCPConnectionGrant{},
 		mcpHeaders:     map[uuid.UUID]store.MCPHeaderBinding{},
 		mcpPolicies:    map[uuid.UUID]store.MCPToolPolicy{},
@@ -150,6 +152,11 @@ func (m *Mem) DeleteAccessKey(_ context.Context, userID, id uuid.UUID) (bool, er
 		for grantID, grant := range m.mcpGrants {
 			if grant.AccessKeyID == id {
 				delete(m.mcpGrants, grantID)
+			}
+		}
+		for runID, run := range m.mcpEvalRuns {
+			if run.AccessKeyID == id {
+				delete(m.mcpEvalRuns, runID)
 			}
 		}
 		return true, nil

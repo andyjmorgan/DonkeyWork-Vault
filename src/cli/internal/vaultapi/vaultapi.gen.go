@@ -140,6 +140,13 @@ type CreateApiKeyRequest struct {
 	Username    *string        `json:"username"`
 }
 
+// CreateMCPEvalRunRequest defines model for CreateMCPEvalRunRequest.
+type CreateMCPEvalRunRequest struct {
+	ConnectionIds []openapi_types.UUID `json:"connectionIds"`
+	ExpiresAt     time.Time            `json:"expiresAt"`
+	RunId         string               `json:"runId"`
+}
+
 // CreatedAccessKeyResponse defines model for CreatedAccessKeyResponse.
 type CreatedAccessKeyResponse struct {
 	Id     openapi_types.UUID `json:"id"`
@@ -152,6 +159,18 @@ type CreatedAccessKeyResponse struct {
 type CreatedApiKeyResponse struct {
 	Id   openapi_types.UUID `json:"id"`
 	Name string             `json:"name"`
+}
+
+// CreatedMCPEvalRunResponse defines model for CreatedMCPEvalRunResponse.
+type CreatedMCPEvalRunResponse struct {
+	AccessKeyId openapi_types.UUID     `json:"accessKeyId"`
+	Connections []MCPEvalRunConnection `json:"connections"`
+	CreatedAt   time.Time              `json:"createdAt"`
+	ExpiresAt   time.Time              `json:"expiresAt"`
+	Id          openapi_types.UUID     `json:"id"`
+	RevokedAt   *time.Time             `json:"revokedAt"`
+	RunId       string                 `json:"runId"`
+	Secret      string                 `json:"secret"`
 }
 
 // CredentialKind defines model for CredentialKind.
@@ -182,6 +201,24 @@ type ErrorResponse struct {
 // KeyResponse defines model for KeyResponse.
 type KeyResponse struct {
 	Key string `json:"key"`
+}
+
+// MCPEvalRun defines model for MCPEvalRun.
+type MCPEvalRun struct {
+	AccessKeyId openapi_types.UUID `json:"accessKeyId"`
+	CreatedAt   time.Time          `json:"createdAt"`
+	ExpiresAt   time.Time          `json:"expiresAt"`
+	Id          openapi_types.UUID `json:"id"`
+	RevokedAt   *time.Time         `json:"revokedAt"`
+	RunId       string             `json:"runId"`
+}
+
+// MCPEvalRunConnection defines model for MCPEvalRunConnection.
+type MCPEvalRunConnection struct {
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+	ProxyUrl string             `json:"proxyUrl"`
+	Slug     string             `json:"slug"`
 }
 
 // MCPLegacyProtocolVersion defines model for MCPLegacyProtocolVersion.
@@ -408,6 +445,9 @@ type PutApiV1McpConnectionsConnectionIDPoliciesJSONRequestBody = PutApiV1McpConn
 // PutApiV1McpConnectionsIdJSONRequestBody defines body for PutApiV1McpConnectionsId for application/json ContentType.
 type PutApiV1McpConnectionsIdJSONRequestBody = PutApiV1McpConnectionsIdJSONBody
 
+// PostApiV1McpEvalRunsJSONRequestBody defines body for PostApiV1McpEvalRuns for application/json ContentType.
+type PostApiV1McpEvalRunsJSONRequestBody = CreateMCPEvalRunRequest
+
 // PostApiV1McpProxySlugJSONRequestBody defines body for PostApiV1McpProxySlug for application/json ContentType.
 type PostApiV1McpProxySlugJSONRequestBody = PostApiV1McpProxySlugJSONBody
 
@@ -607,6 +647,17 @@ type ClientInterface interface {
 	PutApiV1McpConnectionsIdWithBody(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PutApiV1McpConnectionsId(ctx context.Context, id openapi_types.UUID, body PutApiV1McpConnectionsIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiV1McpEvalRuns request
+	GetApiV1McpEvalRuns(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PostApiV1McpEvalRunsWithBody request with any body
+	PostApiV1McpEvalRunsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PostApiV1McpEvalRuns(ctx context.Context, body PostApiV1McpEvalRunsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteApiV1McpEvalRunsId request
+	DeleteApiV1McpEvalRunsId(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteApiV1McpGrantsId request
 	DeleteApiV1McpGrantsId(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1167,6 +1218,54 @@ func (c *Client) PutApiV1McpConnectionsIdWithBody(ctx context.Context, id openap
 
 func (c *Client) PutApiV1McpConnectionsId(ctx context.Context, id openapi_types.UUID, body PutApiV1McpConnectionsIdJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPutApiV1McpConnectionsIdRequest(c.Server, id, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiV1McpEvalRuns(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiV1McpEvalRunsRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiV1McpEvalRunsWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiV1McpEvalRunsRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PostApiV1McpEvalRuns(ctx context.Context, body PostApiV1McpEvalRunsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPostApiV1McpEvalRunsRequest(c.Server, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteApiV1McpEvalRunsId(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteApiV1McpEvalRunsIdRequest(c.Server, id)
 	if err != nil {
 		return nil, err
 	}
@@ -2872,6 +2971,107 @@ func NewPutApiV1McpConnectionsIdRequestWithBody(server string, id openapi_types.
 	return req, nil
 }
 
+// NewGetApiV1McpEvalRunsRequest generates requests for GetApiV1McpEvalRuns
+func NewGetApiV1McpEvalRunsRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/mcp/eval-runs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPostApiV1McpEvalRunsRequest calls the generic PostApiV1McpEvalRuns builder with application/json body
+func NewPostApiV1McpEvalRunsRequest(server string, body PostApiV1McpEvalRunsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPostApiV1McpEvalRunsRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewPostApiV1McpEvalRunsRequestWithBody generates requests for PostApiV1McpEvalRuns with any type of body
+func NewPostApiV1McpEvalRunsRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/mcp/eval-runs")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteApiV1McpEvalRunsIdRequest generates requests for DeleteApiV1McpEvalRunsId
+func NewDeleteApiV1McpEvalRunsIdRequest(server string, id openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "id", runtime.ParamLocationPath, id)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/mcp/eval-runs/%s", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteApiV1McpGrantsIdRequest generates requests for DeleteApiV1McpGrantsId
 func NewDeleteApiV1McpGrantsIdRequest(server string, id openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -3507,6 +3707,17 @@ type ClientWithResponsesInterface interface {
 	PutApiV1McpConnectionsIdWithBodyWithResponse(ctx context.Context, id openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiV1McpConnectionsIdResponse, error)
 
 	PutApiV1McpConnectionsIdWithResponse(ctx context.Context, id openapi_types.UUID, body PutApiV1McpConnectionsIdJSONRequestBody, reqEditors ...RequestEditorFn) (*PutApiV1McpConnectionsIdResponse, error)
+
+	// GetApiV1McpEvalRunsWithResponse request
+	GetApiV1McpEvalRunsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1McpEvalRunsResponse, error)
+
+	// PostApiV1McpEvalRunsWithBodyWithResponse request with any body
+	PostApiV1McpEvalRunsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1McpEvalRunsResponse, error)
+
+	PostApiV1McpEvalRunsWithResponse(ctx context.Context, body PostApiV1McpEvalRunsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1McpEvalRunsResponse, error)
+
+	// DeleteApiV1McpEvalRunsIdWithResponse request
+	DeleteApiV1McpEvalRunsIdWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteApiV1McpEvalRunsIdResponse, error)
 
 	// DeleteApiV1McpGrantsIdWithResponse request
 	DeleteApiV1McpGrantsIdWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteApiV1McpGrantsIdResponse, error)
@@ -4260,6 +4471,71 @@ func (r PutApiV1McpConnectionsIdResponse) StatusCode() int {
 	return 0
 }
 
+type GetApiV1McpEvalRunsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]MCPEvalRun
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiV1McpEvalRunsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiV1McpEvalRunsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PostApiV1McpEvalRunsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *CreatedMCPEvalRunResponse
+}
+
+// Status returns HTTPResponse.Status
+func (r PostApiV1McpEvalRunsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PostApiV1McpEvalRunsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteApiV1McpEvalRunsIdResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteApiV1McpEvalRunsIdResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteApiV1McpEvalRunsIdResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteApiV1McpGrantsIdResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -4903,6 +5179,41 @@ func (c *ClientWithResponses) PutApiV1McpConnectionsIdWithResponse(ctx context.C
 		return nil, err
 	}
 	return ParsePutApiV1McpConnectionsIdResponse(rsp)
+}
+
+// GetApiV1McpEvalRunsWithResponse request returning *GetApiV1McpEvalRunsResponse
+func (c *ClientWithResponses) GetApiV1McpEvalRunsWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetApiV1McpEvalRunsResponse, error) {
+	rsp, err := c.GetApiV1McpEvalRuns(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiV1McpEvalRunsResponse(rsp)
+}
+
+// PostApiV1McpEvalRunsWithBodyWithResponse request with arbitrary body returning *PostApiV1McpEvalRunsResponse
+func (c *ClientWithResponses) PostApiV1McpEvalRunsWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PostApiV1McpEvalRunsResponse, error) {
+	rsp, err := c.PostApiV1McpEvalRunsWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiV1McpEvalRunsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PostApiV1McpEvalRunsWithResponse(ctx context.Context, body PostApiV1McpEvalRunsJSONRequestBody, reqEditors ...RequestEditorFn) (*PostApiV1McpEvalRunsResponse, error) {
+	rsp, err := c.PostApiV1McpEvalRuns(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePostApiV1McpEvalRunsResponse(rsp)
+}
+
+// DeleteApiV1McpEvalRunsIdWithResponse request returning *DeleteApiV1McpEvalRunsIdResponse
+func (c *ClientWithResponses) DeleteApiV1McpEvalRunsIdWithResponse(ctx context.Context, id openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteApiV1McpEvalRunsIdResponse, error) {
+	rsp, err := c.DeleteApiV1McpEvalRunsId(ctx, id, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteApiV1McpEvalRunsIdResponse(rsp)
 }
 
 // DeleteApiV1McpGrantsIdWithResponse request returning *DeleteApiV1McpGrantsIdResponse
@@ -5718,6 +6029,74 @@ func ParsePutApiV1McpConnectionsIdResponse(rsp *http.Response) (*PutApiV1McpConn
 	}
 
 	response := &PutApiV1McpConnectionsIdResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiV1McpEvalRunsResponse parses an HTTP response from a GetApiV1McpEvalRunsWithResponse call
+func ParseGetApiV1McpEvalRunsResponse(rsp *http.Response) (*GetApiV1McpEvalRunsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiV1McpEvalRunsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []MCPEvalRun
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePostApiV1McpEvalRunsResponse parses an HTTP response from a PostApiV1McpEvalRunsWithResponse call
+func ParsePostApiV1McpEvalRunsResponse(rsp *http.Response) (*PostApiV1McpEvalRunsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PostApiV1McpEvalRunsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest CreatedMCPEvalRunResponse
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteApiV1McpEvalRunsIdResponse parses an HTTP response from a DeleteApiV1McpEvalRunsIdWithResponse call
+func ParseDeleteApiV1McpEvalRunsIdResponse(rsp *http.Response) (*DeleteApiV1McpEvalRunsIdResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteApiV1McpEvalRunsIdResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

@@ -62,6 +62,7 @@ type Deps struct {
 	OAuthTokens     *service.OAuthTokenService
 	OAuthFlow       *service.OAuthFlowService
 	MCP             *service.MCPService
+	MCPEvalRuns     *service.MCPEvalRunService
 	MCPOAuth        *mcpoauth.Service
 	MCPClient       *http.Client
 	MCPAuditHMACKey []byte

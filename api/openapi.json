@@ -334,6 +334,50 @@
         ],
         "type": "object"
       },
+      "CreateMCPEvalRunRequest": {
+        "properties": {
+          "runId": {"type": "string"},
+          "connectionIds": {"type": "array", "items": {"type": "string", "format": "uuid"}},
+          "expiresAt": {"type": "string", "format": "date-time"}
+        },
+        "required": ["runId", "connectionIds", "expiresAt"],
+        "type": "object"
+      },
+      "MCPEvalRunConnection": {
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "slug": {"type": "string"},
+          "name": {"type": "string"},
+          "proxyUrl": {"type": "string", "format": "uri"}
+        },
+        "required": ["id", "slug", "name", "proxyUrl"],
+        "type": "object"
+      },
+      "MCPEvalRun": {
+        "properties": {
+          "id": {"type": "string", "format": "uuid"},
+          "runId": {"type": "string"},
+          "accessKeyId": {"type": "string", "format": "uuid"},
+          "expiresAt": {"type": "string", "format": "date-time"},
+          "revokedAt": {"type": "string", "format": "date-time", "nullable": true},
+          "createdAt": {"type": "string", "format": "date-time"}
+        },
+        "required": ["id", "runId", "accessKeyId", "expiresAt", "revokedAt", "createdAt"],
+        "type": "object"
+      },
+      "CreatedMCPEvalRunResponse": {
+        "allOf": [
+          {"$ref": "#/components/schemas/MCPEvalRun"},
+          {
+            "type": "object",
+            "properties": {
+              "secret": {"type": "string"},
+              "connections": {"type": "array", "items": {"$ref": "#/components/schemas/MCPEvalRunConnection"}}
+            },
+            "required": ["secret", "connections"]
+          }
+        ]
+      },
       "CreateApiKeyRequest": {
         "properties": {
           "baseUrl": {
@@ -944,6 +988,27 @@
     },
     "/api/v1/mcp/grants/{id}": {
       "delete": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
+    },
+    "/api/v1/mcp/eval-runs": {
+      "get": {
+        "responses": {"200": {"description": "Eval runs", "content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/MCPEvalRun"}}}}}},
+        "tags": ["DonkeyWork Vault"]
+      },
+      "post": {
+        "requestBody": {"required": true, "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreateMCPEvalRunRequest"}}}},
+        "responses": {
+          "201": {"description": "Eval run credential created; secret is shown once", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/CreatedMCPEvalRunResponse"}}}},
+          "400": {"description": "Invalid eval run"}
+        },
+        "tags": ["DonkeyWork Vault"]
+      }
+    },
+    "/api/v1/mcp/eval-runs/{id}": {
+      "delete": {
+        "parameters": [{"in": "path", "name": "id", "required": true, "schema": {"type": "string", "format": "uuid"}}],
+        "responses": {"204": {"description": "Revoked"}, "404": {"description": "Not found"}},
+        "tags": ["DonkeyWork Vault"]
+      }
     },
     "/api/v1/mcp/connections/{connectionID}/headers": {
       "get": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"Header bindings"}},"tags":["DonkeyWork Vault"]},

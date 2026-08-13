@@ -285,6 +285,34 @@ type createMCPGrantRequest struct {
 	AccessKeyID uuid.UUID `json:"accessKeyId"`
 }
 
+type createMCPEvalRunRequest struct {
+	RunID         string      `json:"runId"`
+	ConnectionIDs []uuid.UUID `json:"connectionIds"`
+	ExpiresAt     time.Time   `json:"expiresAt"`
+}
+
+type mcpEvalRunConnectionDTO struct {
+	ID       uuid.UUID `json:"id"`
+	Slug     string    `json:"slug"`
+	Name     string    `json:"name"`
+	ProxyURL string    `json:"proxyUrl"`
+}
+
+type mcpEvalRunDTO struct {
+	ID          uuid.UUID  `json:"id"`
+	RunID       string     `json:"runId"`
+	AccessKeyID uuid.UUID  `json:"accessKeyId"`
+	ExpiresAt   time.Time  `json:"expiresAt"`
+	RevokedAt   *time.Time `json:"revokedAt"`
+	CreatedAt   time.Time  `json:"createdAt"`
+}
+
+type createdMCPEvalRunResponse struct {
+	mcpEvalRunDTO
+	Secret      string                    `json:"secret"`
+	Connections []mcpEvalRunConnectionDTO `json:"connections"`
+}
+
 type mcpHeaderBindingDTO struct {
 	ID           uuid.UUID `json:"id"`
 	ConnectionID uuid.UUID `json:"connectionId"`
