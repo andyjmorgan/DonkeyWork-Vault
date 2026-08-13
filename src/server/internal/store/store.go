@@ -87,6 +87,13 @@ type Store interface {
 	UpsertMCPToolPolicy(ctx context.Context, p *MCPToolPolicy) error
 	ListMCPToolPolicies(ctx context.Context, userID, connectionID uuid.UUID) ([]MCPToolPolicy, error)
 	DeleteMCPToolPolicy(ctx context.Context, userID, id uuid.UUID) (bool, error)
+	// ReplaceMCPToolParameterHeaders atomically replaces all discovered parameter-header metadata
+	// for a connection. An empty slice clears stale metadata after discovery returns no annotations.
+	ReplaceMCPToolParameterHeaders(ctx context.Context, userID, tenantID, connectionID uuid.UUID, headers []MCPToolParameterHeader) error
+	// UpsertMCPToolParameterHeaders atomically replaces metadata for each explicitly observed tool
+	// while preserving tools absent from a paginated discovery response.
+	UpsertMCPToolParameterHeaders(ctx context.Context, userID, tenantID, connectionID uuid.UUID, snapshots []MCPToolHeaderSnapshot) error
+	ListMCPToolParameterHeaders(ctx context.Context, userID, connectionID uuid.UUID, toolName string) ([]MCPToolParameterHeader, error)
 
 	// --- MCP upstream OAuth ---
 	InsertMCPOAuthAuthorization(ctx context.Context, a *MCPOAuthAuthorization) error

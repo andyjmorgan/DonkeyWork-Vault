@@ -29,6 +29,7 @@ type Mem struct {
 	mcpGrants      map[uuid.UUID]store.MCPConnectionGrant
 	mcpHeaders     map[uuid.UUID]store.MCPHeaderBinding
 	mcpPolicies    map[uuid.UUID]store.MCPToolPolicy
+	mcpToolHeaders map[uuid.UUID]store.MCPToolParameterHeader
 	mcpOAuth       map[uuid.UUID]store.MCPOAuthAuthorization
 	mcpOAuthStates map[string]store.MCPOAuthState
 	mcpExchanges   map[uuid.UUID]store.MCPAuditExchange
@@ -51,6 +52,7 @@ func New() *Mem {
 		mcpGrants:      map[uuid.UUID]store.MCPConnectionGrant{},
 		mcpHeaders:     map[uuid.UUID]store.MCPHeaderBinding{},
 		mcpPolicies:    map[uuid.UUID]store.MCPToolPolicy{},
+		mcpToolHeaders: map[uuid.UUID]store.MCPToolParameterHeader{},
 		mcpOAuth:       map[uuid.UUID]store.MCPOAuthAuthorization{},
 		mcpOAuthStates: map[string]store.MCPOAuthState{},
 		mcpExchanges:   map[uuid.UUID]store.MCPAuditExchange{},

@@ -355,6 +355,19 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	message, err := mcp.InspectClient(body, r.Header, mcp.Options{RequestStateHMACKey: s.deps.MCPAuditHMACKey})
+	if err == nil && message.Audit.Method == "tools/call" {
+		parameterHeaders, loadErr := s.deps.MCP.Store().ListMCPToolParameterHeaders(r.Context(), resolved.Connection.UserID, resolved.Connection.ID, message.Audit.ToolName)
+		if loadErr != nil {
+			s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "failed", 0, "metadata")
+			writeError(w, http.StatusServiceUnavailable, "MCP tool metadata unavailable.")
+			return
+		}
+		bindings := make([]mcp.ParamHeader, len(parameterHeaders))
+		for i, header := range parameterHeaders {
+			bindings[i] = mcp.ParamHeader{Name: header.HeaderName, ArgumentPath: header.ArgumentPath, Required: header.Required}
+		}
+		message, err = mcp.InspectClient(body, r.Header, mcp.Options{RequestStateHMACKey: s.deps.MCPAuditHMACKey, ParamHeaders: bindings})
+	}
 	if err == nil && !validMCPContentHeaders(r.Header) {
 		err = errors.New("invalid MCP content negotiation headers")
 	}
@@ -375,6 +388,9 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	decision := resolved.Policy.Evaluate(message)
+	if message.Audit.Method == "server/discover" {
+		decision = mcp.Decision{Allowed: true}
+	}
 	requestAudit := mcpAuditRecord(exchange, 1, "client_to_server", message.Kind, message.ID, message.Audit, 0, body, resolved.Connection.AuditMode)
 	if decision.Allowed {
 		requestAudit.PolicyDecision = "allowed"
@@ -390,6 +406,10 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 	if !decision.Allowed {
 		s.completeMCPExchange(r.Context(), exchange, http.StatusForbidden, "denied", 0, "policy")
 		writeMCPError(w, http.StatusForbidden, -32600, "request denied by MCP gateway policy", messageIDValue(message.ID))
+		return
+	}
+	if message.Audit.Method == "server/discover" {
+		s.handleMCPDiscover(w, r, exchange, resolved, message)
 		return
 	}
 	// The URL was parsed and restricted to absolute HTTPS by MCPService.UpsertConnection; the
@@ -431,6 +451,10 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 	}
 	contentType := strings.ToLower(response.Header.Get("Content-Type"))
 	if strings.HasPrefix(contentType, "text/event-stream") {
+		if message.Audit.Method == "tools/list" {
+			s.proxyMCPToolsListSSE(w, r, response, exchange, resolved, message)
+			return
+		}
 		s.proxyMCPSSE(w, r, response, exchange, resolved.Connection)
 		return
 	}
@@ -440,11 +464,49 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
 		return
 	}
+	originalResponseBytes := int64(len(responseBody))
 	serverMessage, inspectErr := mcp.InspectServer(responseBody, s.deps.MCPAuditHMACKey)
+	if inspectErr == nil && serverMessage.Kind == mcp.KindResult {
+		responseBody, inspectErr = s.transformMCPResponse(r.Context(), message, resolved, responseBody)
+		if inspectErr == nil {
+			serverMessage, inspectErr = mcp.InspectServer(responseBody, s.deps.MCPAuditHMACKey)
+		}
+	}
 	if inspectErr != nil {
-		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", int64(len(responseBody)), "protocol")
+		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", originalResponseBytes, "protocol")
 		writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
 		return
+	}
+	if message.Audit.Method == "tools/list" {
+		w.Header().Set("Cache-Control", "private")
+	}
+	responseAudit := mcpAuditRecord(exchange, 2, "server_to_client", serverMessage.Kind, serverMessage.ID, serverMessage.Audit, serverMessage.ErrorCode, responseBody, resolved.Connection.AuditMode)
+	responseAudit.PolicyDecision = "allowed"
+	if err := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), responseAudit); err != nil {
+		s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", originalResponseBytes, "audit")
+		writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
+		return
+	}
+	w.WriteHeader(response.StatusCode)
+	_, _ = w.Write(responseBody) //nolint:gosec // G705: validated JSON is returned with application/json, never rendered as HTML.
+	s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "complete", originalResponseBytes, "")
+}
+
+func (s *Server) handleMCPDiscover(w http.ResponseWriter, r *http.Request, exchange *store.MCPAuditExchange, resolved *service.MCPResolvedConnection, message mcp.ClientMessage) {
+	capabilities := make([]mcp.Capability, 0, 1)
+	if resolved.Policy.AllowsMethod("tools/list") && resolved.Policy.AllowsMethod("tools/call") {
+		capabilities = append(capabilities, mcp.Capability{Name: "tools", Settings: json.RawMessage(`{}`)})
+	}
+	responseBody, err := mcp.BuildDiscover(message.ID, mcp.GatewayIdentity{
+		Name: "DonkeyWork Vault", Version: s.deps.ServiceVersion,
+		Description: "Stateless MCP credential and audit gateway", WebsiteURL: s.deps.PublicBaseURL,
+	}, capabilities, int64(time.Hour/time.Millisecond))
+	if err != nil {
+		return //coverage:ignore validated request ID, constant identity, capabilities, and TTL make construction infallible.
+	}
+	serverMessage, err := mcp.InspectServer(responseBody, s.deps.MCPAuditHMACKey)
+	if err != nil { //coverage:ignore BuildDiscover returns a validated server response.
+		return //coverage:ignore BuildDiscover returns a validated server response.
 	}
 	responseAudit := mcpAuditRecord(exchange, 2, "server_to_client", serverMessage.Kind, serverMessage.ID, serverMessage.Audit, serverMessage.ErrorCode, responseBody, resolved.Connection.AuditMode)
 	responseAudit.PolicyDecision = "allowed"
@@ -453,9 +515,125 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
 		return
 	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Cache-Control", "private, max-age=3600")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(responseBody) //nolint:gosec // G705: BuildDiscover produced validated JSON served as application/json.
+	s.completeMCPExchange(r.Context(), exchange, http.StatusOK, "complete", int64(len(responseBody)), "")
+}
+
+func (s *Server) transformMCPResponse(ctx context.Context, request mcp.ClientMessage, resolved *service.MCPResolvedConnection, body []byte) ([]byte, error) {
+	if request.Audit.Method != "tools/list" {
+		return body, nil
+	}
+	transformed, err := mcp.TransformToolsList(body, resolved.Policy.AllowsTool)
+	if err != nil {
+		return nil, err
+	}
+	caller := contracts.CallerFrom(ctx)
+	snapshots := make([]store.MCPToolHeaderSnapshot, len(transformed.Tools))
+	flat := make([]store.MCPToolParameterHeader, 0)
+	for i, tool := range transformed.Tools {
+		snapshot := store.MCPToolHeaderSnapshot{ToolName: tool.Name, Headers: make([]store.MCPToolParameterHeader, len(tool.ParamHeaders))}
+		for j, header := range tool.ParamHeaders {
+			snapshot.Headers[j] = store.MCPToolParameterHeader{ToolName: tool.Name, HeaderName: header.Name, ArgumentPath: header.ArgumentPath, Required: header.Required}
+			flat = append(flat, snapshot.Headers[j])
+		}
+		snapshots[i] = snapshot
+	}
+	if !request.HasCursor && !transformed.NextCursorPresent {
+		err = s.deps.MCP.Store().ReplaceMCPToolParameterHeaders(ctx, caller.UserID, caller.TenantID, resolved.Connection.ID, flat)
+	} else {
+		err = s.deps.MCP.Store().UpsertMCPToolParameterHeaders(ctx, caller.UserID, caller.TenantID, resolved.Connection.ID, snapshots)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return transformed.Body, nil
+}
+
+func (s *Server) proxyMCPToolsListSSE(w http.ResponseWriter, r *http.Request, response *http.Response, exchange *store.MCPAuditExchange, resolved *service.MCPResolvedConnection, request mcp.ClientMessage) {
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxRequestBody+1))
+	if err != nil || len(body) > maxRequestBody {
+		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", 0, "response")
+		writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
+		return
+	}
+	pending := bytes.NewBuffer(body)
+	events := make([][]byte, 0)
+	records := make([]*store.MCPAuditMessage, 0)
+	sequence := int64(2)
+	finalSeen := false
+	for pending.Len() > 0 {
+		event, ok := takeSSEEvent(pending)
+		if !ok {
+			err = errors.New("incomplete SSE event")
+			break
+		}
+		message, hasMessage, inspectErr := mcp.InspectSSEEvent(event, s.deps.MCPAuditHMACKey)
+		if inspectErr != nil {
+			err = inspectErr
+			break
+		}
+		if hasMessage && message.Kind == mcp.KindResult {
+			if finalSeen {
+				err = errors.New("multiple final SSE results")
+				break
+			}
+			transformed, transformErr := s.transformMCPResponse(r.Context(), request, resolved, sseData(event))
+			if transformErr != nil {
+				err = transformErr
+				break
+			}
+			event = replaceSSEData(event, transformed)
+			message, hasMessage, inspectErr = mcp.InspectSSEEvent(event, s.deps.MCPAuditHMACKey)
+			if inspectErr != nil { //coverage:ignore transformed JSON is valid and SSE encoding is mechanical.
+				err = inspectErr
+				break
+			}
+			finalSeen = true
+		}
+		if hasMessage {
+			record := mcpAuditRecord(exchange, sequence, "server_to_client", message.Kind, message.ID, message.Audit, message.ErrorCode, sseData(event), resolved.Connection.AuditMode)
+			record.PolicyDecision = "allowed"
+			records = append(records, record)
+			sequence++
+		}
+		events = append(events, event)
+	}
+	if err != nil || !finalSeen {
+		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", int64(len(body)), "protocol")
+		writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
+		return
+	}
+	for _, record := range records {
+		if err := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), record); err != nil {
+			s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", int64(len(body)), "audit")
+			writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
+			return
+		}
+	}
+	w.Header().Set("Cache-Control", "private")
+	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(response.StatusCode)
-	_, _ = w.Write(responseBody)
-	s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "complete", int64(len(responseBody)), "")
+	responseBytes := int64(0)
+	for _, event := range events {
+		n, _ := w.Write(event)
+		responseBytes += int64(n)
+	}
+	s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "complete", responseBytes, "")
+}
+
+func replaceSSEData(event, body []byte) []byte {
+	lines := strings.Split(strings.ReplaceAll(string(event), "\r\n", "\n"), "\n")
+	filtered := make([]string, 0, len(lines)+1)
+	for _, line := range lines {
+		if line != "" && !strings.HasPrefix(line, "data:") {
+			filtered = append(filtered, line)
+		}
+	}
+	filtered = append(filtered, "data: "+string(body), "", "")
+	return []byte(strings.Join(filtered, "\n"))
 }
 
 func (s *Server) validMCPOrigin(origin string) bool {

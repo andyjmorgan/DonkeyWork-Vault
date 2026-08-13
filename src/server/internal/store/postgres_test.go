@@ -608,6 +608,120 @@ func TestQueryMCPAuditFilters(t *testing.T) {
 	}
 }
 
+func TestMCPToolParameterHeaders(t *testing.T) {
+	u, tenant := uuid.New(), uuid.New()
+	connection := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "headers-" + u.String(),
+		Name: "Headers", UpstreamURL: "https://example.test/mcp", AuthMode: "none", AuditMode: "redacted",
+		ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), connection); err != nil {
+		t.Fatal(err)
+	}
+	headers := []store.MCPToolParameterHeader{
+		{ToolName: "search", HeaderName: "Tenant", ArgumentPath: []string{"filters", "tenant"}, Required: true},
+		{ToolName: "search", HeaderName: "Region", ArgumentPath: []string{"region"}},
+		{ToolName: "fetch", HeaderName: "Document", ArgumentPath: []string{"id"}, Required: true},
+	}
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, headers); err != nil {
+		t.Fatal(err)
+	}
+	for i, header := range headers {
+		if header.ID == uuid.Nil || header.CreatedAt.IsZero() || header.UserID != u ||
+			header.TenantID != tenant || header.ConnectionID != connection.ID {
+			t.Fatalf("generated header %d: %+v", i, header)
+		}
+	}
+	search, err := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "search")
+	if err != nil || len(search) != 2 || search[0].HeaderName != "Region" ||
+		len(search[1].ArgumentPath) != 2 || !search[1].Required {
+		t.Fatalf("list search: %+v %v", search, err)
+	}
+	if other, err := pg.ListMCPToolParameterHeaders(ctx(), uuid.New(), connection.ID, "search"); err != nil || len(other) != 0 {
+		t.Fatalf("owner scope: %+v %v", other, err)
+	}
+
+	invalid := []store.MCPToolParameterHeader{
+		{ToolName: "search", HeaderName: "Region", ArgumentPath: []string{"one"}},
+		{ToolName: "search", HeaderName: "region", ArgumentPath: []string{"two"}},
+	}
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, invalid); !errors.Is(err, store.ErrInvalidMCPToolParameterHeader) {
+		t.Fatalf("invalid metadata: %v", err)
+	}
+	if retained, _ := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "search"); len(retained) != 2 {
+		t.Fatalf("invalid replace must not mutate: %+v", retained)
+	}
+	tooLong := strings.Repeat("x", 256)
+	databaseFailure := []store.MCPToolParameterHeader{{ToolName: "search", HeaderName: tooLong, ArgumentPath: []string{"value"}}}
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, databaseFailure); err == nil {
+		t.Fatal("expected database constraint error")
+	}
+	if retained, _ := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "search"); len(retained) != 2 {
+		t.Fatalf("transaction rollback must retain prior metadata: %+v", retained)
+	}
+	wrongOwner := []store.MCPToolParameterHeader{{UserID: uuid.New(), ToolName: "search", HeaderName: "Site", ArgumentPath: []string{"site"}}}
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, wrongOwner); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("embedded owner: %v", err)
+	}
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), uuid.New(), tenant, connection.ID, nil); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("connection owner: %v", err)
+	}
+
+	replacement := []store.MCPToolParameterHeader{{ToolName: "search", HeaderName: "Site", ArgumentPath: []string{"site"}}}
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, replacement); err != nil {
+		t.Fatal(err)
+	}
+	if stale, _ := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "fetch"); len(stale) != 0 {
+		t.Fatal("replacement must delete stale tool metadata")
+	}
+	page := []store.MCPToolHeaderSnapshot{
+		{ToolName: "search", Headers: []store.MCPToolParameterHeader{{HeaderName: "Region", ArgumentPath: []string{"region"}}}},
+		{ToolName: "fetch", Headers: []store.MCPToolParameterHeader{{HeaderName: "Document", ArgumentPath: []string{"id"}}}},
+	}
+	if err := pg.UpsertMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, page); err != nil {
+		t.Fatal(err)
+	}
+	clearFetch := []store.MCPToolHeaderSnapshot{{ToolName: "fetch"}}
+	if err := pg.UpsertMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, clearFetch); err != nil {
+		t.Fatal(err)
+	}
+	if fetch, _ := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "fetch"); len(fetch) != 0 {
+		t.Fatalf("page clear: %+v", fetch)
+	}
+	if search, _ := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "search"); len(search) != 1 || search[0].HeaderName != "Region" {
+		t.Fatalf("unobserved tool preservation: %+v", search)
+	}
+	invalidPage := []store.MCPToolHeaderSnapshot{{ToolName: "search"}, {ToolName: "search"}}
+	if err := pg.UpsertMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, invalidPage); !errors.Is(err, store.ErrInvalidMCPToolParameterHeader) {
+		t.Fatalf("invalid page: %v", err)
+	}
+	failingPage := []store.MCPToolHeaderSnapshot{{ToolName: "search", Headers: []store.MCPToolParameterHeader{{HeaderName: tooLong, ArgumentPath: []string{"value"}}}}}
+	if err := pg.UpsertMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, failingPage); err == nil {
+		t.Fatal("expected paginated database constraint error")
+	}
+	if search, _ := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "search"); len(search) != 1 || search[0].HeaderName != "Region" {
+		t.Fatalf("paginated transaction rollback: %+v", search)
+	}
+	if err := pg.UpsertMCPToolParameterHeaders(ctx(), uuid.New(), tenant, connection.ID, nil); !errors.Is(err, store.ErrOwnershipMismatch) {
+		t.Fatalf("page owner: %v", err)
+	}
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, nil); err != nil {
+		t.Fatal(err)
+	}
+	if cleared, _ := pg.ListMCPToolParameterHeaders(ctx(), u, connection.ID, "search"); len(cleared) != 0 {
+		t.Fatal("empty replacement must clear")
+	}
+
+	if err := pg.ReplaceMCPToolParameterHeaders(ctx(), u, tenant, connection.ID, headers); err != nil {
+		t.Fatal(err)
+	}
+	if ok, err := pg.DeleteMCPConnection(ctx(), u, connection.ID); err != nil || !ok {
+		t.Fatalf("delete connection: %v %v", ok, err)
+	}
+	var count int
+	if err := pg.Pool().QueryRow(ctx(), `SELECT count(*) FROM vault.mcp_tool_parameter_headers WHERE connection_id=$1`, connection.ID).Scan(&count); err != nil || count != 0 {
+		t.Fatalf("cascade: count=%d err=%v", count, err)
+	}
+}
+
 func timePtr(value time.Time) *time.Time { return &value }
 
 // TestQueryAuditFilters drives every optional WHERE clause (Outcome, FilterUserID, Since, Until)

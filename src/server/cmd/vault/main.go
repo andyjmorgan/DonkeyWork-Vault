@@ -130,7 +130,8 @@ func run() error {
 			WebScopes: cfg.OIDCWebScopes, CliScopes: cfg.OIDCCliScopes,
 			RequireHTTPS: cfg.OIDCRequireHTTPS,
 		},
-		PublicBaseURL: cfg.PublicBaseURL,
+		PublicBaseURL:  cfg.PublicBaseURL,
+		ServiceVersion: cfg.ServiceVersion,
 	}
 
 	srv, err := httpapi.NewServer(rootCtx, deps)

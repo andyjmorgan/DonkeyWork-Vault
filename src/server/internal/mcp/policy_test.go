@@ -34,3 +34,16 @@ func TestPolicyEvaluate(t *testing.T) {
 		t.Fatalf("tool policy applied to unrelated method: %+v", other)
 	}
 }
+
+func TestPolicyQueries(t *testing.T) {
+	policy := Policy{
+		Methods: AllowRule{Default: DefaultDeny, Allow: []string{"tools/list"}},
+		Tools:   AllowRule{Default: DefaultAllow, Deny: []string{"dangerous"}},
+	}
+	if !policy.AllowsMethod("tools/list") || policy.AllowsMethod("resources/list") {
+		t.Fatal("method policy query did not match the configured rules")
+	}
+	if !policy.AllowsTool("safe") || policy.AllowsTool("dangerous") {
+		t.Fatal("tool policy query did not match the configured rules")
+	}
+}

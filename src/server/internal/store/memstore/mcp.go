@@ -3,6 +3,7 @@ package memstore
 import (
 	"context"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -118,6 +119,11 @@ func (m *Mem) DeleteMCPConnection(_ context.Context, userID, id uuid.UUID) (bool
 	for policyID, policy := range m.mcpPolicies {
 		if policy.ConnectionID == id {
 			delete(m.mcpPolicies, policyID)
+		}
+	}
+	for headerID, header := range m.mcpToolHeaders {
+		if header.ConnectionID == id {
+			delete(m.mcpToolHeaders, headerID)
 		}
 	}
 	for oauthID, oauth := range m.mcpOAuth {
@@ -303,6 +309,110 @@ func (m *Mem) DeleteMCPToolPolicy(_ context.Context, userID, id uuid.UUID) (bool
 		return true, nil
 	}
 	return false, nil
+}
+
+// ReplaceMCPToolParameterHeaders atomically replaces a connection's discovered parameter-header metadata.
+func (m *Mem) ReplaceMCPToolParameterHeaders(_ context.Context, userID, tenantID, connectionID uuid.UUID, headers []store.MCPToolParameterHeader) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return err
+	}
+	if err := store.ValidateMCPToolParameterHeaders(headers); err != nil {
+		return err
+	}
+	connection, ok := m.mcpConnections[connectionID]
+	if !ok || connection.UserID != userID || connection.TenantID != tenantID {
+		return store.ErrOwnershipMismatch
+	}
+	for i := range headers {
+		if headers[i].UserID != uuid.Nil && headers[i].UserID != userID ||
+			headers[i].TenantID != uuid.Nil && headers[i].TenantID != tenantID ||
+			headers[i].ConnectionID != uuid.Nil && headers[i].ConnectionID != connectionID {
+			return store.ErrOwnershipMismatch
+		}
+	}
+	for id, header := range m.mcpToolHeaders {
+		if header.ConnectionID == connectionID {
+			delete(m.mcpToolHeaders, id)
+		}
+	}
+	for i := range headers {
+		header := &headers[i]
+		setIdentity(&header.ID, &header.CreatedAt)
+		header.UserID, header.TenantID, header.ConnectionID = userID, tenantID, connectionID
+		header.ArgumentPath = append([]string(nil), header.ArgumentPath...)
+		m.mcpToolHeaders[header.ID] = *header
+	}
+	return nil
+}
+
+// UpsertMCPToolParameterHeaders atomically replaces metadata for explicitly observed tools.
+func (m *Mem) UpsertMCPToolParameterHeaders(_ context.Context, userID, tenantID, connectionID uuid.UUID, snapshots []store.MCPToolHeaderSnapshot) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return err
+	}
+	if err := store.ValidateMCPToolHeaderSnapshots(snapshots); err != nil {
+		return err
+	}
+	connection, ok := m.mcpConnections[connectionID]
+	if !ok || connection.UserID != userID || connection.TenantID != tenantID {
+		return store.ErrOwnershipMismatch
+	}
+	for i := range snapshots {
+		snapshot := &snapshots[i]
+		for j := range snapshot.Headers {
+			header := &snapshot.Headers[j]
+			if header.UserID != uuid.Nil && header.UserID != userID ||
+				header.TenantID != uuid.Nil && header.TenantID != tenantID ||
+				header.ConnectionID != uuid.Nil && header.ConnectionID != connectionID {
+				return store.ErrOwnershipMismatch
+			}
+		}
+	}
+	observed := make(map[string]struct{}, len(snapshots))
+	for _, snapshot := range snapshots {
+		observed[snapshot.ToolName] = struct{}{}
+	}
+	for id, header := range m.mcpToolHeaders {
+		if header.ConnectionID == connectionID {
+			if _, exists := observed[header.ToolName]; exists {
+				delete(m.mcpToolHeaders, id)
+			}
+		}
+	}
+	for i := range snapshots {
+		snapshot := &snapshots[i]
+		for j := range snapshot.Headers {
+			header := &snapshot.Headers[j]
+			header.ToolName = snapshot.ToolName
+			setIdentity(&header.ID, &header.CreatedAt)
+			header.UserID, header.TenantID, header.ConnectionID = userID, tenantID, connectionID
+			header.ArgumentPath = append([]string(nil), header.ArgumentPath...)
+			m.mcpToolHeaders[header.ID] = *header
+		}
+	}
+	return nil
+}
+
+// ListMCPToolParameterHeaders returns discovered parameter headers for one owner-scoped tool.
+func (m *Mem) ListMCPToolParameterHeaders(_ context.Context, userID, connectionID uuid.UUID, toolName string) ([]store.MCPToolParameterHeader, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return nil, err
+	}
+	var out []store.MCPToolParameterHeader
+	for _, header := range m.mcpToolHeaders {
+		if header.UserID == userID && header.ConnectionID == connectionID && header.ToolName == toolName {
+			header.ArgumentPath = append([]string(nil), header.ArgumentPath...)
+			out = append(out, header)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return strings.ToLower(out[i].HeaderName) < strings.ToLower(out[j].HeaderName) })
+	return out, nil
 }
 
 // InsertMCPOAuthAuthorization stores a same-owner connection authorization.

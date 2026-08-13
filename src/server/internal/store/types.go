@@ -10,6 +10,8 @@ package store
 
 import (
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -17,6 +19,9 @@ import (
 
 // ErrOwnershipMismatch reports that related rows do not share the requested owner and tenant.
 var ErrOwnershipMismatch = errors.New("store ownership mismatch")
+
+// ErrInvalidMCPToolParameterHeader reports malformed or duplicate parameter-header metadata.
+var ErrInvalidMCPToolParameterHeader = errors.New("invalid MCP tool parameter header")
 
 // AccessKey is a scoped authentication credential ("dwv_…"). Only the SHA-256 hash is stored.
 type AccessKey struct {
@@ -198,6 +203,72 @@ type MCPToolPolicy struct {
 	Allow        bool
 	CreatedAt    time.Time
 	UpdatedAt    *time.Time
+}
+
+// MCPToolParameterHeader maps one discovered tool argument path to an MCP parameter header.
+type MCPToolParameterHeader struct {
+	ID           uuid.UUID
+	UserID       uuid.UUID
+	TenantID     uuid.UUID
+	ConnectionID uuid.UUID
+	ToolName     string
+	HeaderName   string
+	ArgumentPath []string
+	Required     bool
+	CreatedAt    time.Time
+}
+
+// MCPToolHeaderSnapshot contains the complete parameter-header metadata observed for one tool.
+// An empty Headers slice explicitly clears previously discovered metadata for ToolName.
+type MCPToolHeaderSnapshot struct {
+	ToolName string
+	Headers  []MCPToolParameterHeader
+}
+
+// ValidateMCPToolParameterHeaders validates metadata before an atomic replacement is attempted.
+func ValidateMCPToolParameterHeaders(headers []MCPToolParameterHeader) error {
+	seen := make(map[string]struct{}, len(headers))
+	for i, header := range headers {
+		if strings.TrimSpace(header.ToolName) == "" || strings.TrimSpace(header.HeaderName) == "" || len(header.ArgumentPath) == 0 {
+			return fmt.Errorf("%w at index %d", ErrInvalidMCPToolParameterHeader, i)
+		}
+		for _, component := range header.ArgumentPath {
+			if strings.TrimSpace(component) == "" {
+				return fmt.Errorf("%w at index %d", ErrInvalidMCPToolParameterHeader, i)
+			}
+		}
+		key := header.ToolName + "\x00" + strings.ToLower(header.HeaderName)
+		if _, exists := seen[key]; exists {
+			return fmt.Errorf("%w: duplicate %s/%s", ErrInvalidMCPToolParameterHeader, header.ToolName, header.HeaderName)
+		}
+		seen[key] = struct{}{}
+	}
+	return nil
+}
+
+// ValidateMCPToolHeaderSnapshots validates a page of complete per-tool metadata snapshots.
+func ValidateMCPToolHeaderSnapshots(snapshots []MCPToolHeaderSnapshot) error {
+	seenTools := make(map[string]struct{}, len(snapshots))
+	for i, snapshot := range snapshots {
+		if strings.TrimSpace(snapshot.ToolName) == "" {
+			return fmt.Errorf("%w: empty tool at snapshot %d", ErrInvalidMCPToolParameterHeader, i)
+		}
+		if _, exists := seenTools[snapshot.ToolName]; exists {
+			return fmt.Errorf("%w: duplicate tool %s", ErrInvalidMCPToolParameterHeader, snapshot.ToolName)
+		}
+		seenTools[snapshot.ToolName] = struct{}{}
+		for j := range snapshot.Headers {
+			toolName := snapshot.Headers[j].ToolName
+			if toolName != "" && toolName != snapshot.ToolName {
+				return fmt.Errorf("%w: tool mismatch at snapshot %d header %d", ErrInvalidMCPToolParameterHeader, i, j)
+			}
+			snapshot.Headers[j].ToolName = snapshot.ToolName
+		}
+		if err := ValidateMCPToolParameterHeaders(snapshot.Headers); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // MCPOAuthAuthorization is the connection-bound OAuth client and token set for an MCP upstream.
