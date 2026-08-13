@@ -32,6 +32,7 @@ type Mem struct {
 	mcpPolicies    map[uuid.UUID]store.MCPToolPolicy
 	mcpToolHeaders map[uuid.UUID]store.MCPToolParameterHeader
 	mcpOAuth       map[uuid.UUID]store.MCPOAuthAuthorization
+	mcpOAuthLocks  map[uuid.UUID]*mcpOAuthRefreshLock
 	mcpOAuthStates map[string]store.MCPOAuthState
 	mcpExchanges   map[uuid.UUID]store.MCPAuditExchange
 	mcpMessages    map[uuid.UUID]store.MCPAuditMessage
@@ -56,6 +57,7 @@ func New() *Mem {
 		mcpPolicies:    map[uuid.UUID]store.MCPToolPolicy{},
 		mcpToolHeaders: map[uuid.UUID]store.MCPToolParameterHeader{},
 		mcpOAuth:       map[uuid.UUID]store.MCPOAuthAuthorization{},
+		mcpOAuthLocks:  map[uuid.UUID]*mcpOAuthRefreshLock{},
 		mcpOAuthStates: map[string]store.MCPOAuthState{},
 		mcpExchanges:   map[uuid.UUID]store.MCPAuditExchange{},
 		mcpMessages:    map[uuid.UUID]store.MCPAuditMessage{},

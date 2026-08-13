@@ -18,6 +18,16 @@ type StoreRepository struct {
 // NewStoreRepository constructs a Store-backed MCP OAuth repository.
 func NewStoreRepository(s store.Store) *StoreRepository { return &StoreRepository{store: s} }
 
+// WithRefreshLock serializes the callback for a connection across all server replicas.
+func (r *StoreRepository) WithRefreshLock(ctx context.Context, connectionID uuid.UUID, fn func() error) error {
+	return r.store.WithMCPOAuthRefreshLock(ctx, connectionID, fn)
+}
+
+// DeleteAuthorization removes an owner-scoped OAuth client configuration and token set.
+func (r *StoreRepository) DeleteAuthorization(ctx context.Context, userID, connectionID uuid.UUID) (bool, error) {
+	return r.store.DeleteMCPOAuthAuthorization(ctx, userID, connectionID)
+}
+
 // GetStatus returns a secret-free owner-scoped OAuth projection. An existing connection without an
 // OAuth row is represented as unconfigured rather than being indistinguishable from a missing row.
 func (r *StoreRepository) GetStatus(ctx context.Context, userID, connectionID uuid.UUID) (*Status, error) {

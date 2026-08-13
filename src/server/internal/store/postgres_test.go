@@ -357,6 +357,74 @@ func TestMCPAuditRetention(t *testing.T) {
 	}
 }
 
+func TestMCPOAuthRefreshLock(t *testing.T) {
+	connectionID := uuid.New()
+	entered, release := make(chan struct{}), make(chan struct{})
+	firstDone := make(chan error, 1)
+	go func() {
+		firstDone <- pg.WithMCPOAuthRefreshLock(context.Background(), connectionID, func() error {
+			close(entered)
+			<-release
+			return nil
+		})
+	}()
+	<-entered
+
+	ctxCanceled, cancel := context.WithCancel(context.Background())
+	secondDone := make(chan error, 1)
+	go func() {
+		secondDone <- pg.WithMCPOAuthRefreshLock(ctxCanceled, connectionID, func() error {
+			t.Error("same-connection callback entered while lock was held")
+			return nil
+		})
+	}()
+	cancel()
+	if err := <-secondDone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled waiter: %v", err)
+	}
+	waiterEntered := make(chan struct{})
+	waiterDone := make(chan error, 1)
+	go func() {
+		waiterDone <- pg.WithMCPOAuthRefreshLock(context.Background(), connectionID, func() error {
+			close(waiterEntered)
+			return nil
+		})
+	}()
+	select {
+	case <-waiterEntered:
+		t.Fatal("same-connection waiter entered before release")
+	case <-time.After(20 * time.Millisecond):
+	}
+
+	differentEntered := make(chan struct{})
+	if err := pg.WithMCPOAuthRefreshLock(context.Background(), uuid.New(), func() error {
+		close(differentEntered)
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-differentEntered:
+	case <-time.After(time.Second):
+		t.Fatal("different connection was blocked")
+	}
+
+	close(release)
+	if err := <-firstDone; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-waiterDone; err != nil {
+		t.Fatal(err)
+	}
+	boom := errors.New("callback failed")
+	if err := pg.WithMCPOAuthRefreshLock(context.Background(), connectionID, func() error { return boom }); !errors.Is(err, boom) {
+		t.Fatalf("callback error: %v", err)
+	}
+	if err := pg.WithMCPOAuthRefreshLock(context.Background(), connectionID, func() error { return nil }); err != nil {
+		t.Fatalf("lock leaked after cancellation/error: %v", err)
+	}
+}
+
 func TestMCPEvalRunLifecycle(t *testing.T) {
 	u, tenant := uuid.New(), uuid.New()
 	connection := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "eval-" + uuid.NewString(),

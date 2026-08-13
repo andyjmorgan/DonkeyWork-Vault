@@ -468,7 +468,7 @@ func (s *Server) handleDeleteMCPOAuth(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	deleted, err := s.deps.MCP.Store().DeleteMCPOAuthAuthorization(r.Context(), contracts.CallerFrom(r.Context()).UserID, id)
+	deleted, err := s.deps.MCPOAuth.DeleteAuthorization(r.Context(), id)
 	if writeServiceError(w, err) {
 		return
 	}
