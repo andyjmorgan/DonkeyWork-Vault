@@ -224,6 +224,18 @@ type MCPEvalRunConnection struct {
 // MCPLegacyProtocolVersion defines model for MCPLegacyProtocolVersion.
 type MCPLegacyProtocolVersion string
 
+// MCPOAuthStatus defines model for MCPOAuthStatus.
+type MCPOAuthStatus struct {
+	Authorized      bool               `json:"authorized"`
+	Configured      bool               `json:"configured"`
+	ConnectionId    openapi_types.UUID `json:"connectionId"`
+	ExpiresAt       *time.Time         `json:"expiresAt"`
+	Issuer          *string            `json:"issuer"`
+	LastRefreshedAt *time.Time         `json:"lastRefreshedAt"`
+	Resource        *string            `json:"resource"`
+	Scopes          []string           `json:"scopes"`
+}
+
 // MCPUpstreamProtocolMode defines model for MCPUpstreamProtocolMode.
 type MCPUpstreamProtocolMode string
 
@@ -620,6 +632,9 @@ type ClientInterface interface {
 
 	// DeleteApiV1McpConnectionsConnectionIDOauth request
 	DeleteApiV1McpConnectionsConnectionIDOauth(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetApiV1McpConnectionsConnectionIDOauth request
+	GetApiV1McpConnectionsConnectionIDOauth(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// PutApiV1McpConnectionsConnectionIDOauthWithBody request with any body
 	PutApiV1McpConnectionsConnectionIDOauthWithBody(ctx context.Context, connectionID openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -1098,6 +1113,18 @@ func (c *Client) PostApiV1McpConnectionsConnectionIDHeaders(ctx context.Context,
 
 func (c *Client) DeleteApiV1McpConnectionsConnectionIDOauth(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteApiV1McpConnectionsConnectionIDOauthRequest(c.Server, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetApiV1McpConnectionsConnectionIDOauth(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetApiV1McpConnectionsConnectionIDOauthRequest(c.Server, connectionID)
 	if err != nil {
 		return nil, err
 	}
@@ -2694,6 +2721,40 @@ func NewDeleteApiV1McpConnectionsConnectionIDOauthRequest(server string, connect
 	return req, nil
 }
 
+// NewGetApiV1McpConnectionsConnectionIDOauthRequest generates requests for GetApiV1McpConnectionsConnectionIDOauth
+func NewGetApiV1McpConnectionsConnectionIDOauthRequest(server string, connectionID openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "connectionID", runtime.ParamLocationPath, connectionID)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/mcp/connections/%s/oauth", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewPutApiV1McpConnectionsConnectionIDOauthRequest calls the generic PutApiV1McpConnectionsConnectionIDOauth builder with application/json body
 func NewPutApiV1McpConnectionsConnectionIDOauthRequest(server string, connectionID openapi_types.UUID, body PutApiV1McpConnectionsConnectionIDOauthJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -3681,6 +3742,9 @@ type ClientWithResponsesInterface interface {
 	// DeleteApiV1McpConnectionsConnectionIDOauthWithResponse request
 	DeleteApiV1McpConnectionsConnectionIDOauthWithResponse(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteApiV1McpConnectionsConnectionIDOauthResponse, error)
 
+	// GetApiV1McpConnectionsConnectionIDOauthWithResponse request
+	GetApiV1McpConnectionsConnectionIDOauthWithResponse(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetApiV1McpConnectionsConnectionIDOauthResponse, error)
+
 	// PutApiV1McpConnectionsConnectionIDOauthWithBodyWithResponse request with any body
 	PutApiV1McpConnectionsConnectionIDOauthWithBodyWithResponse(ctx context.Context, connectionID openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutApiV1McpConnectionsConnectionIDOauthResponse, error)
 
@@ -4318,6 +4382,28 @@ func (r DeleteApiV1McpConnectionsConnectionIDOauthResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r DeleteApiV1McpConnectionsConnectionIDOauthResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetApiV1McpConnectionsConnectionIDOauthResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MCPOAuthStatus
+}
+
+// Status returns HTTPResponse.Status
+func (r GetApiV1McpConnectionsConnectionIDOauthResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetApiV1McpConnectionsConnectionIDOauthResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -5092,6 +5178,15 @@ func (c *ClientWithResponses) DeleteApiV1McpConnectionsConnectionIDOauthWithResp
 		return nil, err
 	}
 	return ParseDeleteApiV1McpConnectionsConnectionIDOauthResponse(rsp)
+}
+
+// GetApiV1McpConnectionsConnectionIDOauthWithResponse request returning *GetApiV1McpConnectionsConnectionIDOauthResponse
+func (c *ClientWithResponses) GetApiV1McpConnectionsConnectionIDOauthWithResponse(ctx context.Context, connectionID openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetApiV1McpConnectionsConnectionIDOauthResponse, error) {
+	rsp, err := c.GetApiV1McpConnectionsConnectionIDOauth(ctx, connectionID, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetApiV1McpConnectionsConnectionIDOauthResponse(rsp)
 }
 
 // PutApiV1McpConnectionsConnectionIDOauthWithBodyWithResponse request with arbitrary body returning *PutApiV1McpConnectionsConnectionIDOauthResponse
@@ -5919,6 +6014,32 @@ func ParseDeleteApiV1McpConnectionsConnectionIDOauthResponse(rsp *http.Response)
 	response := &DeleteApiV1McpConnectionsConnectionIDOauthResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
+	}
+
+	return response, nil
+}
+
+// ParseGetApiV1McpConnectionsConnectionIDOauthResponse parses an HTTP response from a GetApiV1McpConnectionsConnectionIDOauthWithResponse call
+func ParseGetApiV1McpConnectionsConnectionIDOauthResponse(rsp *http.Response) (*GetApiV1McpConnectionsConnectionIDOauthResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetApiV1McpConnectionsConnectionIDOauthResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MCPOAuthStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	}
 
 	return response, nil

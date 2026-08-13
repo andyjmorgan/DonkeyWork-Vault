@@ -3,6 +3,7 @@ package mcpoauth
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -209,5 +210,63 @@ func TestAuthorizationFromStoreDefaults(t *testing.T) {
 	})
 	if authorization.LastRefreshedAt != now || authorization.Resource != value || dereference(nil) != "" {
 		t.Fatalf("unexpected authorization defaults: %+v", authorization)
+	}
+}
+
+func TestStoreRepositoryStatus(t *testing.T) {
+	memory := memstore.New()
+	userID, tenantID, connectionID := uuid.New(), uuid.New(), uuid.New()
+	ctx := context.Background()
+	connection := &store.MCPConnection{ID: connectionID, UserID: userID, TenantID: tenantID, UpstreamURL: "https://mcp.example", Enabled: true}
+	if err := memory.InsertMCPConnection(ctx, connection); err != nil {
+		t.Fatal(err)
+	}
+	repository := NewStoreRepository(memory)
+
+	status, err := repository.GetStatus(ctx, userID, connectionID)
+	if err != nil || status == nil || status.ConnectionID != connectionID || status.Configured || status.Authorized || status.Resource != "" {
+		t.Fatalf("unconfigured status: %+v, %v", status, err)
+	}
+	issuer := "https://issuer.example"
+	row := &store.MCPOAuthAuthorization{
+		UserID: userID, TenantID: tenantID, ConnectionID: connectionID, IssuerURL: &issuer,
+		ClientIDCipher: []byte("client"), Scopes: []string{"read", "write"},
+	}
+	if err := memory.InsertMCPOAuthAuthorization(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+	status, err = repository.GetStatus(ctx, userID, connectionID)
+	if err != nil || status == nil || !status.Configured || status.Authorized || status.Issuer != issuer || status.Resource != connection.UpstreamURL || !slices.Equal(status.Scopes, row.Scopes) {
+		t.Fatalf("configured status: %+v, %v", status, err)
+	}
+	status.Scopes[0] = "changed"
+	stored, _ := memory.GetMCPOAuthAuthorization(ctx, userID, connectionID)
+	if stored.Scopes[0] != "read" {
+		t.Fatal("status scopes alias stored scopes")
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(time.Hour)
+	resource := "https://resource.example"
+	row.Resource, row.AccessTokenCipher, row.ExpiresAt, row.LastRefreshedAt = &resource, []byte("token"), &expiresAt, &now
+	if updated, updateErr := memory.UpdateMCPOAuthAuthorization(ctx, row); updateErr != nil || !updated {
+		t.Fatalf("update authorization: %v, %v", updated, updateErr)
+	}
+	status, err = repository.GetStatus(ctx, userID, connectionID)
+	if err != nil || status == nil || !status.Authorized || status.Resource != resource || status.ExpiresAt == nil || !status.ExpiresAt.Equal(expiresAt) || status.LastRefreshedAt == nil || !status.LastRefreshedAt.Equal(now) {
+		t.Fatalf("authorized status: %+v, %v", status, err)
+	}
+	if hidden, hiddenErr := repository.GetStatus(ctx, uuid.New(), connectionID); hiddenErr != nil || hidden != nil {
+		t.Fatalf("cross-owner status: %+v, %v", hidden, hiddenErr)
+	}
+	if missing, missingErr := repository.GetStatus(ctx, userID, uuid.New()); missingErr != nil || missing != nil {
+		t.Fatalf("missing status: %+v, %v", missing, missingErr)
+	}
+	memory.FailNext = errors.New("connection lookup failed")
+	if _, err := repository.GetStatus(ctx, userID, connectionID); err == nil {
+		t.Fatal("connection lookup error not returned")
+	}
+	memory.FailNext = errors.New("authorization lookup failed")
+	if _, err := repository.GetStatus(ctx, userID, connectionID); err == nil {
+		t.Fatal("authorization lookup error not returned")
 	}
 }

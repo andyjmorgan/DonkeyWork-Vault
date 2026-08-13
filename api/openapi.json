@@ -8,6 +8,20 @@
         ],
         "type": "string"
       },
+      "MCPOAuthStatus": {
+        "properties": {
+          "connectionId": {"type": "string", "format": "uuid"},
+          "configured": {"type": "boolean"},
+          "authorized": {"type": "boolean"},
+          "issuer": {"type": "string", "nullable": true},
+          "resource": {"type": "string", "nullable": true},
+          "scopes": {"type": "array", "items": {"type": "string"}},
+          "expiresAt": {"type": "string", "format": "date-time", "nullable": true},
+          "lastRefreshedAt": {"type": "string", "format": "date-time", "nullable": true}
+        },
+        "required": ["connectionId", "configured", "authorized", "issuer", "resource", "scopes", "expiresAt", "lastRefreshedAt"],
+        "type": "object"
+      },
       "MCPLegacyProtocolVersion": {
         "enum": [
           "2025-03-26",
@@ -1025,6 +1039,7 @@
       "delete": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
     },
     "/api/v1/mcp/connections/{connectionID}/oauth": {
+      "get": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"Secret-free OAuth status","content":{"application/json":{"schema":{"$ref":"#/components/schemas/MCPOAuthStatus"}}}},"404":{"description":"Connection not found"}},"tags":["DonkeyWork Vault"]},
       "put": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"204":{"description":"OAuth client configured"},"400":{"description":"Invalid OAuth client"}},"tags":["DonkeyWork Vault"]},
       "delete": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
     },

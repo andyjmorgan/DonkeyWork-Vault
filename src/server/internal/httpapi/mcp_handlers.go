@@ -427,6 +427,26 @@ func (s *Server) handleConfigureMCPOAuth(w http.ResponseWriter, r *http.Request)
 	w.WriteHeader(http.StatusNoContent)
 }
 
+func (s *Server) handleGetMCPOAuthStatus(w http.ResponseWriter, r *http.Request) {
+	id, ok := mcpConnectionID(w, r)
+	if !ok {
+		return
+	}
+	status, err := s.deps.MCPOAuth.Status(r.Context(), id)
+	if writeServiceError(w, err) {
+		return
+	}
+	if status == nil {
+		writeError(w, http.StatusNotFound, "MCP connection not found.")
+		return
+	}
+	writeJSON(w, http.StatusOK, mcpOAuthStatusDTO{
+		ConnectionID: status.ConnectionID, Configured: status.Configured, Authorized: status.Authorized,
+		Issuer: emptyStringPtr(status.Issuer), Resource: emptyStringPtr(status.Resource), Scopes: orEmpty(status.Scopes),
+		ExpiresAt: status.ExpiresAt, LastRefreshedAt: status.LastRefreshedAt,
+	})
+}
+
 func (s *Server) handleConnectMCPOAuth(w http.ResponseWriter, r *http.Request) {
 	id, ok := mcpConnectionID(w, r)
 	if !ok {
