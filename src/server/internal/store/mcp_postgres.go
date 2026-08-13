@@ -434,14 +434,23 @@ func (p *Postgres) DeleteMCPOAuthAuthorization(ctx context.Context, userID, conn
 	return tag.RowsAffected() > 0, err
 }
 
-// InsertMCPOAuthState persists an in-flight PKCE state after verifying connection ownership.
+// InsertMCPOAuthState atomically supersedes the prior state for a connection after verifying
+// ownership. The connection uniqueness constraint serializes concurrent attempts across replicas.
 func (p *Postgres) InsertMCPOAuthState(ctx context.Context, s *MCPOAuthState) error {
 	err := p.pool.QueryRow(ctx, `
 		INSERT INTO vault.mcp_oauth_states (state, connection_id, user_id, tenant_id, code_verifier,
 			redirect_uri, resource, issuer_url, auth_endpoint, token_endpoint, token_auth_method,
 			scopes, expires_at)
 		SELECT $1,c.id,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13 FROM vault.mcp_connections c
-		WHERE c.id=$2 AND c.user_id=$3 AND c.tenant_id=$4 RETURNING created_at`, s.State,
+		WHERE c.id=$2 AND c.user_id=$3 AND c.tenant_id=$4
+		ON CONFLICT (connection_id) DO UPDATE SET
+			state=EXCLUDED.state, user_id=EXCLUDED.user_id, tenant_id=EXCLUDED.tenant_id,
+			code_verifier=EXCLUDED.code_verifier, redirect_uri=EXCLUDED.redirect_uri,
+			resource=EXCLUDED.resource, issuer_url=EXCLUDED.issuer_url,
+			auth_endpoint=EXCLUDED.auth_endpoint, token_endpoint=EXCLUDED.token_endpoint,
+			token_auth_method=EXCLUDED.token_auth_method, scopes=EXCLUDED.scopes,
+			expires_at=EXCLUDED.expires_at, created_at=EXCLUDED.created_at
+		RETURNING created_at`, s.State,
 		s.ConnectionID, s.UserID, s.TenantID, s.CodeVerifier, s.RedirectURI, s.Resource,
 		s.IssuerURL, s.AuthEndpoint, s.TokenEndpoint, s.TokenAuthMethod, nonNilStrings(s.Scopes), s.ExpiresAt).
 		Scan(&s.CreatedAt)
@@ -449,6 +458,25 @@ func (p *Postgres) InsertMCPOAuthState(ctx context.Context, s *MCPOAuthState) er
 		return ErrOwnershipMismatch
 	}
 	return err
+}
+
+// GetMCPOAuthStateByState returns an OAuth state without consuming it.
+func (p *Postgres) GetMCPOAuthStateByState(ctx context.Context, state string) (*MCPOAuthState, error) {
+	var s MCPOAuthState
+	err := p.pool.QueryRow(ctx, `
+		SELECT state, connection_id, user_id, tenant_id, code_verifier, redirect_uri, resource,
+			issuer_url, auth_endpoint, token_endpoint, token_auth_method, scopes, expires_at, created_at
+		FROM vault.mcp_oauth_states WHERE state=$1`, state).
+		Scan(&s.State, &s.ConnectionID, &s.UserID, &s.TenantID, &s.CodeVerifier, &s.RedirectURI,
+			&s.Resource, &s.IssuerURL, &s.AuthEndpoint, &s.TokenEndpoint, &s.TokenAuthMethod,
+			&s.Scopes, &s.ExpiresAt, &s.CreatedAt)
+	if noRows(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &s, nil
 }
 
 // ClaimMCPOAuthState atomically deletes and returns a state, preventing callback replay.

@@ -3,6 +3,7 @@ package memstore
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -10,6 +11,96 @@ import (
 
 	"donkeywork.dev/vault-server/internal/store"
 )
+
+func TestMCPOAuthStateSupersession(t *testing.T) {
+	ctx := context.Background()
+	m := New()
+	userID, tenantID := uuid.New(), uuid.New()
+	first := &store.MCPConnection{UserID: userID, TenantID: tenantID, Slug: "first", UpstreamURL: "https://first.example/mcp"}
+	second := &store.MCPConnection{UserID: userID, TenantID: tenantID, Slug: "second", UpstreamURL: "https://second.example/mcp"}
+	if err := m.InsertMCPConnection(ctx, first); err != nil {
+		t.Fatal(err)
+	}
+	if err := m.InsertMCPConnection(ctx, second); err != nil {
+		t.Fatal(err)
+	}
+	makeState := func(value, verifier string, connectionID uuid.UUID) *store.MCPOAuthState {
+		return &store.MCPOAuthState{ //nolint:gosec // G101: inert PKCE state fixture, not a production credential.
+			State: value, ConnectionID: connectionID, UserID: userID, TenantID: tenantID,
+			CodeVerifier: verifier, RedirectURI: "https://vault.example/callback",
+			Resource: "https://resource.example/mcp", IssuerURL: "https://issuer.example",
+			AuthEndpoint: "https://issuer.example/authorize", TokenEndpoint: "https://issuer.example/token",
+			TokenAuthMethod: "none", ExpiresAt: time.Now().Add(time.Hour),
+		}
+	}
+	oldState := makeState("old", "old-verifier", first.ID)
+	currentState := makeState("current", "current-verifier", first.ID)
+	otherState := makeState("other", "other-verifier", second.ID)
+	for _, candidate := range []*store.MCPOAuthState{oldState, otherState, currentState} {
+		if err := m.InsertMCPOAuthState(ctx, candidate); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := m.GetMCPOAuthStateByState(ctx, oldState.State); err != nil || got != nil {
+		t.Fatalf("superseded state = %+v, %v", got, err)
+	}
+	if got, err := m.GetMCPOAuthStateByState(ctx, currentState.State); err != nil || got == nil || got.CodeVerifier != currentState.CodeVerifier {
+		t.Fatalf("current state = %+v, %v", got, err)
+	}
+	if claimed, err := m.ClaimMCPOAuthState(ctx, currentState.State); err != nil || claimed == nil || claimed.CodeVerifier != currentState.CodeVerifier {
+		t.Fatalf("claim current state = %+v, %v", claimed, err)
+	}
+	if claimed, err := m.ClaimMCPOAuthState(ctx, oldState.State); err != nil || claimed != nil {
+		t.Fatalf("claim superseded state = %+v, %v", claimed, err)
+	}
+	if got, err := m.GetMCPOAuthStateByState(ctx, otherState.State); err != nil || got == nil {
+		t.Fatalf("other connection state = %+v, %v", got, err)
+	}
+}
+
+func TestMCPOAuthStateConcurrentSupersession(t *testing.T) {
+	ctx := context.Background()
+	m := New()
+	userID, tenantID := uuid.New(), uuid.New()
+	connection := &store.MCPConnection{UserID: userID, TenantID: tenantID, Slug: "concurrent", UpstreamURL: "https://example.com/mcp"}
+	if err := m.InsertMCPConnection(ctx, connection); err != nil {
+		t.Fatal(err)
+	}
+	states := []*store.MCPOAuthState{
+		{State: "concurrent-a", ConnectionID: connection.ID, UserID: userID, TenantID: tenantID, ExpiresAt: time.Now().Add(time.Hour)},
+		{State: "concurrent-b", ConnectionID: connection.ID, UserID: userID, TenantID: tenantID, ExpiresAt: time.Now().Add(time.Hour)},
+	}
+	start := make(chan struct{})
+	errs := make(chan error, len(states))
+	var wg sync.WaitGroup
+	for _, candidate := range states {
+		wg.Add(1)
+		go func(candidate *store.MCPOAuthState) {
+			defer wg.Done()
+			<-start
+			errs <- m.InsertMCPOAuthState(ctx, candidate)
+		}(candidate)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var live int
+	for _, candidate := range states {
+		if got, err := m.GetMCPOAuthStateByState(ctx, candidate.State); err != nil {
+			t.Fatal(err)
+		} else if got != nil {
+			live++
+		}
+	}
+	if live != 1 {
+		t.Fatalf("live concurrent states = %d, want 1", live)
+	}
+}
 
 func TestMCPStoreLifecycle(t *testing.T) {
 	ctx := context.Background()
@@ -222,6 +313,7 @@ func TestMCPStoreFailureInjection(t *testing.T) {
 		func(m *Mem) error { _, e := m.GetMCPOAuthAuthorization(ctx, id, id); return e },
 		func(m *Mem) error { _, e := m.DeleteMCPOAuthAuthorization(ctx, id, id); return e },
 		func(m *Mem) error { return m.InsertMCPOAuthState(ctx, &store.MCPOAuthState{}) },
+		func(m *Mem) error { _, e := m.GetMCPOAuthStateByState(ctx, "state"); return e },
 		func(m *Mem) error { _, e := m.ClaimMCPOAuthState(ctx, "state"); return e },
 		func(m *Mem) error { return m.InsertMCPAuditExchange(ctx, &store.MCPAuditExchange{}) },
 		func(m *Mem) error { _, e := m.CompleteMCPAuditExchange(ctx, &store.MCPAuditExchange{}); return e },

@@ -29,6 +29,8 @@ type memoryRepository struct {
 	claimErr      error
 	saveErr       error
 	upsertErr     error
+	stateRead     chan struct{}
+	releaseState  chan struct{}
 }
 
 func (r *memoryRepository) WithRefreshLock(ctx context.Context, connectionID uuid.UUID, fn func() error) error {
@@ -63,6 +65,7 @@ func (r *memoryRepository) SaveClientConfiguration(_ context.Context, configurat
 		Issuer: configuration.Issuer, ClientIDCipher: configuration.ClientIDCipher,
 		ClientSecretCipher: configuration.ClientSecretCipher, Scopes: configuration.Scopes,
 	}
+	r.authorization = nil
 	return nil
 }
 
@@ -112,27 +115,55 @@ func (r *memoryRepository) GetStatus(context.Context, uuid.UUID, uuid.UUID) (*St
 }
 
 func (r *memoryRepository) SaveState(_ context.Context, state *State) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.saveErr != nil {
 		return r.saveErr
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	if r.states == nil {
 		r.states = make(map[string]*State)
 	}
-	r.states[state.State] = state
+	for key, existing := range r.states {
+		if existing.ConnectionID == state.ConnectionID {
+			delete(r.states, key)
+		}
+	}
+	r.states[state.State] = cloneState(state)
 	return nil
 }
 
+func (r *memoryRepository) GetState(_ context.Context, state string) (*State, error) {
+	r.mu.Lock()
+	row := cloneState(r.states[state])
+	stateRead, releaseState := r.stateRead, r.releaseState
+	r.mu.Unlock()
+	if stateRead != nil {
+		close(stateRead)
+	}
+	if releaseState != nil {
+		<-releaseState
+	}
+	return row, nil
+}
+
 func (r *memoryRepository) ClaimState(_ context.Context, state string) (*State, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.claimErr != nil {
 		return nil, r.claimErr
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
 	row := r.states[state]
 	delete(r.states, state)
-	return row, nil
+	return cloneState(row), nil
+}
+
+func cloneState(state *State) *State {
+	if state == nil {
+		return nil
+	}
+	cloned := *state
+	cloned.Scopes = slices.Clone(state.Scopes)
+	return &cloned
 }
 
 func (r *memoryRepository) GetAuthorization(context.Context, uuid.UUID, uuid.UUID) (*Authorization, error) {
@@ -166,6 +197,7 @@ func (r *memoryRepository) UpsertAuthorization(_ context.Context, authorization 
 }
 
 type plainCipher struct {
+	mu         sync.Mutex
 	encryptErr error
 	decryptErr error
 	encryptAt  int
@@ -178,6 +210,8 @@ func (c *plainCipher) Decrypt(value []byte) ([]byte, error) {
 	return []byte(result), err
 }
 func (c *plainCipher) EncryptString(value string) ([]byte, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
 	c.calls++
 	if c.encryptErr != nil && (c.encryptAt == 0 || c.encryptAt == c.calls) {
 		return nil, c.encryptErr
@@ -339,6 +373,101 @@ func TestAuthorizationFlowAndLiveToken(t *testing.T) {
 	}
 }
 
+func TestBeginSupersedesEarlierState(t *testing.T) {
+	service, repository, upstream, connectionID := newFixture(t)
+	first, err := service.Begin(context.Background(), connectionID, "https://vault.example/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := service.Begin(context.Background(), connectionID, "https://vault.example/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.State == second.State {
+		t.Fatal("successive authorization attempts reused state")
+	}
+	if repository.states[first.State] != nil || repository.states[second.State] == nil {
+		t.Fatalf("states after replacement: %#v", repository.states)
+	}
+	if _, err := service.Complete(context.Background(), "old-code", first.State); !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("superseded callback error = %v", err)
+	}
+	if calls := upstream.tokenCalls.Load(); calls != 0 {
+		t.Fatalf("superseded callback made %d token requests", calls)
+	}
+	token, err := service.Complete(context.Background(), "new-code", second.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if token.AccessToken != "access-one" || repository.authorization == nil {
+		t.Fatalf("newest callback token=%+v authorization=%+v", token, repository.authorization)
+	}
+	if calls := upstream.tokenCalls.Load(); calls != 1 {
+		t.Fatalf("newest callback made total %d token requests", calls)
+	}
+}
+
+func TestCallbackPeekCannotOutliveNewBegin(t *testing.T) {
+	service, repository, upstream, connectionID := newFixture(t)
+	first, err := service.Begin(context.Background(), connectionID, "https://vault.example/callback")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository.stateRead = make(chan struct{})
+	repository.releaseState = make(chan struct{})
+	completeDone := make(chan error, 1)
+	go func() {
+		_, completeErr := service.Complete(context.Background(), "old-code", first.State)
+		completeDone <- completeErr
+	}()
+	<-repository.stateRead
+	second, err := service.Begin(context.Background(), connectionID, "https://vault.example/callback")
+	if err != nil {
+		close(repository.releaseState)
+		t.Fatal(err)
+	}
+	close(repository.releaseState)
+	if err := <-completeDone; !errors.Is(err, ErrInvalidState) {
+		t.Fatalf("superseded callback error = %v", err)
+	}
+	if calls := upstream.tokenCalls.Load(); calls != 0 {
+		t.Fatalf("superseded callback made %d token requests", calls)
+	}
+	if repository.states[first.State] != nil || repository.states[second.State] == nil {
+		t.Fatalf("states after concurrent replacement: %#v", repository.states)
+	}
+}
+
+func TestBeginRejectsConfigurationChangedDuringDiscovery(t *testing.T) {
+	service, repository, upstream, connectionID := newFixture(t)
+	originalHandler := upstream.server.Config.Handler
+	metadataStarted := make(chan struct{})
+	releaseMetadata := make(chan struct{})
+	upstream.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/.well-known/oauth-authorization-server" {
+			close(metadataStarted)
+			<-releaseMetadata
+		}
+		originalHandler.ServeHTTP(w, r)
+	})
+	beginDone := make(chan error, 1)
+	go func() {
+		_, beginErr := service.Begin(context.Background(), connectionID, "https://vault.example/callback")
+		beginDone <- beginErr
+	}()
+	<-metadataStarted
+	repository.mu.Lock()
+	repository.config.Scopes = []string{"changed"}
+	repository.mu.Unlock()
+	close(releaseMetadata)
+	if err := <-beginDone; !errors.Is(err, ErrBindingMismatch) {
+		t.Fatalf("begin error = %v", err)
+	}
+	if len(repository.states) != 0 {
+		t.Fatalf("state saved for stale configuration: %#v", repository.states)
+	}
+}
+
 func TestConfigureClient(t *testing.T) {
 	service, repository, upstream, connectionID := newFixture(t)
 	if err := service.ConfigureClient(context.Background(), uuid.Nil, "", "client", "", nil); err == nil {
@@ -470,8 +599,9 @@ func TestConfigurationAndDeleteUseRefreshLock(t *testing.T) {
 	}
 }
 
-func TestCompleteRejectsConcurrentReconfiguration(t *testing.T) {
+func TestCompleteSerializesConcurrentReconfiguration(t *testing.T) {
 	service, repository, upstream, connectionID := newFixture(t)
+	configureService := NewService(repository, &plainCipher{}, upstream.server.Client())
 	state := &State{
 		State: "state", ConnectionID: connectionID, Resource: upstream.resource, Issuer: upstream.issuer,
 		AuthorizationEndpoint: upstream.server.URL + "/authorize", TokenEndpoint: upstream.server.URL + "/token",
@@ -494,15 +624,24 @@ func TestCompleteRejectsConcurrentReconfiguration(t *testing.T) {
 		done <- err
 	}()
 	<-tokenStarted
-	if err := service.ConfigureClient(context.Background(), connectionID, "", "replacement", "", []string{"changed"}); err != nil {
-		t.Fatal(err)
+	configured := make(chan error, 1)
+	go func() {
+		configured <- configureService.ConfigureClient(context.Background(), connectionID, "", "replacement", "", []string{"changed"})
+	}()
+	select {
+	case err := <-configured:
+		t.Fatalf("configuration completed before callback released its lock: %v", err)
+	case <-time.After(20 * time.Millisecond):
 	}
 	close(releaseToken)
-	if err := <-done; !errors.Is(err, ErrBindingMismatch) {
+	if err := <-done; err != nil {
 		t.Fatalf("complete error = %v", err)
 	}
-	if repository.authorization != nil {
-		t.Fatal("stale callback persisted authorization")
+	if err := <-configured; err != nil {
+		t.Fatal(err)
+	}
+	if repository.authorization != nil || string(repository.config.ClientIDCipher) != "encrypted:replacement" {
+		t.Fatalf("configuration did not supersede completed token: config=%+v authorization=%+v", repository.config, repository.authorization)
 	}
 }
 

@@ -56,6 +56,13 @@ func TestStoreRepositoryRoundTrip(t *testing.T) {
 	if err := repository.SaveState(ctx, state); err != nil {
 		t.Fatal(err)
 	}
+	peeked, err := repository.GetState(ctx, "state")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if peeked == nil || peeked.State != state.State || peeked.ConnectionID != connectionID {
+		t.Fatalf("unexpected peeked state: %+v", peeked)
+	}
 	claimed, err := repository.ClaimState(ctx, "state")
 	if err != nil {
 		t.Fatal(err)

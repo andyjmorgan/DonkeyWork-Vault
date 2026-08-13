@@ -11,7 +11,9 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1378,6 +1380,78 @@ func TestMCPOAuthHandlers(t *testing.T) {
 		if rec.Code != 400 {
 			t.Fatalf("callback %s: %d", query, rec.Code)
 		}
+	}
+}
+
+func TestMCPOAuthCallbackSupersedesOlderBeginAndRejectsReplay(t *testing.T) {
+	var resource, issuer string
+	tokenCalls := 0
+	oauthServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		switch r.URL.Path {
+		case "/.well-known/oauth-protected-resource/mcp":
+			_, _ = w.Write([]byte(`{"resource":` + strconv.Quote(resource) + `,"authorization_servers":[` + strconv.Quote(issuer) + `],"scopes_supported":["read"]}`))
+		case "/.well-known/oauth-authorization-server":
+			_, _ = w.Write([]byte(`{"issuer":` + strconv.Quote(issuer) + `,"authorization_endpoint":` + strconv.Quote(issuer+"/authorize") + `,"token_endpoint":` + strconv.Quote(issuer+"/token") + `,"token_endpoint_auth_methods_supported":["none"],"code_challenge_methods_supported":["S256"]}`))
+		case "/token":
+			tokenCalls++
+			if err := r.ParseForm(); err != nil {
+				t.Errorf("parse token form: %v", err)
+			}
+			if r.Form.Get("code") != "latest-code" || r.Form.Get("code_verifier") == "" || r.Form.Get("resource") != resource {
+				t.Errorf("unexpected token form: %v", r.Form)
+			}
+			_, _ = w.Write([]byte(`{"access_token":"access-token","refresh_token":"refresh-token","token_type":"Bearer","expires_in":3600,"scope":"read"}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer oauthServer.Close()
+	issuer, resource = oauthServer.URL, oauthServer.URL+"/mcp"
+
+	h := newHarness(t)
+	h.server.deps.MCPOAuth = mcpoauth.NewService(mcpoauth.NewStoreRepository(h.ms), h.cipher, oauthServer.Client())
+	connection := createMCPConnection(t, h, resource)
+	oauthPath := "/api/v1/mcp/connections/" + connection.ID.String() + "/oauth"
+	if rec := h.do(t, http.MethodPut, oauthPath, configureMCPOAuthRequest{ClientID: "client", Scopes: []string{"read"}}, true); rec.Code != http.StatusNoContent {
+		t.Fatalf("configure OAuth %d: %s", rec.Code, rec.Body)
+	}
+
+	begin := func() string {
+		t.Helper()
+		rec := h.do(t, http.MethodGet, oauthPath+"/connect", nil, true)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("begin OAuth %d: %s", rec.Code, rec.Body)
+		}
+		result := decode[mcpOAuthConnectResponse](t, rec)
+		authorizeURL, err := url.Parse(result.AuthorizeURL)
+		if err != nil {
+			t.Fatal(err)
+		}
+		state := authorizeURL.Query().Get("state")
+		if state == "" {
+			t.Fatalf("authorize URL has no state: %s", result.AuthorizeURL)
+		}
+		return state
+	}
+	callback := func(code, state string) *httptest.ResponseRecorder {
+		t.Helper()
+		return h.do(t, http.MethodGet, "/api/mcp/oauth/callback?code="+url.QueryEscape(code)+"&state="+url.QueryEscape(state), nil, false)
+	}
+
+	oldState := begin()
+	latestState := begin()
+	if oldState == latestState {
+		t.Fatal("successive Begin calls returned the same state")
+	}
+	if rec := callback("old-code", oldState); rec.Code != http.StatusBadRequest || tokenCalls != 0 {
+		t.Fatalf("old callback status=%d token calls=%d body=%s", rec.Code, tokenCalls, rec.Body)
+	}
+	if rec := callback("latest-code", latestState); rec.Code != http.StatusFound || rec.Header().Get("Location") != "/mcp?oauth=connected" || tokenCalls != 1 {
+		t.Fatalf("latest callback status=%d location=%q token calls=%d body=%s", rec.Code, rec.Header().Get("Location"), tokenCalls, rec.Body)
+	}
+	if rec := callback("latest-code", latestState); rec.Code != http.StatusBadRequest || tokenCalls != 1 {
+		t.Fatalf("replay status=%d token calls=%d body=%s", rec.Code, tokenCalls, rec.Body)
 	}
 }
 

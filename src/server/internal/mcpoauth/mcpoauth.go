@@ -122,6 +122,7 @@ type Repository interface {
 	SaveClientConfiguration(context.Context, *ClientConfiguration) error
 	DeleteAuthorization(context.Context, uuid.UUID, uuid.UUID) (bool, error)
 	SaveState(context.Context, *State) error
+	GetState(context.Context, string) (*State, error)
 	ClaimState(context.Context, string) (*State, error)
 	GetAuthorization(context.Context, uuid.UUID, uuid.UUID) (*Authorization, error)
 	UpsertAuthorization(context.Context, *Authorization) error
@@ -373,7 +374,19 @@ func (s *Service) Begin(ctx context.Context, connectionID uuid.UUID, redirectURI
 		TokenEndpoint:         discovery.AuthorizationServer.TokenEndpoint,
 		TokenAuthMethod:       discovery.TokenAuthMethod, Scopes: slices.Clone(config.Scopes), ExpiresAt: expiresAt,
 	}
-	if err := s.repository.SaveState(ctx, state); err != nil {
+	unlock := s.locks.lock(connectionID)
+	defer unlock()
+	err = s.repository.WithRefreshLock(ctx, connectionID, func() error {
+		current, loadErr := s.repository.GetConnectionOAuth(ctx, caller.UserID, connectionID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if !sameConnectionOAuth(config, current) {
+			return ErrBindingMismatch
+		}
+		return s.repository.SaveState(ctx, state)
+	})
+	if err != nil {
 		return nil, err
 	}
 	values := url.Values{
@@ -396,37 +409,45 @@ func (s *Service) Complete(ctx context.Context, code, stateValue string) (*Token
 	if code == "" || stateValue == "" {
 		return nil, ErrInvalidState
 	}
-	state, err := s.repository.ClaimState(ctx, stateValue)
+	peeked, err := s.repository.GetState(ctx, stateValue)
 	if err != nil {
 		return nil, err
 	}
-	if state == nil || state.State != stateValue || !state.ExpiresAt.After(s.now().UTC()) {
+	if peeked == nil || peeked.State != stateValue || peeked.ConnectionID == uuid.Nil {
 		return nil, ErrInvalidState
 	}
-	config, err := s.repository.GetConnectionOAuth(ctx, state.UserID, state.ConnectionID)
-	if err != nil {
-		return nil, err
-	}
-	if config == nil || config.Resource != state.Resource || (config.Issuer != "" && config.Issuer != state.Issuer) {
-		return nil, ErrBindingMismatch
-	}
-	response, err := s.exchange(ctx, config, state.TokenEndpoint, state.TokenAuthMethod, url.Values{
-		"grant_type":    {"authorization_code"},
-		"code":          {code},
-		"redirect_uri":  {state.RedirectURI},
-		"code_verifier": {state.CodeVerifier},
-		"resource":      {state.Resource},
-	})
-	if err != nil {
-		return nil, err
-	}
-	authorization, token, err := s.encryptResponse(state.ConnectionID, state.UserID, state.TenantID, state.Resource, state.Issuer, state.AuthorizationEndpoint, state.TokenEndpoint, state.TokenAuthMethod, state.Scopes, response)
-	if err != nil {
-		return nil, err
-	}
-	unlock := s.locks.lock(state.ConnectionID)
+	unlock := s.locks.lock(peeked.ConnectionID)
 	defer unlock()
-	err = s.repository.WithRefreshLock(ctx, state.ConnectionID, func() error {
+	var token *Token
+	err = s.repository.WithRefreshLock(ctx, peeked.ConnectionID, func() error {
+		state, claimErr := s.repository.ClaimState(ctx, stateValue)
+		if claimErr != nil {
+			return claimErr
+		}
+		if state == nil || state.State != stateValue || state.ConnectionID != peeked.ConnectionID || !state.ExpiresAt.After(s.now().UTC()) {
+			return ErrInvalidState
+		}
+		config, loadErr := s.repository.GetConnectionOAuth(ctx, state.UserID, state.ConnectionID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if config == nil || config.Resource != state.Resource || (config.Issuer != "" && config.Issuer != state.Issuer) {
+			return ErrBindingMismatch
+		}
+		response, exchangeErr := s.exchange(ctx, config, state.TokenEndpoint, state.TokenAuthMethod, url.Values{
+			"grant_type":    {"authorization_code"},
+			"code":          {code},
+			"redirect_uri":  {state.RedirectURI},
+			"code_verifier": {state.CodeVerifier},
+			"resource":      {state.Resource},
+		})
+		if exchangeErr != nil {
+			return exchangeErr
+		}
+		authorization, completedToken, encryptErr := s.encryptResponse(state.ConnectionID, state.UserID, state.TenantID, state.Resource, state.Issuer, state.AuthorizationEndpoint, state.TokenEndpoint, state.TokenAuthMethod, state.Scopes, response)
+		if encryptErr != nil {
+			return encryptErr
+		}
 		current, loadErr := s.repository.GetConnectionOAuth(ctx, state.UserID, state.ConnectionID)
 		if loadErr != nil {
 			return loadErr
@@ -434,7 +455,11 @@ func (s *Service) Complete(ctx context.Context, code, stateValue string) (*Token
 		if !sameConnectionOAuth(config, current) {
 			return ErrBindingMismatch
 		}
-		return s.repository.UpsertAuthorization(ctx, authorization)
+		if persistErr := s.repository.UpsertAuthorization(ctx, authorization); persistErr != nil {
+			return persistErr
+		}
+		token = completedToken
+		return nil
 	})
 	if err != nil {
 		return nil, err

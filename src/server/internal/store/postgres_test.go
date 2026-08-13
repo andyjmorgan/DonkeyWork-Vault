@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -422,6 +423,96 @@ func TestMCPOAuthRefreshLock(t *testing.T) {
 	}
 	if err := pg.WithMCPOAuthRefreshLock(context.Background(), connectionID, func() error { return nil }); err != nil {
 		t.Fatalf("lock leaked after cancellation/error: %v", err)
+	}
+}
+
+func TestMCPOAuthStateSupersession(t *testing.T) {
+	userID, tenantID := uuid.New(), uuid.New()
+	connection := &store.MCPConnection{UserID: userID, TenantID: tenantID, Slug: "oauth-state-" + uuid.NewString(), Name: "OAuth state", UpstreamURL: "https://example.com/mcp", AuthMode: "oauth", AuditMode: "metadata", ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), connection); err != nil {
+		t.Fatal(err)
+	}
+	makeState := func(value, verifier string) *store.MCPOAuthState {
+		return &store.MCPOAuthState{ //nolint:gosec // G101: inert PKCE state fixture, not a production credential.
+			State: value, ConnectionID: connection.ID, UserID: userID, TenantID: tenantID,
+			CodeVerifier: verifier, RedirectURI: "https://vault.example/callback",
+			Resource: connection.UpstreamURL, IssuerURL: "https://issuer.example",
+			AuthEndpoint: "https://issuer.example/authorize", TokenEndpoint: "https://issuer.example/token",
+			TokenAuthMethod: "none", ExpiresAt: time.Now().Add(time.Hour),
+		}
+	}
+	oldState := makeState("old-"+uuid.NewString(), "old-verifier")
+	currentState := makeState("current-"+uuid.NewString(), "current-verifier")
+	if err := pg.InsertMCPOAuthState(ctx(), oldState); err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.InsertMCPOAuthState(ctx(), currentState); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := pg.GetMCPOAuthStateByState(ctx(), oldState.State); err != nil || got != nil {
+		t.Fatalf("superseded state = %+v, %v", got, err)
+	}
+	if got, err := pg.GetMCPOAuthStateByState(ctx(), currentState.State); err != nil || got == nil || got.CodeVerifier != currentState.CodeVerifier {
+		t.Fatalf("current state = %+v, %v", got, err)
+	}
+	var count int
+	if err := pg.Pool().QueryRow(ctx(), `SELECT count(*) FROM vault.mcp_oauth_states WHERE connection_id=$1`, connection.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("connection state count = %d, %v", count, err)
+	}
+	if claimed, err := pg.ClaimMCPOAuthState(ctx(), currentState.State); err != nil || claimed == nil || claimed.CodeVerifier != currentState.CodeVerifier {
+		t.Fatalf("claim current state = %+v, %v", claimed, err)
+	}
+	if claimed, err := pg.ClaimMCPOAuthState(ctx(), oldState.State); err != nil || claimed != nil {
+		t.Fatalf("claim superseded state = %+v, %v", claimed, err)
+	}
+}
+
+func TestMCPOAuthStateConcurrentSupersession(t *testing.T) {
+	userID, tenantID := uuid.New(), uuid.New()
+	connection := &store.MCPConnection{UserID: userID, TenantID: tenantID, Slug: "oauth-concurrent-" + uuid.NewString(), Name: "Concurrent OAuth state", UpstreamURL: "https://example.com/mcp", AuthMode: "oauth", AuditMode: "metadata", ProtocolVersion: "2026-07-28", Enabled: true}
+	if err := pg.InsertMCPConnection(ctx(), connection); err != nil {
+		t.Fatal(err)
+	}
+	states := []*store.MCPOAuthState{
+		{State: "concurrent-a-" + uuid.NewString(), ConnectionID: connection.ID, UserID: userID, TenantID: tenantID, ExpiresAt: time.Now().Add(time.Hour)},
+		{State: "concurrent-b-" + uuid.NewString(), ConnectionID: connection.ID, UserID: userID, TenantID: tenantID, ExpiresAt: time.Now().Add(time.Hour)},
+	}
+	start := make(chan struct{})
+	errs := make(chan error, len(states))
+	var wg sync.WaitGroup
+	for _, candidate := range states {
+		wg.Add(1)
+		go func(candidate *store.MCPOAuthState) {
+			defer wg.Done()
+			<-start
+			errs <- pg.InsertMCPOAuthState(ctx(), candidate)
+		}(candidate)
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count int
+	if err := pg.Pool().QueryRow(ctx(), `SELECT count(*) FROM vault.mcp_oauth_states WHERE connection_id=$1`, connection.ID).Scan(&count); err != nil || count != 1 {
+		t.Fatalf("connection state count = %d, %v", count, err)
+	}
+	var live int
+	for _, candidate := range states {
+		if got, err := pg.GetMCPOAuthStateByState(ctx(), candidate.State); err != nil {
+			t.Fatal(err)
+		} else if got != nil {
+			live++
+			if claimed, claimErr := pg.ClaimMCPOAuthState(ctx(), candidate.State); claimErr != nil || claimed == nil {
+				t.Fatalf("claim live state = %+v, %v", claimed, claimErr)
+			}
+		}
+	}
+	if live != 1 {
+		t.Fatalf("live concurrent states = %d, want 1", live)
 	}
 }
 
@@ -1168,6 +1259,9 @@ func TestQueryErrorPaths(t *testing.T) {
 	}
 	if err := bad.InsertMCPOAuthState(ctx(), &store.MCPOAuthState{}); err == nil {
 		t.Fatal("insert MCP OAuth state should error")
+	}
+	if _, err := bad.GetMCPOAuthStateByState(ctx(), "state"); err == nil {
+		t.Fatal("get MCP OAuth state should error")
 	}
 	if _, err := bad.ClaimMCPOAuthState(ctx(), "state"); err == nil {
 		t.Fatal("claim MCP OAuth state should error")
