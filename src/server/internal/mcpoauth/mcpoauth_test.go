@@ -963,8 +963,55 @@ func TestDefaultClientAndRedirectPolicy(t *testing.T) {
 		t.Fatal("expected redirect validation error")
 	}
 	req, _ = http.NewRequest(http.MethodGet, "https://example.com", nil)
-	if err := service.client.CheckRedirect(req, make([]*http.Request, 5)); err == nil {
+	if err := service.client.CheckRedirect(req, make([]*http.Request, maxOAuthRedirects)); err == nil {
 		t.Fatal("expected redirect limit error")
+	}
+
+	injected := &http.Client{Transport: http.DefaultTransport, Timeout: time.Second}
+	injectedService := NewService(repository, &plainCipher{}, injected)
+	if injected.CheckRedirect != nil {
+		t.Fatal("NewService mutated caller-owned client")
+	}
+	if injectedService.client == injected || injectedService.client.CheckRedirect == nil || injectedService.client.Transport != injected.Transport || injectedService.client.Timeout != injected.Timeout {
+		t.Fatal("injected client was not safely cloned")
+	}
+	via := []*http.Request{{Method: http.MethodPost}}
+	if err := injectedService.client.CheckRedirect(req, via); err == nil || !strings.Contains(err.Error(), "token endpoint redirects") {
+		t.Fatalf("token redirect error = %v", err)
+	}
+}
+
+func TestTokenRedirectDoesNotReplayClientCredentials(t *testing.T) {
+	var targetCalls atomic.Int32
+	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		targetCalls.Add(1)
+	}))
+	defer target.Close()
+	redirector := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := r.ParseForm(); err != nil {
+			t.Error(err)
+		}
+		if r.Form.Get("client_secret") != "client-secret" {
+			t.Errorf("initial token request omitted client secret: %v", r.Form)
+		}
+		http.Redirect(w, r, target.URL, http.StatusTemporaryRedirect)
+	}))
+	defer redirector.Close()
+
+	injected := redirector.Client()
+	service := NewService(&memoryRepository{}, &plainCipher{}, injected)
+	config := &ConnectionOAuth{
+		ClientIDCipher: []byte("encrypted:client-id"), ClientSecretCipher: []byte("encrypted:client-secret"),
+	}
+	_, err := service.exchange(context.Background(), config, redirector.URL, "client_secret_post", url.Values{"grant_type": {"refresh_token"}})
+	if err == nil || !strings.Contains(err.Error(), "token endpoint redirects") {
+		t.Fatalf("redirect error = %v", err)
+	}
+	if targetCalls.Load() != 0 {
+		t.Fatalf("redirect target received %d credential-bearing requests", targetCalls.Load())
+	}
+	if injected.CheckRedirect != nil {
+		t.Fatal("injected client redirect policy was mutated")
 	}
 }
 

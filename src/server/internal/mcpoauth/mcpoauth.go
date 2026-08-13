@@ -25,9 +25,10 @@ import (
 )
 
 const (
-	stateLifetime    = 10 * time.Minute
-	refreshWindow    = 60 * time.Second
-	maxMetadataBytes = 1 << 20
+	stateLifetime     = 10 * time.Minute
+	refreshWindow     = 60 * time.Second
+	maxMetadataBytes  = 1 << 20
+	maxOAuthRedirects = 5
 )
 
 var (
@@ -179,15 +180,26 @@ func NewService(repository Repository, cipher crypto.Cipher, client *http.Client
 		client = &http.Client{
 			Transport: httpx.DefaultSafeTransport(),
 			Timeout:   20 * time.Second,
-			CheckRedirect: func(req *http.Request, via []*http.Request) error {
-				if len(via) >= 5 {
-					return errors.New("too many OAuth metadata redirects")
-				}
-				return validateEndpoint(req.URL.String())
-			},
 		}
 	}
-	return &Service{repository: repository, cipher: cipher, client: client, now: time.Now, locks: connectionLocks{entries: make(map[uuid.UUID]*lockEntry)}}
+	serviceClient := *client
+	callerRedirectPolicy := client.CheckRedirect
+	serviceClient.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		if len(via) >= maxOAuthRedirects {
+			return errors.New("too many OAuth metadata redirects")
+		}
+		if len(via) > 0 && via[0] != nil && via[0].Method != http.MethodGet {
+			return errors.New("OAuth token endpoint redirects are not allowed")
+		}
+		if err := validateEndpoint(req.URL.String()); err != nil {
+			return err
+		}
+		if callerRedirectPolicy != nil {
+			return callerRedirectPolicy(req, via)
+		}
+		return nil
+	}
+	return &Service{repository: repository, cipher: cipher, client: &serviceClient, now: time.Now, locks: connectionLocks{entries: make(map[uuid.UUID]*lockEntry)}}
 }
 
 // Status returns the caller's secret-free OAuth state, or nil when the connection is not visible.

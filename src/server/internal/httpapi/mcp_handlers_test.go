@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io"
@@ -616,6 +618,88 @@ func TestMCPProxyOAuthRefreshFailureStopsBeforeUpstreamAndCompletesAudit(t *test
 				t.Fatalf("completed exchange=%+v", completed)
 			}
 		})
+	}
+}
+
+func TestMCPProxyOAuthBindingRejectsEditedUpstream(t *testing.T) {
+	oldCalls, newCalls := 0, 0
+	oldAuthorization, newAuthorization := "", ""
+	oldUpstream := httptest.NewTLSServer(http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
+		oldCalls++
+		oldAuthorization = r.Header.Get("Authorization")
+	}))
+	defer oldUpstream.Close()
+	newUpstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		newCalls++
+		newAuthorization = r.Header.Get("Authorization")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":[],"ttlMs":0,"cacheScope":"private"}}`))
+	}))
+	defer newUpstream.Close()
+
+	roots := x509.NewCertPool()
+	roots.AddCert(oldUpstream.Certificate())
+	roots.AddCert(newUpstream.Certificate())
+	upstreamClient := &http.Client{Transport: &http.Transport{TLSClientConfig: &tls.Config{
+		MinVersion: tls.VersionTLS12,
+		RootCAs:    roots,
+	}}}
+
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstreamClient
+	connection := createMCPConnection(t, h, oldUpstream.URL)
+	rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
+		Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL,
+		AuthMode: "oauth", AuditMode: connection.AuditMode,
+		UpstreamProtocolMode: connection.UpstreamProtocolMode, LegacyProtocolVersion: connection.LegacyProtocolVersion,
+		Enabled: boolPtr(true),
+	}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("set OAuth mode %d: %s", rec.Code, rec.Body)
+	}
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	storedConnection, err := h.ms.GetMCPConnectionByID(t.Context(), h.userID, connection.ID)
+	if err != nil || storedConnection == nil {
+		t.Fatalf("connection lookup: %v", err)
+	}
+	clientID, err := h.cipher.EncryptString("client-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+	accessToken, err := h.cipher.EncryptString("bound-access-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	expiresAt := time.Now().UTC().Add(time.Hour)
+	issuer, resource, tokenType := "https://issuer.example", oldUpstream.URL, "Bearer" //nolint:gosec // G101: inert OAuth test metadata, not credentials.
+	if err := h.ms.InsertMCPOAuthAuthorization(t.Context(), &store.MCPOAuthAuthorization{
+		UserID: h.userID, TenantID: storedConnection.TenantID, ConnectionID: connection.ID,
+		IssuerURL: &issuer, Resource: &resource, TokenType: &tokenType, TokenAuthMethod: "none",
+		ClientIDCipher: clientID, AccessTokenCipher: accessToken, ExpiresAt: &expiresAt,
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	rec = h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
+		Slug: connection.Slug, Name: connection.Name, UpstreamURL: newUpstream.URL,
+		AuthMode: "oauth", AuditMode: connection.AuditMode,
+		UpstreamProtocolMode: connection.UpstreamProtocolMode, LegacyProtocolVersion: connection.LegacyProtocolVersion,
+		Enabled: boolPtr(true),
+	}, true)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("edit upstream %d: %s", rec.Code, rec.Body)
+	}
+
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	rec = mcpRequest(t, h, body, "tools/list", "")
+	if rec.Code != http.StatusBadGateway || !strings.Contains(rec.Body.String(), "MCP upstream authorization unavailable.") {
+		t.Fatalf("proxy status=%d body=%s", rec.Code, rec.Body)
+	}
+	if oldCalls != 0 || newCalls != 0 || oldAuthorization != "" || newAuthorization != "" {
+		t.Fatalf("upstream calls old=%d new=%d; authorization old=%q new=%q", oldCalls, newCalls, oldAuthorization, newAuthorization)
 	}
 }
 
@@ -1258,7 +1342,7 @@ func TestMCPOAuthHandlers(t *testing.T) {
 	if err != nil || row == nil {
 		t.Fatalf("OAuth row: %+v, %v", row, err)
 	}
-	issuer, resource := "https://issuer.example", "https://resource.example"
+	issuer, resource := "https://issuer.example", connection.UpstreamURL
 	row.IssuerURL, row.Resource, row.AccessTokenCipher = &issuer, &resource, []byte("encrypted-token")
 	row.ExpiresAt, row.LastRefreshedAt = &expiresAt, &refreshedAt
 	if updated, updateErr := h.ms.UpdateMCPOAuthAuthorization(t.Context(), row); updateErr != nil || !updated {

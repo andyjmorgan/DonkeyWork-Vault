@@ -91,6 +91,45 @@ func TestStoreRepositoryRoundTrip(t *testing.T) {
 	}
 }
 
+func TestStoreRepositoryRejectsOAuthBoundToPreviousUpstream(t *testing.T) {
+	ctx := context.Background()
+	memory := memstore.New()
+	repository := NewStoreRepository(memory)
+	userID, tenantID, connectionID := uuid.New(), uuid.New(), uuid.New()
+	connection := &store.MCPConnection{
+		ID: connectionID, UserID: userID, TenantID: tenantID,
+		UpstreamURL: "https://old.example.com/mcp", AuthMode: "oauth",
+	}
+	if err := memory.InsertMCPConnection(ctx, connection); err != nil {
+		t.Fatal(err)
+	}
+	issuer, resource := "https://issuer.example.com", connection.UpstreamURL
+	row := &store.MCPOAuthAuthorization{
+		UserID: userID, TenantID: tenantID, ConnectionID: connectionID,
+		IssuerURL: &issuer, Resource: &resource, ClientIDCipher: []byte("client"),
+		AccessTokenCipher: []byte("access"),
+	}
+	if err := memory.InsertMCPOAuthAuthorization(ctx, row); err != nil {
+		t.Fatal(err)
+	}
+
+	connection.UpstreamURL = "https://new.example.com/mcp"
+	if updated, err := memory.UpdateMCPConnection(ctx, connection); err != nil || !updated {
+		t.Fatalf("update connection upstream: updated=%v err=%v", updated, err)
+	}
+
+	if configuration, err := repository.GetConnectionOAuth(ctx, userID, connectionID); !errors.Is(err, ErrBindingMismatch) || configuration != nil {
+		t.Fatalf("stale OAuth configuration = %+v, %v; want binding mismatch", configuration, err)
+	}
+	status, err := repository.GetStatus(ctx, userID, connectionID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if status == nil || !status.Configured || status.Authorized || status.Resource != resource {
+		t.Fatalf("stale OAuth status = %+v; want configured but unauthorized for %q", status, resource)
+	}
+}
+
 func TestStoreRepositoryClientConfiguration(t *testing.T) {
 	ctx := context.Background()
 	memory := memstore.New()
@@ -246,7 +285,7 @@ func TestStoreRepositoryStatus(t *testing.T) {
 	}
 	now := time.Now().UTC()
 	expiresAt := now.Add(time.Hour)
-	resource := "https://resource.example"
+	resource := connection.UpstreamURL
 	row.Resource, row.AccessTokenCipher, row.ExpiresAt, row.LastRefreshedAt = &resource, []byte("token"), &expiresAt, &now
 	if updated, updateErr := memory.UpdateMCPOAuthAuthorization(ctx, row); updateErr != nil || !updated {
 		t.Fatalf("update authorization: %v, %v", updated, updateErr)
