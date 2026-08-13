@@ -21,19 +21,23 @@ import (
 )
 
 type memoryRepository struct {
-	mu            sync.Mutex
-	refreshMu     sync.Mutex
-	refreshLocks  map[uuid.UUID]chan struct{}
-	refreshCalls  atomic.Int32
-	config        *ConnectionOAuth
-	states        map[string]*State
-	authorization *Authorization
-	err           error
-	claimErr      error
-	saveErr       error
-	upsertErr     error
-	stateRead     chan struct{}
-	releaseState  chan struct{}
+	mu                sync.Mutex
+	refreshMu         sync.Mutex
+	refreshLocks      map[uuid.UUID]chan struct{}
+	refreshCalls      atomic.Int32
+	config            *ConnectionOAuth
+	states            map[string]*State
+	authorization     *Authorization
+	err               error
+	claimErr          error
+	saveErr           error
+	upsertErr         error
+	stateRead         chan struct{}
+	releaseState      chan struct{}
+	connectionReads   int
+	secondReadErr     error
+	dropOnSecond      bool
+	configureOnSecond bool
 }
 
 func (r *memoryRepository) WithRefreshLock(ctx context.Context, connectionID uuid.UUID, fn func() error) error {
@@ -89,6 +93,16 @@ func (r *memoryRepository) DeleteAuthorization(context.Context, uuid.UUID, uuid.
 func (r *memoryRepository) GetConnectionOAuth(context.Context, uuid.UUID, uuid.UUID) (*ConnectionOAuth, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	r.connectionReads++
+	if r.connectionReads == 2 && r.secondReadErr != nil {
+		return nil, r.secondReadErr
+	}
+	if r.connectionReads == 2 && r.dropOnSecond {
+		return nil, nil
+	}
+	if r.connectionReads == 2 && r.configureOnSecond && r.config != nil {
+		r.config.ClientIDCipher = []byte("encrypted:concurrent")
+	}
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -523,6 +537,28 @@ func TestDynamicRegistrationProvisioningErrors(t *testing.T) {
 		t.Fatal("repository error ignored")
 	}
 	repository.err = nil
+	repository.config = &ConnectionOAuth{ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: "https://mcp.example", ClientIDCipher: []byte("encrypted:manual")}
+	if err := service.ensureClient(ctx, connectionID, redirectURI); err != nil {
+		t.Fatalf("existing client rejected: %v", err)
+	}
+	for _, test := range []struct {
+		name       string
+		repository *memoryRepository
+	}{
+		{"second read error", &memoryRepository{config: &ConnectionOAuth{ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: "https://mcp.example"}, secondReadErr: errors.New("database failed")}},
+		{"connection removed", &memoryRepository{config: &ConnectionOAuth{ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: "https://mcp.example"}, dropOnSecond: true}},
+		{"concurrently configured", &memoryRepository{config: &ConnectionOAuth{ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: "https://mcp.example"}, configureOnSecond: true}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			err := NewService(test.repository, &plainCipher{}, nil).ensureClient(ctx, connectionID, redirectURI)
+			if test.name == "concurrently configured" && err == nil {
+				return
+			}
+			if err == nil {
+				t.Fatal("second connection read failure ignored")
+			}
+		})
+	}
 	repository.config = &ConnectionOAuth{ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: "http://example.com/mcp"}
 	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
 		t.Fatal("discovery error ignored")
@@ -531,8 +567,23 @@ func TestDynamicRegistrationProvisioningErrors(t *testing.T) {
 	upstream := newOAuthServer(t)
 	repository.config.Resource = upstream.resource
 	service = NewService(repository, &plainCipher{encryptErr: errors.New("encrypt failed"), encryptAt: 1}, upstream.server.Client())
-	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
+	if _, err := service.BeginWithDynamicRegistration(ctx, connectionID, redirectURI); err == nil {
 		t.Fatal("client ID encryption error ignored")
+	}
+	upstream.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/oauth-protected-resource/mcp":
+			_, _ = io.WriteString(w, `{"resource":`+quote(upstream.resource)+`,"authorization_servers":[`+quote(upstream.issuer)+`]}`)
+		case "/.well-known/oauth-authorization-server":
+			_, _ = io.WriteString(w, `{"issuer":`+quote(upstream.issuer)+`,"authorization_endpoint":`+quote(upstream.server.URL+"/authorize")+`,"token_endpoint":`+quote(upstream.server.URL+"/token")+`,"registration_endpoint":`+quote(upstream.server.URL+"/register")+`,"token_endpoint_auth_methods_supported":["client_secret_post"],"code_challenge_methods_supported":["S256"]}`)
+		case "/register":
+			_, _ = io.WriteString(w, `{"client_id":"dynamic","client_secret":"secret","redirect_uris":["`+redirectURI+`"],"grant_types":["authorization_code"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post"}`)
+		}
+	})
+	repository.config.ClientIDCipher = nil
+	service = NewService(repository, &plainCipher{encryptErr: errors.New("encrypt failed"), encryptAt: 2}, upstream.server.Client())
+	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
+		t.Fatal("client secret encryption error ignored")
 	}
 	repository.saveErr = errors.New("save failed")
 	service = NewService(repository, &plainCipher{}, upstream.server.Client())
@@ -1235,6 +1286,24 @@ func TestAdditionalErrorPaths(t *testing.T) {
 	if err := service.getJSON(context.Background(), "http://example.com/metadata", &map[string]string{}); err == nil {
 		t.Fatal("expected invalid metadata endpoint error")
 	}
+	for _, test := range []struct {
+		name   string
+		client *http.Client
+	}{
+		{"network", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("network failed") })}},
+		{"status", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusBadGateway, Body: io.NopCloser(strings.NewReader(`{}`)), Header: make(http.Header)}, nil
+		})}},
+		{"json", &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+			return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(`{`)), Header: make(http.Header)}, nil
+		})}},
+	} {
+		t.Run("metadata "+test.name, func(t *testing.T) {
+			if err := NewService(repository, &plainCipher{}, test.client).getJSON(context.Background(), "https://example.com/metadata", &map[string]string{}); err == nil {
+				t.Fatal("metadata error ignored")
+			}
+		})
+	}
 	if _, err := selectIssuer("", []string{"http://example.com"}); err == nil {
 		t.Fatal("expected invalid advertised issuer")
 	}
@@ -1325,6 +1394,15 @@ func TestDefaultClientAndRedirectPolicy(t *testing.T) {
 	via := []*http.Request{{Method: http.MethodPost}}
 	if err := injectedService.client.CheckRedirect(req, via); err == nil || !strings.Contains(err.Error(), "token endpoint redirects") {
 		t.Fatalf("token redirect error = %v", err)
+	}
+	redirectErr := errors.New("caller rejected redirect")
+	withPolicy := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error { return redirectErr }}
+	policyService := NewService(repository, &plainCipher{}, withPolicy)
+	if err := policyService.client.CheckRedirect(req, nil); !errors.Is(err, redirectErr) {
+		t.Fatalf("caller redirect policy error = %v", err)
+	}
+	if err := injectedService.client.CheckRedirect(req, nil); err != nil {
+		t.Fatalf("valid redirect rejected: %v", err)
 	}
 }
 
