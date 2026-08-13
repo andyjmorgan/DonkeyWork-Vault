@@ -22,16 +22,18 @@ const mcpProtocolVersion = "2026-07-28"
 
 var mcpSlugPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9_-]{0,99}$`)
 
-// MCPConnectionParams is the editable configuration for one modern MCP upstream.
+// MCPConnectionParams is the editable configuration for one modern or legacy-session MCP upstream.
 type MCPConnectionParams struct {
-	ID          uuid.UUID
-	Slug        string
-	Name        string
-	Description *string
-	UpstreamURL string
-	AuthMode    string
-	AuditMode   string
-	Enabled     bool
+	ID                    uuid.UUID
+	Slug                  string
+	Name                  string
+	Description           *string
+	UpstreamURL           string
+	AuthMode              string
+	AuditMode             string
+	UpstreamProtocolMode  string
+	LegacyProtocolVersion string
+	Enabled               bool
 }
 
 // MCPResolvedConnection is an authorized upstream request configuration. Headers contain decrypted
@@ -60,6 +62,8 @@ func (s *MCPService) UpsertConnection(ctx context.Context, p MCPConnectionParams
 	p.Name = strings.TrimSpace(p.Name)
 	p.AuthMode = strings.TrimSpace(strings.ToLower(p.AuthMode))
 	p.AuditMode = strings.TrimSpace(strings.ToLower(p.AuditMode))
+	p.UpstreamProtocolMode = strings.TrimSpace(strings.ToLower(p.UpstreamProtocolMode))
+	p.LegacyProtocolVersion = strings.TrimSpace(p.LegacyProtocolVersion)
 	if !mcpSlugPattern.MatchString(p.Slug) {
 		return nil, ValidationError{"slug must contain only lowercase letters, digits, '-' or '_'."}
 	}
@@ -79,10 +83,23 @@ func (s *MCPService) UpsertConnection(ctx context.Context, p MCPConnectionParams
 	if !slices.Contains([]string{"metadata", "redacted"}, p.AuditMode) {
 		return nil, ValidationError{"auditMode must be 'metadata' or 'redacted'."}
 	}
+	if p.UpstreamProtocolMode == "" {
+		p.UpstreamProtocolMode = "modern_2026_07"
+	}
+	if !slices.Contains([]string{"modern_2026_07", "legacy_session"}, p.UpstreamProtocolMode) {
+		return nil, ValidationError{"upstreamProtocolMode must be 'modern_2026_07' or 'legacy_session'."}
+	}
+	if p.LegacyProtocolVersion == "" {
+		p.LegacyProtocolVersion = "2025-06-18"
+	}
+	if !slices.Contains([]string{"2025-03-26", "2025-06-18", "2025-11-25"}, p.LegacyProtocolVersion) {
+		return nil, ValidationError{"legacyProtocolVersion must be '2025-03-26', '2025-06-18', or '2025-11-25'."}
+	}
 	entity := &store.MCPConnection{
 		ID: p.ID, UserID: caller.UserID, TenantID: caller.TenantID, Slug: p.Slug,
 		Name: p.Name, Description: p.Description, UpstreamURL: u.String(), AuthMode: p.AuthMode,
-		AuditMode: p.AuditMode, ProtocolVersion: mcpProtocolVersion, Enabled: p.Enabled,
+		AuditMode: p.AuditMode, ProtocolVersion: mcpProtocolVersion, UpstreamProtocolMode: p.UpstreamProtocolMode,
+		LegacyProtocolVersion: p.LegacyProtocolVersion, Enabled: p.Enabled,
 	}
 	if entity.ID == uuid.Nil {
 		if err := s.store.InsertMCPConnection(ctx, entity); err != nil {

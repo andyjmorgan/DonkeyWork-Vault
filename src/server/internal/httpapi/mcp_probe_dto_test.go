@@ -15,11 +15,11 @@ func TestMCPConnectionDTOProbeFields(t *testing.T) {
 	probeError, probeDetail := "safe_error", "safe_detail"
 	serverName, serverVersion := "Acme MCP", "1.2.3"
 	dto := toMCPConnectionDTO(store.MCPConnection{
-		ID: uuid.New(), ProtocolEra: "modern_2026_07", ProbeStatus: "compatible",
+		ID: uuid.New(), UpstreamProtocolMode: "legacy_session", LegacyProtocolVersion: "2025-11-25", ProtocolEra: "modern_2026_07", ProbeStatus: "compatible",
 		ProbeCheckedAt: &checkedAt, ProbeError: &probeError, ProbeDetail: &probeDetail,
 		SupportedVersions: []string{"2026-07-28"}, ServerName: &serverName, ServerVersion: &serverVersion,
 	})
-	if dto.ProtocolEra != "modern_2026_07" || dto.ProbeStatus != "compatible" ||
+	if dto.UpstreamProtocolMode != "legacy_session" || dto.LegacyProtocolVersion != "2025-11-25" || dto.ProtocolEra != "modern_2026_07" || dto.ProbeStatus != "compatible" ||
 		dto.ProbeCheckedAt == nil || dto.ProbeError == nil || dto.ProbeDetail == nil ||
 		len(dto.SupportedVersions) != 1 || dto.ServerName == nil || dto.ServerVersion == nil {
 		t.Fatalf("probe DTO: %+v", dto)

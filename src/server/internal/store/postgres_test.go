@@ -733,6 +733,9 @@ func TestMCPProtocolProbe(t *testing.T) {
 	if connection.ProtocolEra != "unknown" || connection.ProbeStatus != "not_checked" {
 		t.Fatalf("probe defaults: %+v", connection)
 	}
+	if connection.UpstreamProtocolMode != "modern_2026_07" || connection.LegacyProtocolVersion != "2025-06-18" {
+		t.Fatalf("upstream protocol defaults: %+v", connection)
+	}
 	checkedAt := time.Now().UTC().Truncate(time.Microsecond)
 	detail, serverName, serverVersion := "modern stateless endpoint", "Acme MCP", "1.2.3"
 	result := &store.MCPProtocolProbeResult{ConnectionID: connection.ID, UserID: u, TenantID: tenant,
@@ -750,15 +753,17 @@ func TestMCPProtocolProbe(t *testing.T) {
 
 	// Editable updates do not include probe-owned columns and must preserve the result.
 	connection.Name = "After"
+	connection.UpstreamProtocolMode = "legacy_session"
+	connection.LegacyProtocolVersion = "2025-11-25"
 	if ok, err := pg.UpdateMCPConnection(ctx(), connection); err != nil || !ok {
 		t.Fatalf("config update: %v %v", ok, err)
 	}
-	if connection.ProbeStatus != "compatible" || connection.ServerVersion == nil ||
+	if connection.UpstreamProtocolMode != "legacy_session" || connection.LegacyProtocolVersion != "2025-11-25" || connection.ProbeStatus != "compatible" || connection.ServerVersion == nil ||
 		len(connection.SupportedVersions) != 1 {
 		t.Fatalf("updated entity lost probe result: %+v", connection)
 	}
 	got, _ = pg.GetMCPConnectionByID(ctx(), u, connection.ID)
-	if got.Name != "After" || got.ProbeStatus != "compatible" || got.ServerVersion == nil {
+	if got.Name != "After" || got.UpstreamProtocolMode != "legacy_session" || got.LegacyProtocolVersion != "2025-11-25" || got.ProbeStatus != "compatible" || got.ServerVersion == nil {
 		t.Fatalf("config update overwrote probe: %+v", got)
 	}
 

@@ -159,27 +159,29 @@ type AuditFilter struct {
 
 // MCPConnection configures one stateless MCP upstream exposed through the gateway.
 type MCPConnection struct {
-	ID                uuid.UUID
-	UserID            uuid.UUID
-	TenantID          uuid.UUID
-	Slug              string
-	Name              string
-	Description       *string
-	UpstreamURL       string
-	AuthMode          string
-	AuditMode         string
-	ProtocolVersion   string
-	ProtocolEra       string
-	ProbeStatus       string
-	ProbeCheckedAt    *time.Time
-	ProbeError        *string
-	ProbeDetail       *string
-	SupportedVersions []string
-	ServerName        *string
-	ServerVersion     *string
-	Enabled           bool
-	CreatedAt         time.Time
-	UpdatedAt         *time.Time
+	ID                    uuid.UUID
+	UserID                uuid.UUID
+	TenantID              uuid.UUID
+	Slug                  string
+	Name                  string
+	Description           *string
+	UpstreamURL           string
+	AuthMode              string
+	AuditMode             string
+	ProtocolVersion       string
+	UpstreamProtocolMode  string
+	LegacyProtocolVersion string
+	ProtocolEra           string
+	ProbeStatus           string
+	ProbeCheckedAt        *time.Time
+	ProbeError            *string
+	ProbeDetail           *string
+	SupportedVersions     []string
+	ServerName            *string
+	ServerVersion         *string
+	Enabled               bool
+	CreatedAt             time.Time
+	UpdatedAt             *time.Time
 }
 
 // MCPProtocolProbeResult is the bounded, secret-free result of probing one MCP connection.

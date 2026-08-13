@@ -36,6 +36,8 @@ func TestMCPServiceConnectionValidationAndLifecycle(t *testing.T) {
 		{Name: "x", Slug: "x", UpstreamURL: "https://example.com/mcp#x", AuthMode: "none", AuditMode: "redacted"},
 		{Name: "x", Slug: "x", UpstreamURL: "https://example.com/mcp", AuthMode: "bad", AuditMode: "redacted"},
 		{Name: "x", Slug: "x", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "full"},
+		{Name: "x", Slug: "x", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "redacted", UpstreamProtocolMode: "future"},
+		{Name: "x", Slug: "x", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "redacted", LegacyProtocolVersion: "2024-01-01"},
 	}
 	for i, params := range invalid {
 		if _, err := service.UpsertConnection(ctx, params); err == nil {
@@ -43,7 +45,8 @@ func TestMCPServiceConnectionValidationAndLifecycle(t *testing.T) {
 		}
 	}
 	created, err := service.UpsertConnection(ctx, MCPConnectionParams{Name: "Example", Slug: "EXAMPLE", UpstreamURL: "https://example.com/mcp", AuthMode: "none", Enabled: true})
-	if err != nil || created == nil || created.AuditMode != "redacted" {
+	if err != nil || created == nil || created.AuditMode != "redacted" ||
+		created.UpstreamProtocolMode != "modern_2026_07" || created.LegacyProtocolVersion != "2025-06-18" {
 		t.Fatalf("create: %#v %v", created, err)
 	}
 	if rows, _ := service.ListConnections(ctx); len(rows) != 1 {
@@ -53,8 +56,8 @@ func TestMCPServiceConnectionValidationAndLifecycle(t *testing.T) {
 		t.Fatal("get")
 	}
 	description := "updated"
-	updated, err := service.UpsertConnection(ctx, MCPConnectionParams{ID: created.ID, Name: "Updated", Slug: created.Slug, Description: &description, UpstreamURL: created.UpstreamURL, AuthMode: "headers", AuditMode: "metadata", Enabled: false})
-	if err != nil || updated == nil || updated.Name != "Updated" {
+	updated, err := service.UpsertConnection(ctx, MCPConnectionParams{ID: created.ID, Name: "Updated", Slug: created.Slug, Description: &description, UpstreamURL: created.UpstreamURL, AuthMode: "headers", AuditMode: "metadata", UpstreamProtocolMode: "legacy_session", LegacyProtocolVersion: "2025-11-25", Enabled: false})
+	if err != nil || updated == nil || updated.Name != "Updated" || updated.UpstreamProtocolMode != "legacy_session" || updated.LegacyProtocolVersion != "2025-11-25" {
 		t.Fatalf("update: %#v %v", updated, err)
 	}
 	missing, err := service.UpsertConnection(ctx, MCPConnectionParams{ID: uuid.New(), Name: "Missing", Slug: "missing", UpstreamURL: "https://example.com/mcp", AuthMode: "none", AuditMode: "metadata", Enabled: true})

@@ -80,6 +80,7 @@ type Deps struct {
 // Server holds the transport dependencies and renders the HTTP handler.
 type Server struct {
 	deps        Deps
+	legacy      *legacyAdapterPool
 	verifier    atomic.Pointer[oidc.IDTokenVerifier]
 	authOn      bool
 	appConfig   appConfigResponse
@@ -103,7 +104,7 @@ func NewServer(ctx context.Context, deps Deps) (*Server, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	s := &Server{deps: deps, logger: logger, rate: newIPRateLimiter(rateLimitPerWindow, rateLimitWindow)}
+	s := &Server{deps: deps, legacy: newLegacyAdapterPool(), logger: logger, rate: newIPRateLimiter(rateLimitPerWindow, rateLimitWindow)}
 	if s.deps.MCPClient == nil {
 		s.deps.MCPClient = http.DefaultClient
 	}

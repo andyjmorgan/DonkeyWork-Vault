@@ -21,6 +21,7 @@ import (
 	"donkeywork.dev/vault-server/internal/audit"
 	"donkeywork.dev/vault-server/internal/contracts"
 	"donkeywork.dev/vault-server/internal/mcp"
+	"donkeywork.dev/vault-server/internal/mcplegacy"
 	"donkeywork.dev/vault-server/internal/service"
 	"donkeywork.dev/vault-server/internal/store"
 )
@@ -63,7 +64,8 @@ func (s *Server) handleUpsertMCPConnection(w http.ResponseWriter, r *http.Reques
 	}
 	row, err := s.deps.MCP.UpsertConnection(r.Context(), service.MCPConnectionParams{
 		ID: dto.ID, Slug: dto.Slug, Name: dto.Name, Description: dto.Description,
-		UpstreamURL: dto.UpstreamURL, AuthMode: dto.AuthMode, AuditMode: dto.AuditMode, Enabled: enabled,
+		UpstreamURL: dto.UpstreamURL, AuthMode: dto.AuthMode, AuditMode: dto.AuditMode,
+		UpstreamProtocolMode: dto.UpstreamProtocolMode, LegacyProtocolVersion: dto.LegacyProtocolVersion, Enabled: enabled,
 	})
 	if writeServiceError(w, err) {
 		return
@@ -89,6 +91,7 @@ func (s *Server) handleDeleteMCPConnection(w http.ResponseWriter, r *http.Reques
 		writeError(w, http.StatusNotFound, "MCP connection not found.")
 		return
 	}
+	_ = s.legacy.remove(r.Context(), id, nil)
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -583,8 +586,24 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		}
 		upstream.Header.Set("Authorization", token.TokenType+" "+token.AccessToken)
 	}
-	response, err := s.deps.MCPClient.Do(upstream) //nolint:gosec // G704: destination passed the service validation and safe dialer
+	var response *http.Response
+	responseSequence := int64(2)
+	if resolved.Connection.UpstreamProtocolMode == "legacy_session" {
+		adapter, adapterErr := s.legacy.adapter(resolved.Connection, s.deps.MCPClient, s.deps.ServiceVersion)
+		if adapterErr != nil {
+			err = adapterErr
+		} else {
+			response, err = adapter.DoObserved(r.Context(), upstream, s.legacyLifecycleObserver(r.Context(), exchange, resolved.Connection.AuditMode, &responseSequence))
+		}
+	} else {
+		response, err = s.deps.MCPClient.Do(upstream) //nolint:gosec // G704: destination passed the service validation and safe dialer
+	}
 	if err != nil {
+		if mcplegacy.IsErrorKind(err, mcplegacy.ErrorObserver) {
+			s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", 0, "audit")
+			writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
+			return
+		}
 		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", 0, "upstream")
 		writeError(w, http.StatusBadGateway, "MCP upstream unavailable.")
 		return
@@ -597,12 +616,13 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	contentType := strings.ToLower(response.Header.Get("Content-Type"))
+	legacy := resolved.Connection.UpstreamProtocolMode == "legacy_session"
 	if strings.HasPrefix(contentType, "text/event-stream") {
 		if message.Audit.Method == "tools/list" {
-			s.proxyMCPToolsListSSE(w, r, response, exchange, resolved, message)
+			s.proxyMCPToolsListSSE(w, r, response, exchange, resolved, message, legacy, responseSequence)
 			return
 		}
-		s.proxyMCPSSE(w, r, response, exchange, resolved.Connection)
+		s.proxyMCPSSE(w, r, response, exchange, resolved.Connection, message.Audit.Method, legacy, responseSequence)
 		return
 	}
 	responseBody, readErr := io.ReadAll(io.LimitReader(response.Body, maxRequestBody+1))
@@ -612,6 +632,14 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	originalResponseBytes := int64(len(responseBody))
+	if legacy {
+		responseBody, readErr = mcp.UpgradeLegacyResponse(responseBody, message.Audit.Method)
+		if readErr != nil {
+			s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", originalResponseBytes, "protocol")
+			writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
+			return
+		}
+	}
 	serverMessage, inspectErr := mcp.InspectServer(responseBody, s.deps.MCPAuditHMACKey)
 	if inspectErr == nil && serverMessage.Kind == mcp.KindResult {
 		responseBody, inspectErr = s.transformMCPResponse(r.Context(), message, resolved, responseBody)
@@ -627,7 +655,7 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 	if message.Audit.Method == "tools/list" {
 		w.Header().Set("Cache-Control", "private")
 	}
-	responseAudit := mcpAuditRecord(exchange, 2, "server_to_client", serverMessage.Kind, serverMessage.ID, serverMessage.Audit, serverMessage.ErrorCode, responseBody, resolved.Connection.AuditMode)
+	responseAudit := mcpAuditRecord(exchange, responseSequence, "server_to_client", serverMessage.Kind, serverMessage.ID, serverMessage.Audit, serverMessage.ErrorCode, responseBody, resolved.Connection.AuditMode)
 	responseAudit.PolicyDecision = "allowed"
 	if err := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), responseAudit); err != nil {
 		s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", originalResponseBytes, "audit")
@@ -699,7 +727,7 @@ func (s *Server) transformMCPResponse(ctx context.Context, request mcp.ClientMes
 	return transformed.Body, nil
 }
 
-func (s *Server) proxyMCPToolsListSSE(w http.ResponseWriter, r *http.Request, response *http.Response, exchange *store.MCPAuditExchange, resolved *service.MCPResolvedConnection, request mcp.ClientMessage) {
+func (s *Server) proxyMCPToolsListSSE(w http.ResponseWriter, r *http.Request, response *http.Response, exchange *store.MCPAuditExchange, resolved *service.MCPResolvedConnection, request mcp.ClientMessage, legacy bool, sequence int64) {
 	body, err := io.ReadAll(io.LimitReader(response.Body, maxRequestBody+1))
 	if err != nil || len(body) > maxRequestBody {
 		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", 0, "response")
@@ -709,7 +737,6 @@ func (s *Server) proxyMCPToolsListSSE(w http.ResponseWriter, r *http.Request, re
 	pending := bytes.NewBuffer(body)
 	events := make([][]byte, 0)
 	records := make([]*store.MCPAuditMessage, 0)
-	sequence := int64(2)
 	finalSeen := false
 	for pending.Len() > 0 {
 		event, ok := takeSSEEvent(pending)
@@ -727,7 +754,15 @@ func (s *Server) proxyMCPToolsListSSE(w http.ResponseWriter, r *http.Request, re
 				err = errors.New("multiple final SSE results")
 				break
 			}
-			transformed, transformErr := s.transformMCPResponse(r.Context(), request, resolved, sseData(event))
+			resultBody := sseData(event)
+			if legacy {
+				resultBody, inspectErr = mcp.UpgradeLegacyResponse(resultBody, request.Audit.Method)
+				if inspectErr != nil {
+					err = inspectErr
+					break
+				}
+			}
+			transformed, transformErr := s.transformMCPResponse(r.Context(), request, resolved, resultBody)
 			if transformErr != nil {
 				err = transformErr
 				break
@@ -801,13 +836,13 @@ func validMCPContentHeaders(headers http.Header) bool {
 	return contentType == "application/json" && strings.Contains(accept, "application/json") && strings.Contains(accept, "text/event-stream")
 }
 
-func (s *Server) proxyMCPSSE(w http.ResponseWriter, r *http.Request, response *http.Response, exchange *store.MCPAuditExchange, connection store.MCPConnection) {
+func (s *Server) proxyMCPSSE(w http.ResponseWriter, r *http.Request, response *http.Response, exchange *store.MCPAuditExchange, connection store.MCPConnection, requestMethod string, legacy bool, sequence int64) {
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(response.StatusCode)
 	flusher, _ := w.(http.Flusher)
 	var pending bytes.Buffer
 	buf := make([]byte, 32<<10)
-	sequence, total := int64(2), int64(0)
+	total := int64(0)
 	for {
 		n, readErr := response.Body.Read(buf)
 		if n > 0 {
@@ -822,6 +857,18 @@ func (s *Server) proxyMCPSSE(w http.ResponseWriter, r *http.Request, response *h
 				if err != nil {
 					s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "failed", total, "protocol")
 					return
+				}
+				if legacy && hasMessage && message.Kind == mcp.KindResult {
+					upgraded, upgradeErr := mcp.UpgradeLegacyResponse(sseData(event), requestMethod)
+					if upgradeErr != nil {
+						s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "failed", total, "protocol")
+						return
+					}
+					event = replaceSSEData(event, upgraded)
+					message, hasMessage, err = mcp.InspectSSEEvent(event, s.deps.MCPAuditHMACKey)
+					if err != nil { //coverage:ignore UpgradeLegacyResponse returns a validated response.
+						return
+					}
 				}
 				if hasMessage {
 					record := mcpAuditRecord(exchange, sequence, "server_to_client", message.Kind, message.ID, message.Audit, message.ErrorCode, sseData(event), connection.AuditMode)
