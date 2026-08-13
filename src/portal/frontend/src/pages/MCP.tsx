@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Plus, RefreshCw, Trash2 } from 'lucide-react'
 import { api, type AccessKey, type ApiKeyItem, type MCPAuditMessage, type MCPConnection, type MCPGrant, type MCPHeaderBinding, type MCPToolPolicy } from '../api'
 import { Badge } from '../ui/components/badge'
 import { Button } from '../ui/components/button'
@@ -54,7 +54,18 @@ export function MCPPage() {
         </CardContent>
       </Card>
 
-      {selected && <ConnectionDetail connection={selected} audit={audit} onError={(e) => setMessage(String(e))} />}
+      {selected && (
+        <ConnectionDetail
+          connection={selected}
+          audit={audit}
+          onProbed={(connection) => {
+            setSelected(connection)
+            setMessage(undefined)
+            setConnections((current) => current.map((item) => item.id === connection.id ? connection : item))
+          }}
+          onError={(e) => setMessage(String(e))}
+        />
+      )}
       {editing && <ConnectionEditor value={editing} onClose={() => setEditing(undefined)} onSaved={() => { setEditing(undefined); load() }} />}
     </>
   )
@@ -83,7 +94,7 @@ function ConnectionEditor({ value, onClose, onSaved }: { value: Partial<MCPConne
   )
 }
 
-function ConnectionDetail({ connection, audit, onError }: { connection: MCPConnection; audit: MCPAuditMessage[]; onError: (e: unknown) => void }) {
+function ConnectionDetail({ connection, audit, onProbed, onError }: { connection: MCPConnection; audit: MCPAuditMessage[]; onProbed: (connection: MCPConnection) => void; onError: (e: unknown) => void }) {
   const [accessKeys, setAccessKeys] = useState<AccessKey[]>([])
   const [credentials, setCredentials] = useState<ApiKeyItem[]>([])
   const [grants, setGrants] = useState<MCPGrant[]>([])
@@ -99,21 +110,79 @@ function ConnectionDetail({ connection, audit, onError }: { connection: MCPConne
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [scopes, setScopes] = useState('')
+  const [probing, setProbing] = useState(false)
   const load = () => Promise.all([api.accessKeys(), api.apiKeys(), api.mcpGrants(connection.id), api.mcpHeaders(connection.id), api.mcpPolicies(connection.id)])
     .then(([keys, creds, gs, hs, ps]) => { setAccessKeys(keys); setCredentials(creds); setGrants(gs); setHeaders(hs); setPolicies(ps) }).catch(onError)
   useEffect(() => { load() }, [connection.id])
   const keyName = (id: string) => accessKeys.find((key) => key.id === id)?.name || id
   const credentialName = (id: string) => credentials.find((item) => item.id === id)?.name || id
+  const probe = async () => {
+    setProbing(true)
+    try {
+      onProbed(await api.probeMcpConnection(connection.id))
+    } catch (error) {
+      onError(error)
+    } finally {
+      setProbing(false)
+    }
+  }
   return (
     <>
-      <Card><CardHeader><CardTitle>{connection.name} configuration</CardTitle><CardDescription>Only granted access keys with <code>vault:mcp</code> can invoke this connection.</CardDescription></CardHeader><CardContent className="grid gap-5 lg:grid-cols-3">
+      <Card>
+        <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <CardTitle>{connection.name} configuration</CardTitle>
+            <CardDescription>Only granted access keys with <code>vault:mcp</code> can invoke this connection.</CardDescription>
+          </div>
+          <Button className="shrink-0" size="sm" variant="outline" disabled={probing} onClick={probe}>
+            <RefreshCw className={`size-4 ${probing ? 'animate-spin' : ''}`} />
+            {probing ? 'Probing…' : 'Probe protocol'}
+          </Button>
+        </CardHeader>
+        <CardContent className="grid gap-5 lg:grid-cols-3">
+          <ProtocolCompatibility connection={connection} />
         <section className="space-y-2"><h3 className="text-sm font-medium">Access grants</h3><div className="flex gap-2"><Select value={grantKey} onValueChange={setGrantKey}><SelectTrigger><SelectValue placeholder="Access key" /></SelectTrigger><SelectContent>{accessKeys.filter((key) => key.scopes.includes('vault:mcp')).map((key) => <SelectItem key={key.id} value={key.id}>{key.name}</SelectItem>)}</SelectContent></Select><Button size="sm" disabled={!grantKey} onClick={() => api.createMcpGrant(connection.id, grantKey).then(load).catch(onError)}>Grant</Button></div>{grants.map((grant) => <Row key={grant.id} label={keyName(grant.accessKeyId)} onDelete={() => api.deleteMcpGrant(grant.id).then(load).catch(onError)} />)}</section>
         <section className="space-y-2"><h3 className="text-sm font-medium">Upstream headers</h3><Select value={credential} onValueChange={setCredential}><SelectTrigger><SelectValue placeholder="Stored credential" /></SelectTrigger><SelectContent>{credentials.map((item) => <SelectItem key={item.id} value={item.id}>{item.name}</SelectItem>)}</SelectContent></Select><div className="flex gap-2"><Input value={headerName} onChange={(e) => setHeaderName(e.target.value)} placeholder="Override header (optional)" /><Button size="sm" disabled={!credential} onClick={() => api.createMcpHeader(connection.id, credential, headerName || undefined).then(load).catch(onError)}>Bind</Button></div>{headers.map((header) => <Row key={header.id} label={`${header.headerName || '(credential default)'} ← ${credentialName(header.credentialId)}`} onDelete={() => api.deleteMcpHeader(header.id).then(load).catch(onError)} />)}</section>
         <section className="space-y-2"><h3 className="text-sm font-medium">Policy rules</h3><Input value={method} onChange={(e) => setMethod(e.target.value)} placeholder="Method" /><Input value={tool} onChange={(e) => setTool(e.target.value)} placeholder="Tool name (tools/call only)" /><div className="flex items-center gap-2"><Switch checked={allow} onCheckedChange={setAllow} /><span className="text-sm">{allow ? 'Allow' : 'Deny'}</span><Button size="sm" disabled={!method} onClick={() => api.saveMcpPolicy(connection.id, method, tool, allow).then(load).catch(onError)}>Save rule</Button></div>{policies.map((policy) => <Row key={policy.id} label={`${policy.allow ? 'allow' : 'deny'} ${policy.method}${policy.toolName ? `:${policy.toolName}` : ''}`} onDelete={() => api.deleteMcpPolicy(policy.id).then(load).catch(onError)} />)}</section>
         {connection.authMode === 'oauth' && <section className="space-y-2 lg:col-span-3"><h3 className="text-sm font-medium">Upstream OAuth</h3><div className="grid gap-2 sm:grid-cols-2"><Input value={issuer} onChange={(e) => setIssuer(e.target.value)} placeholder="Issuer (optional; discovered when blank)" /><Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder="Client ID" /><Input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder="Client secret (optional)" /><Input value={scopes} onChange={(e) => setScopes(e.target.value)} placeholder="Space-separated scopes" /></div><div className="flex gap-2"><Button size="sm" disabled={!clientId} onClick={() => api.configureMcpOAuth(connection.id, { issuer: issuer || undefined, clientId, clientSecret: clientSecret || undefined, scopes: scopes.split(/\s+/).filter(Boolean) }).catch(onError)}>Save OAuth client</Button><Button size="sm" variant="outline" onClick={() => api.connectMcpOAuth(connection.id).then((result) => { window.location.href = result.authorizeUrl }).catch(onError)}>Authorize</Button><Button size="sm" variant="ghost" onClick={() => api.deleteMcpOAuth(connection.id).catch(onError)}>Remove OAuth</Button></div></section>}
-      </CardContent></Card>
+        </CardContent>
+      </Card>
       <Card><CardHeader><CardTitle>Inspected messages</CardTitle><CardDescription>Latest redacted JSON-RPC audit records for this connection.</CardDescription></CardHeader><CardContent><Table><TableHeader><TableRow><TableHead>Time</TableHead><TableHead>Direction</TableHead><TableHead>Method / tool</TableHead><TableHead>Decision</TableHead><TableHead>Payload</TableHead></TableRow></TableHeader><TableBody>{audit.map((message) => <TableRow key={message.id}><TableCell className="whitespace-nowrap text-xs">{new Date(message.observedAt).toLocaleString()}</TableCell><TableCell><Badge variant="secondary">{message.direction}</Badge></TableCell><TableCell><code className="text-xs">{message.method || message.messageKind}{message.toolName ? `:${message.toolName}` : ''}</code></TableCell><TableCell>{message.policyDecision}</TableCell><TableCell><pre className="max-h-32 max-w-xl overflow-auto whitespace-pre-wrap text-xs">{message.payloadRedacted || '(metadata only)'}</pre></TableCell></TableRow>)}</TableBody></Table></CardContent></Card>
     </>
+  )
+}
+
+function ProtocolCompatibility({ connection }: { connection: MCPConnection }) {
+  const status = connection.probeStatus.replaceAll('_', ' ')
+  const era = connection.protocolEra.replaceAll('_', ' ')
+  const neutral = connection.probeStatus === 'not_checked' || connection.probeStatus === 'auth_required'
+  const detail = connection.probeDetail?.replaceAll('_', ' ')
+
+  return (
+    <section className="space-y-2 lg:col-span-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="text-sm font-medium">Protocol compatibility</h3>
+        <Badge variant={connection.probeStatus === 'compatible' ? 'secondary' : neutral ? 'outline' : 'destructive'}>{status}</Badge>
+        {connection.protocolEra !== 'unknown' && <code className="text-xs text-muted-foreground">{era}</code>}
+      </div>
+      {connection.probeCheckedAt && (
+        <p className="text-xs text-muted-foreground">
+          Checked {new Date(connection.probeCheckedAt).toLocaleString()}
+          {connection.serverName ? ` · ${connection.serverName}${connection.serverVersion ? ` ${connection.serverVersion}` : ''}` : ''}
+          {detail ? ` · ${detail}` : ''}
+        </p>
+      )}
+      {connection.probeStatus === 'auth_required' && (
+        <p className="text-xs text-muted-foreground">Authorize the upstream OAuth connection, then probe again.</p>
+      )}
+      {connection.probeStatus === 'unreachable' && (
+        <p className="text-xs text-destructive">The gateway could not reach the upstream endpoint.</p>
+      )}
+      {connection.probeStatus === 'incompatible' && (
+        <p className="text-xs text-destructive">This endpoint is not compatible with the July 2026 stateless gateway. A separate legacy adapter is required.</p>
+      )}
+      {connection.probeError && <p className="text-xs text-destructive">{connection.probeError}</p>}
+    </section>
   )
 }
 

@@ -71,6 +71,8 @@ type Store interface {
 	GetMCPConnectionByID(ctx context.Context, userID, id uuid.UUID) (*MCPConnection, error)
 	GetMCPConnectionBySlug(ctx context.Context, userID uuid.UUID, slug string) (*MCPConnection, error)
 	DeleteMCPConnection(ctx context.Context, userID, id uuid.UUID) (bool, error)
+	// RecordMCPProtocolProbe updates only probe-owned fields, preserving concurrent config edits.
+	RecordMCPProtocolProbe(ctx context.Context, result *MCPProtocolProbeResult) (bool, error)
 
 	// --- MCP access grants and upstream credentials ---
 	InsertMCPConnectionGrant(ctx context.Context, g *MCPConnectionGrant) error

@@ -15,12 +15,14 @@ func nonNilStrings(values []string) []string {
 	return values
 }
 
-const mcpConnectionCols = `id, user_id, tenant_id, slug, name, description, upstream_url, auth_mode, audit_mode, protocol_version, enabled, created_at, updated_at`
+const mcpConnectionCols = `id, user_id, tenant_id, slug, name, description, upstream_url, auth_mode, audit_mode, protocol_version, protocol_era, probe_status, probe_checked_at, probe_error, probe_detail, supported_versions, server_name, server_version, enabled, created_at, updated_at`
 
 func scanMCPConnection(row pgx.Row) (*MCPConnection, error) {
 	var c MCPConnection
 	err := row.Scan(&c.ID, &c.UserID, &c.TenantID, &c.Slug, &c.Name, &c.Description,
-		&c.UpstreamURL, &c.AuthMode, &c.AuditMode, &c.ProtocolVersion, &c.Enabled,
+		&c.UpstreamURL, &c.AuthMode, &c.AuditMode, &c.ProtocolVersion, &c.ProtocolEra,
+		&c.ProbeStatus, &c.ProbeCheckedAt, &c.ProbeError, &c.ProbeDetail, &c.SupportedVersions,
+		&c.ServerName, &c.ServerVersion, &c.Enabled,
 		&c.CreatedAt, &c.UpdatedAt)
 	if err != nil {
 		return nil, err
@@ -34,8 +36,9 @@ func (p *Postgres) InsertMCPConnection(ctx context.Context, c *MCPConnection) er
 		INSERT INTO vault.mcp_connections
 			(user_id, tenant_id, slug, name, description, upstream_url, auth_mode, audit_mode, protocol_version, enabled)
 		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
-		RETURNING id, created_at`, c.UserID, c.TenantID, c.Slug, c.Name, c.Description,
-		c.UpstreamURL, c.AuthMode, c.AuditMode, c.ProtocolVersion, c.Enabled).Scan(&c.ID, &c.CreatedAt)
+		RETURNING id, created_at, protocol_era, probe_status`, c.UserID, c.TenantID, c.Slug, c.Name, c.Description,
+		c.UpstreamURL, c.AuthMode, c.AuditMode, c.ProtocolVersion, c.Enabled).
+		Scan(&c.ID, &c.CreatedAt, &c.ProtocolEra, &c.ProbeStatus)
 }
 
 // UpdateMCPConnection updates mutable fields when the connection belongs to the supplied owner.
@@ -43,9 +46,12 @@ func (p *Postgres) UpdateMCPConnection(ctx context.Context, c *MCPConnection) (b
 	err := p.pool.QueryRow(ctx, `
 		UPDATE vault.mcp_connections SET slug=$3, name=$4, description=$5, upstream_url=$6,
 			auth_mode=$7, audit_mode=$8, protocol_version=$9, enabled=$10, updated_at=now()
-		WHERE user_id=$1 AND id=$2 RETURNING updated_at`, c.UserID, c.ID, c.Slug, c.Name,
+		WHERE user_id=$1 AND id=$2
+		RETURNING updated_at, protocol_era, probe_status, probe_checked_at, probe_error, probe_detail,
+			supported_versions, server_name, server_version`, c.UserID, c.ID, c.Slug, c.Name,
 		c.Description, c.UpstreamURL, c.AuthMode, c.AuditMode, c.ProtocolVersion, c.Enabled).
-		Scan(&c.UpdatedAt)
+		Scan(&c.UpdatedAt, &c.ProtocolEra, &c.ProbeStatus, &c.ProbeCheckedAt, &c.ProbeError,
+			&c.ProbeDetail, &c.SupportedVersions, &c.ServerName, &c.ServerVersion)
 	if noRows(err) {
 		return false, nil
 	}
@@ -91,6 +97,23 @@ func (p *Postgres) GetMCPConnectionBySlug(ctx context.Context, userID uuid.UUID,
 // DeleteMCPConnection deletes an owner-scoped MCP connection and its dependent configuration.
 func (p *Postgres) DeleteMCPConnection(ctx context.Context, userID, id uuid.UUID) (bool, error) {
 	tag, err := p.pool.Exec(ctx, `DELETE FROM vault.mcp_connections WHERE user_id=$1 AND id=$2`, userID, id)
+	return tag.RowsAffected() > 0, err
+}
+
+// RecordMCPProtocolProbe records probe-owned fields without overwriting editable connection config.
+func (p *Postgres) RecordMCPProtocolProbe(ctx context.Context, result *MCPProtocolProbeResult) (bool, error) {
+	if result == nil {
+		return false, ErrInvalidMCPProtocolProbe
+	}
+	if err := ValidateMCPProtocolProbe(*result); err != nil {
+		return false, err
+	}
+	tag, err := p.pool.Exec(ctx, `
+		UPDATE vault.mcp_connections SET protocol_era=$4, probe_status=$5, probe_checked_at=$6,
+			probe_error=$7, probe_detail=$8, supported_versions=$9, server_name=$10, server_version=$11
+		WHERE id=$1 AND user_id=$2 AND tenant_id=$3`, result.ConnectionID, result.UserID,
+		result.TenantID, result.ProtocolEra, result.Status, result.CheckedAt, result.Error,
+		result.Detail, nonNilStrings(result.SupportedVersions), result.ServerName, result.ServerVersion)
 	return tag.RowsAffected() > 0, err
 }
 

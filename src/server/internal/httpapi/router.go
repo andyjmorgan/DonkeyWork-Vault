@@ -72,6 +72,7 @@ func (s *Server) router() chi.Router {
 				r.Post("/mcp/connections", s.handleUpsertMCPConnection)
 				r.Put("/mcp/connections/{id}", s.handleUpsertMCPConnection)
 				r.Delete("/mcp/connections/{id}", s.handleDeleteMCPConnection)
+				r.Post("/mcp/connections/{connectionID}/probe", s.handleMCPProtocolProbe)
 				r.Get("/mcp/connections/{connectionID}/grants", s.handleListMCPGrants)
 				r.Post("/mcp/connections/{connectionID}/grants", s.handleCreateMCPGrant)
 				r.Delete("/mcp/grants/{id}", s.handleDeleteMCPGrant)

@@ -41,7 +41,12 @@ export interface NewAccessKey { name: string; description?: string; scopes: Acce
 export interface MCPConnection {
   id: string; slug: string; name: string; description?: string; upstreamUrl: string
   authMode: 'none' | 'headers' | 'oauth'; auditMode: 'metadata' | 'redacted'
-  protocolVersion: string; enabled: boolean; createdAt: string; updatedAt?: string
+  protocolVersion: string
+  protocolEra: 'unknown' | 'modern_2026_07' | 'legacy_session_likely' | 'incompatible'
+  probeStatus: 'not_checked' | 'compatible' | 'incompatible' | 'auth_required' | 'unreachable' | 'error'
+  probeCheckedAt?: string; probeError?: string; probeDetail?: string; supportedVersions: string[]
+  serverName?: string; serverVersion?: string
+  enabled: boolean; createdAt: string; updatedAt?: string
 }
 export interface MCPGrant { id: string; connectionId: string; accessKeyId: string; createdAt: string }
 export interface MCPHeaderBinding { id: string; connectionId: string; credentialId: string; headerName?: string; createdAt: string }
@@ -79,6 +84,8 @@ export const api = {
   saveMcpConnection: (c: Partial<MCPConnection>) =>
     authed(c.id ? `/mcp/connections/${c.id}` : '/mcp/connections', { method: c.id ? 'PUT' : 'POST', body: JSON.stringify(c) }) as Promise<MCPConnection>,
   deleteMcpConnection: (id: string) => authed(`/mcp/connections/${id}`, { method: 'DELETE' }),
+  probeMcpConnection: (id: string) =>
+    authed(`/mcp/connections/${id}/probe`, { method: 'POST' }) as Promise<MCPConnection>,
   mcpGrants: (connectionId: string) => authed(`/mcp/connections/${connectionId}/grants`) as Promise<MCPGrant[]>,
   createMcpGrant: (connectionId: string, accessKeyId: string) =>
     authed(`/mcp/connections/${connectionId}/grants`, { method: 'POST', body: JSON.stringify({ accessKeyId }) }) as Promise<MCPGrant>,

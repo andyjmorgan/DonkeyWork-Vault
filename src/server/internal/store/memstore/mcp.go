@@ -28,6 +28,12 @@ func (m *Mem) InsertMCPConnection(_ context.Context, c *store.MCPConnection) err
 		return err
 	}
 	setIdentity(&c.ID, &c.CreatedAt)
+	if c.ProtocolEra == "" {
+		c.ProtocolEra = "unknown"
+	}
+	if c.ProbeStatus == "" {
+		c.ProbeStatus = "not_checked"
+	}
 	m.mcpConnections[c.ID] = *c
 	return nil
 }
@@ -45,6 +51,14 @@ func (m *Mem) UpdateMCPConnection(_ context.Context, c *store.MCPConnection) (bo
 	}
 	now := time.Now().UTC()
 	c.UpdatedAt = &now
+	c.ProtocolEra = existing.ProtocolEra
+	c.ProbeStatus = existing.ProbeStatus
+	c.ProbeCheckedAt = existing.ProbeCheckedAt
+	c.ProbeError = existing.ProbeError
+	c.ProbeDetail = existing.ProbeDetail
+	c.SupportedVersions = append([]string(nil), existing.SupportedVersions...)
+	c.ServerName = existing.ServerName
+	c.ServerVersion = existing.ServerVersion
 	m.mcpConnections[c.ID] = *c
 	return true, nil
 }
@@ -136,6 +150,35 @@ func (m *Mem) DeleteMCPConnection(_ context.Context, userID, id uuid.UUID) (bool
 			delete(m.mcpOAuthStates, stateValue)
 		}
 	}
+	return true, nil
+}
+
+// RecordMCPProtocolProbe records probe-owned fields without overwriting editable connection config.
+func (m *Mem) RecordMCPProtocolProbe(_ context.Context, result *store.MCPProtocolProbeResult) (bool, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return false, err
+	}
+	if result == nil {
+		return false, store.ErrInvalidMCPProtocolProbe
+	}
+	if err := store.ValidateMCPProtocolProbe(*result); err != nil {
+		return false, err
+	}
+	connection, ok := m.mcpConnections[result.ConnectionID]
+	if !ok || connection.UserID != result.UserID || connection.TenantID != result.TenantID {
+		return false, nil
+	}
+	connection.ProtocolEra = result.ProtocolEra
+	connection.ProbeStatus = result.Status
+	connection.ProbeCheckedAt = &result.CheckedAt
+	connection.ProbeError = result.Error
+	connection.ProbeDetail = result.Detail
+	connection.SupportedVersions = append([]string(nil), result.SupportedVersions...)
+	connection.ServerName = result.ServerName
+	connection.ServerVersion = result.ServerVersion
+	m.mcpConnections[connection.ID] = connection
 	return true, nil
 }
 

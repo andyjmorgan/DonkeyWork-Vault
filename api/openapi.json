@@ -920,6 +920,9 @@
       "put": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"MCP connection"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]},
       "delete": {"parameters":[{"in":"path","name":"id","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"204":{"description":"Deleted"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
     },
+    "/api/v1/mcp/connections/{connectionID}/probe": {
+      "post": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"MCP protocol probe result, including compatibility or authorization status"},"404":{"description":"Not found"},"503":{"description":"Probe persistence unavailable"}},"tags":["DonkeyWork Vault"]}
+    },
     "/api/v1/mcp/connections/{connectionID}/grants": {
       "get": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"responses":{"200":{"description":"Connection grants"}},"tags":["DonkeyWork Vault"]},
       "post": {"parameters":[{"in":"path","name":"connectionID","required":true,"schema":{"type":"string","format":"uuid"}}],"requestBody":{"required":true,"content":{"application/json":{"schema":{"type":"object"}}}},"responses":{"200":{"description":"Grant created"},"404":{"description":"Not found"}},"tags":["DonkeyWork Vault"]}
