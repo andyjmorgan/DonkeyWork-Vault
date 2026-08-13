@@ -44,9 +44,9 @@ func TestMCPServiceConnectionValidationAndLifecycle(t *testing.T) {
 			t.Fatalf("invalid %d accepted", i)
 		}
 	}
-	created, err := service.UpsertConnection(ctx, MCPConnectionParams{Name: "Example", Slug: "EXAMPLE", UpstreamURL: "https://example.com/mcp", AuthMode: "none", Enabled: true})
+	created, err := service.UpsertConnection(ctx, MCPConnectionParams{Name: "Example", Slug: "EXAMPLE", UpstreamURL: " \thttps://example.com/mcp\n", AuthMode: "none", Enabled: true})
 	if err != nil || created == nil || created.AuditMode != "redacted" ||
-		created.UpstreamProtocolMode != "modern_2026_07" || created.LegacyProtocolVersion != "2025-06-18" {
+		created.UpstreamURL != "https://example.com/mcp" || created.UpstreamProtocolMode != "modern_2026_07" || created.LegacyProtocolVersion != "2025-06-18" {
 		t.Fatalf("create: %#v %v", created, err)
 	}
 	if rows, _ := service.ListConnections(ctx); len(rows) != 1 {
