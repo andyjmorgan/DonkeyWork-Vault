@@ -52,7 +52,7 @@ func connectMCPOAuth(connectionID uuid.UUID) error {
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 
 	authorizeURL, err := beginMCPOAuth(connectionID, redirectURI)
 	if err != nil {
@@ -75,7 +75,7 @@ func connectMCPOAuth(connectionID uuid.UUID) error {
 			}
 		}
 	}()
-	defer server.Close()
+	defer func() { _ = server.Close() }()
 
 	fmt.Fprintf(os.Stderr, "Open this URL to authorize the MCP connection:\n%s\n", authorizeURL)
 	if err := mcpOAuthBrowserOpen(authorizeURL); err != nil {
@@ -123,7 +123,7 @@ func beginMCPOAuth(connectionID uuid.UUID, redirectURI string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer response.Body.Close()
+	defer func() { _ = response.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(response.Body, 1<<20))
 	if err != nil {
 		return "", err
@@ -141,6 +141,9 @@ func beginMCPOAuth(connectionID uuid.UUID, redirectURI string) (string, error) {
 }
 
 func mcpOAuthCallbackHandler(vaultBase, wantState string, result chan<- error) http.Handler {
+	vaultURL, parseErr := url.Parse(vaultBase)
+	validVaultBase := parseErr == nil && vaultURL.User == nil && vaultURL.Fragment == "" &&
+		(vaultURL.Scheme == "https" || (vaultURL.Scheme == "http" && (vaultURL.Hostname() == "127.0.0.1" || vaultURL.Hostname() == "localhost")))
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/oauth/callback" {
 			http.NotFound(w, r)
@@ -150,15 +153,23 @@ func mcpOAuthCallbackHandler(vaultBase, wantState string, result chan<- error) h
 			http.Error(w, "OAuth state mismatch", http.StatusBadRequest)
 			return
 		}
-		callbackURL := strings.TrimRight(vaultBase, "/") + "/api/mcp/oauth/callback?" + r.URL.RawQuery
-		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, callbackURL, nil)
+		if !validVaultBase {
+			http.Error(w, "Invalid Vault address.", http.StatusBadGateway)
+			select {
+			case result <- fmt.Errorf("invalid Vault callback base URL"):
+			default:
+			}
+			return
+		}
+		callbackURL := strings.TrimRight(vaultURL.String(), "/") + "/api/mcp/oauth/callback?" + r.URL.RawQuery
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodGet, callbackURL, nil) //nolint:gosec // vaultURL was restricted to HTTPS or loopback HTTP above.
 		if err == nil {
 			var response *http.Response
 			client := &http.Client{
 				Timeout:       20 * time.Second,
 				CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
 			}
-			response, err = client.Do(req)
+			response, err = client.Do(req) //nolint:gosec // request host is the validated configured Vault address.
 			if response != nil {
 				_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1<<20))
 				_ = response.Body.Close()

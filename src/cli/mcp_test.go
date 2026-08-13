@@ -148,7 +148,10 @@ func TestConnectMCPOAuthSuccessAndTimeout(t *testing.T) {
 		parsed, _ := url.Parse(target)
 		redirect, _ := url.QueryUnescape(parsed.Query().Get("redirect_uri"))
 		go func() {
-			_, _ = http.Get(redirect + "?code=code&state=" + callbackState)
+			response, requestErr := http.Get(redirect + "?code=code&state=" + callbackState)
+			if requestErr == nil {
+				_ = response.Body.Close()
+			}
 		}()
 		return nil
 	}
@@ -170,7 +173,7 @@ func TestListenMCPOAuthCallbackAllPortsBusy(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	port := listener.Addr().(*net.TCPAddr).Port
 	mcpOAuthCallbackPorts = []int{port}
 	if _, _, err := listenMCPOAuthCallback(); err == nil {
@@ -178,7 +181,7 @@ func TestListenMCPOAuthCallbackAllPortsBusy(t *testing.T) {
 	}
 }
 
-func TestOpenBrowserStartsPlatformLauncher(t *testing.T) {
+func TestOpenBrowserStartsPlatformLauncher(_ *testing.T) {
 	if os.Getenv("GO_WANT_HELPER_PROCESS") == "1" {
 		os.Exit(0)
 	}
@@ -191,7 +194,7 @@ func TestListenMCPOAuthCallback(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	parsed, err := url.Parse(redirect)
 	if err != nil || parsed.Hostname() != "127.0.0.1" || parsed.Path != "/oauth/callback" {
 		t.Fatalf("redirect=%q err=%v", redirect, err)
