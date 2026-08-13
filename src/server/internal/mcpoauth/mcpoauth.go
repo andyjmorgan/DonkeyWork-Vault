@@ -680,7 +680,7 @@ func (s *Service) register(ctx context.Context, discovery *Discovery, redirectUR
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(payload))
 	if err != nil {
-		return nil, err
+		return nil, err //coverage:ignore endpoint and method were validated before constructing this request
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -838,7 +838,7 @@ func (s *Service) getJSON(ctx context.Context, endpoint string, target interface
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return err
+		return err //coverage:ignore endpoint and method were validated before constructing this request
 	}
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("User-Agent", "donkeywork-vault")

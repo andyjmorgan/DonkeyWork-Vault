@@ -25,6 +25,10 @@ func TestStoreRepositoryRoundTrip(t *testing.T) {
 	if err := memory.InsertMCPConnection(ctx, connection); err != nil {
 		t.Fatal(err)
 	}
+	status, err := repository.GetStatus(ctx, userID, connectionID)
+	if err != nil || status == nil || status.Configured || status.ConnectionID != connectionID {
+		t.Fatalf("unconfigured status=%+v err=%v", status, err)
+	}
 	issuer := "https://idp.example.com"
 	client := &store.MCPOAuthAuthorization{
 		UserID: userID, TenantID: tenantID, ConnectionID: connectionID, IssuerURL: &issuer,
@@ -146,6 +150,10 @@ func TestStoreRepositoryClientConfiguration(t *testing.T) {
 	if err := memory.InsertMCPConnection(ctx, connection); err != nil {
 		t.Fatal(err)
 	}
+	unconfigured, err := repository.GetConnectionOAuth(ctx, userID, connectionID)
+	if err != nil || unconfigured == nil || unconfigured.Resource != connection.UpstreamURL || len(unconfigured.ClientIDCipher) != 0 {
+		t.Fatalf("unconfigured connection=%+v err=%v", unconfigured, err)
+	}
 	configuration := &ClientConfiguration{
 		ConnectionID: connectionID, UserID: userID, TenantID: tenantID,
 		Issuer: "https://idp.example.com", ClientIDCipher: []byte("client"), ClientSecretCipher: []byte("secret"), Scopes: []string{"read"},
@@ -188,6 +196,10 @@ func TestStoreRepositoryErrors(t *testing.T) {
 		t.Fatal("expected connection lookup error")
 	}
 	memory.FailNext = errors.New("database failed")
+	if _, err := repository.GetStatus(ctx, userID, connectionID); err == nil {
+		t.Fatal("expected status connection lookup error")
+	}
+	memory.FailNext = errors.New("database failed")
 	if err := repository.SaveClientConfiguration(ctx, &ClientConfiguration{UserID: userID, ConnectionID: connectionID}); err == nil {
 		t.Fatal("expected client connection lookup error")
 	}
@@ -196,8 +208,16 @@ func TestStoreRepositoryErrors(t *testing.T) {
 		t.Fatal(err)
 	}
 	memory.FailNext = errors.New("database failed")
+	if err := repository.SaveClientConfiguration(ctx, &ClientConfiguration{UserID: userID, TenantID: tenantID, ConnectionID: connectionID}); err == nil {
+		t.Fatal("expected client authorization lookup error")
+	}
+	memory.FailNext = errors.New("database failed")
 	if _, err := repository.GetConnectionOAuth(ctx, userID, connectionID); err == nil {
 		t.Fatal("expected authorization lookup error")
+	}
+	memory.FailNext = errors.New("database failed")
+	if _, err := repository.GetStatus(ctx, userID, connectionID); err == nil {
+		t.Fatal("expected status authorization lookup error")
 	}
 
 	memory.FailNext = errors.New("database failed")
@@ -207,6 +227,13 @@ func TestStoreRepositoryErrors(t *testing.T) {
 	memory.FailNext = errors.New("database failed")
 	if _, err := repository.ClaimState(ctx, "state"); err == nil {
 		t.Fatal("expected state claim error")
+	}
+	memory.FailNext = errors.New("database failed")
+	if _, err := repository.GetState(ctx, "state"); err == nil {
+		t.Fatal("expected state read error")
+	}
+	if state, err := repository.GetState(ctx, "missing"); err != nil || state != nil {
+		t.Fatalf("missing state=%+v err=%v", state, err)
 	}
 	memory.FailNext = errors.New("database failed")
 	if _, err := repository.GetAuthorization(ctx, userID, connectionID); err == nil {
