@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -588,4 +589,19 @@ func (p *Postgres) QueryMCPAudit(ctx context.Context, f MCPAuditFilter) ([]MCPAu
 		out = append(out, *m)
 	}
 	return out, total, rows.Err()
+}
+
+// DeleteMCPAuditOlderThan deletes a bounded batch of old exchanges and cascades their messages.
+func (p *Postgres) DeleteMCPAuditOlderThan(ctx context.Context, cutoff time.Time, batchSize int) (int64, error) {
+	if batchSize < 1 {
+		return 0, nil
+	}
+	tag, err := p.pool.Exec(ctx, `
+		WITH candidates AS (
+			SELECT id FROM vault.mcp_audit_exchanges
+			WHERE completed_at IS NOT NULL AND completed_at < $1
+			ORDER BY completed_at, id LIMIT $2 FOR UPDATE SKIP LOCKED)
+		DELETE FROM vault.mcp_audit_exchanges AS exchange
+		USING candidates WHERE exchange.id = candidates.id`, cutoff, batchSize)
+	return tag.RowsAffected(), err
 }

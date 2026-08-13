@@ -1,8 +1,11 @@
 package audit
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log/slog"
+	"strings"
 	"testing"
 	"time"
 
@@ -120,15 +123,37 @@ func TestWriterCancelDrains(t *testing.T) {
 
 func TestRetentionSweep(t *testing.T) {
 	ms := memstore.New()
+	ctx := context.Background()
 	old := store.AuditEntry{CreatedAt: time.Now().AddDate(0, 0, -400), Headers: map[string]string{}}
 	recent := store.AuditEntry{CreatedAt: time.Now(), Headers: map[string]string{}}
-	_ = ms.InsertAuditBatch(context.Background(), []store.AuditEntry{old, old, recent})
-	r := NewRetention(ms, nil, RetentionOptions{RetentionDays: 180, BatchSize: 1})
-	if err := r.Sweep(context.Background()); err != nil {
+	_ = ms.InsertAuditBatch(ctx, []store.AuditEntry{old, old, recent})
+	userID, tenantID, connectionID, accessKeyID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	for _, startedAt := range []time.Time{old.CreatedAt, old.CreatedAt.Add(time.Second), recent.CreatedAt} {
+		completedAt := startedAt.Add(time.Second)
+		exchange := &store.MCPAuditExchange{ConnectionID: connectionID, UserID: userID, TenantID: tenantID, AccessKeyID: accessKeyID, StartedAt: startedAt, CompletedAt: &completedAt, Outcome: "complete"}
+		if err := ms.InsertMCPAuditExchange(ctx, exchange); err != nil {
+			t.Fatal(err)
+		}
+		message := &store.MCPAuditMessage{ExchangeID: exchange.ID, ConnectionID: connectionID, UserID: userID, TenantID: tenantID, SequenceNo: 1, ObservedAt: startedAt, Direction: "server_to_client", MessageKind: "result", PolicyDecision: "allowed", PayloadSHA256: []byte{1}}
+		if err := ms.InsertMCPAuditMessage(ctx, message); err != nil {
+			t.Fatal(err)
+		}
+	}
+	var logs bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	r := NewRetention(ms, logger, RetentionOptions{RetentionDays: 180, BatchSize: 1})
+	if err := r.Sweep(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if ms.AuditCount() != 1 {
 		t.Fatalf("expected 1 remaining, got %d", ms.AuditCount())
+	}
+	_, total, err := ms.QueryMCPAudit(ctx, store.MCPAuditFilter{UserID: userID, TenantID: tenantID, Limit: 10})
+	if err != nil || total != 1 {
+		t.Fatalf("expected recent MCP audit only, total=%d err=%v", total, err)
+	}
+	if output := logs.String(); !strings.Contains(output, "audit_count=2") || !strings.Contains(output, "mcp_exchange_count=2") {
+		t.Fatalf("retention counts not logged clearly: %s", output)
 	}
 }
 

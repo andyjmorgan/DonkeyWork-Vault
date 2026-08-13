@@ -59,6 +59,51 @@ func TestRetentionSweepError(t *testing.T) {
 	}
 }
 
+type failMCPRetentionStore struct {
+	store.Store
+	err error
+}
+
+func (s failMCPRetentionStore) DeleteMCPAuditOlderThan(context.Context, time.Time, int) (int64, error) {
+	return 0, s.err
+}
+
+func TestRetentionSweepMCPError(t *testing.T) {
+	boom := errors.New("MCP delete failed")
+	r := NewRetention(failMCPRetentionStore{Store: memstore.New(), err: boom}, nil, RetentionOptions{RetentionDays: 1, BatchSize: 10})
+	if err := r.Sweep(context.Background()); !errors.Is(err, boom) {
+		t.Fatalf("MCP sweep error = %v", err)
+	}
+}
+
+type cancelAfterAuditRetentionStore struct {
+	store.Store
+	cancel   context.CancelFunc
+	mcpCalls int
+}
+
+func (s *cancelAfterAuditRetentionStore) DeleteAuditOlderThan(context.Context, time.Time, int) (int64, error) {
+	s.cancel()
+	return 0, nil
+}
+
+func (s *cancelAfterAuditRetentionStore) DeleteMCPAuditOlderThan(context.Context, time.Time, int) (int64, error) {
+	s.mcpCalls++
+	return 0, nil
+}
+
+func TestRetentionSweepCancellationStopsBeforeMCP(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	wrapped := &cancelAfterAuditRetentionStore{Store: memstore.New(), cancel: cancel}
+	r := NewRetention(wrapped, nil, RetentionOptions{RetentionDays: 1, BatchSize: 10})
+	if err := r.Sweep(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if wrapped.mcpCalls != 0 {
+		t.Fatalf("MCP retention called %d times after cancellation", wrapped.mcpCalls)
+	}
+}
+
 // TestForwardedIPEmptyEntryAndInvalidPeer covers the empty-CIDR skip in NewForwardedIPResolver and
 // the invalid-peer early return in IsTrusted.
 func TestForwardedIPEmptyEntryAndInvalidPeer(t *testing.T) {

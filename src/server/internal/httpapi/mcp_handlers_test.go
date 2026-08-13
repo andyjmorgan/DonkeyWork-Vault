@@ -62,12 +62,47 @@ type failMCPResponseAuditStore struct {
 	inserts int
 }
 
+type completionContextStore struct {
+	store.Store
+	ctxErr error
+}
+
+func (s *completionContextStore) CompleteMCPAuditExchange(ctx context.Context, exchange *store.MCPAuditExchange) (bool, error) {
+	s.ctxErr = ctx.Err()
+	return s.Store.CompleteMCPAuditExchange(ctx, exchange)
+}
+
 func (s *failMCPResponseAuditStore) InsertMCPAuditMessage(ctx context.Context, message *store.MCPAuditMessage) error {
 	s.inserts++
 	if s.inserts > 1 {
 		return errors.New("response audit failed")
 	}
 	return s.Store.InsertMCPAuditMessage(ctx, message)
+}
+
+func TestCompleteMCPExchangeSurvivesRequestCancellation(t *testing.T) {
+	h := newHarness(t)
+	wrapped := &completionContextStore{Store: h.ms}
+	h.server.deps.MCP = service.NewMCPService(wrapped, h.cipher)
+	exchange := &store.MCPAuditExchange{
+		ConnectionID: uuid.New(), UserID: h.userID, TenantID: h.userID,
+		AccessKeyID: uuid.New(), StartedAt: time.Now().UTC(), Outcome: "started",
+	}
+	if err := h.ms.InsertMCPAuditExchange(t.Context(), exchange); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	h.server.completeMCPExchange(ctx, exchange, http.StatusOK, "complete", 42, "")
+	if wrapped.ctxErr != nil {
+		t.Fatalf("completion inherited request cancellation: %v", wrapped.ctxErr)
+	}
+	if exchange.CompletedAt == nil || exchange.StatusCode == nil || *exchange.StatusCode != http.StatusOK {
+		t.Fatalf("exchange not completed: %+v", exchange)
+	}
+	if deleted, err := h.ms.DeleteMCPAuditOlderThan(t.Context(), time.Now().UTC().Add(time.Minute), 1); err != nil || deleted != 1 {
+		t.Fatalf("completed exchange was not retention-eligible: deleted=%d err=%v", deleted, err)
+	}
 }
 
 func createMCPConnection(t *testing.T, h *harness, upstream string) mcpConnectionDTO {

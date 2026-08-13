@@ -289,6 +289,74 @@ func TestMCPStore(t *testing.T) {
 	}
 }
 
+func TestMCPAuditRetention(t *testing.T) {
+	u, tenant, connectionID, accessKeyID := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	now := time.Now().UTC()
+	if deleted, err := pg.DeleteMCPAuditOlderThan(ctx(), now, 0); err != nil || deleted != 0 {
+		t.Fatalf("zero batch: deleted=%d err=%v", deleted, err)
+	}
+	seed := func(startedAt time.Time) (*store.MCPAuditExchange, *store.MCPAuditMessage) {
+		t.Helper()
+		completedAt := startedAt.Add(time.Minute)
+		exchange := &store.MCPAuditExchange{ConnectionID: connectionID, UserID: u, TenantID: tenant,
+			AccessKeyID: accessKeyID, HTTPMethod: "POST", ProtocolVersion: "2026-07-28",
+			Outcome: "complete", StartedAt: startedAt, CompletedAt: &completedAt}
+		if err := pg.InsertMCPAuditExchange(ctx(), exchange); err != nil {
+			t.Fatal(err)
+		}
+		message := &store.MCPAuditMessage{ExchangeID: exchange.ID, ConnectionID: connectionID,
+			UserID: u, TenantID: tenant, SequenceNo: 1, ObservedAt: startedAt,
+			Direction: "client_to_server", MessageKind: "request", PolicyDecision: "allowed",
+			PayloadSHA256: []byte{1}, PayloadBytes: 1}
+		if err := pg.InsertMCPAuditMessage(ctx(), message); err != nil {
+			t.Fatal(err)
+		}
+		return exchange, message
+	}
+	oldest, oldestMessage := seed(now.Add(-72 * time.Hour))
+	middle, _ := seed(now.Add(-48 * time.Hour))
+	newest, _ := seed(now.Add(-time.Hour))
+	inFlight, _ := seed(now.Add(-96 * time.Hour))
+	if _, err := pg.Pool().Exec(ctx(), `UPDATE vault.mcp_audit_exchanges SET completed_at=NULL WHERE id=$1`, inFlight.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	deleted, err := pg.DeleteMCPAuditOlderThan(ctx(), now.Add(-24*time.Hour), 1)
+	if err != nil || deleted != 1 {
+		t.Fatalf("first batch: deleted=%d err=%v", deleted, err)
+	}
+	var parentCount, childCount int
+	if err := pg.Pool().QueryRow(ctx(), `SELECT count(*) FROM vault.mcp_audit_exchanges WHERE id=$1`, oldest.ID).Scan(&parentCount); err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.Pool().QueryRow(ctx(), `SELECT count(*) FROM vault.mcp_audit_messages WHERE id=$1`, oldestMessage.ID).Scan(&childCount); err != nil {
+		t.Fatal(err)
+	}
+	if parentCount != 0 || childCount != 0 {
+		t.Fatalf("cascade failed: parents=%d children=%d", parentCount, childCount)
+	}
+	rows, total, err := pg.QueryMCPAudit(ctx(), store.MCPAuditFilter{UserID: u, TenantID: tenant, Limit: 10})
+	if err != nil || total != 3 || len(rows) != 3 || rows[0].ExchangeID != newest.ID || rows[1].ExchangeID != middle.ID || rows[2].ExchangeID != inFlight.ID {
+		t.Fatalf("first retention result: rows=%+v total=%d err=%v", rows, total, err)
+	}
+	deleted, err = pg.DeleteMCPAuditOlderThan(ctx(), now.Add(-24*time.Hour), 10)
+	if err != nil || deleted != 1 {
+		t.Fatalf("second batch: deleted=%d err=%v", deleted, err)
+	}
+	rows, total, err = pg.QueryMCPAudit(ctx(), store.MCPAuditFilter{UserID: u, TenantID: tenant, Limit: 10})
+	if err != nil || total != 2 || rows[0].ExchangeID != newest.ID || rows[1].ExchangeID != inFlight.ID {
+		t.Fatalf("new exchange retention: rows=%+v total=%d err=%v", rows, total, err)
+	}
+	if deleted, err = pg.DeleteMCPAuditOlderThan(ctx(), now.Add(-24*time.Hour), 10); err != nil || deleted != 0 {
+		t.Fatalf("empty batch: deleted=%d err=%v", deleted, err)
+	}
+	var indexExists bool
+	if err := pg.Pool().QueryRow(ctx(), `SELECT EXISTS(
+		SELECT 1 FROM pg_indexes WHERE schemaname='vault' AND indexname='ix_mcp_audit_exchanges_completed_id')`).Scan(&indexExists); err != nil || !indexExists {
+		t.Fatalf("retention index: exists=%v err=%v", indexExists, err)
+	}
+}
+
 func TestMCPEvalRunLifecycle(t *testing.T) {
 	u, tenant := uuid.New(), uuid.New()
 	connection := &store.MCPConnection{UserID: u, TenantID: tenant, Slug: "eval-" + uuid.NewString(),
@@ -1038,6 +1106,9 @@ func TestQueryErrorPaths(t *testing.T) {
 	}
 	if _, _, err := bad.QueryMCPAudit(ctx(), store.MCPAuditFilter{}); err == nil {
 		t.Fatal("query MCP audit should error")
+	}
+	if _, err := bad.DeleteMCPAuditOlderThan(ctx(), time.Now(), 10); err == nil {
+		t.Fatal("delete MCP audit should error")
 	}
 	if _, _, err := bad.QueryAudit(ctx(), store.AuditFilter{UserID: u, TenantID: u, Limit: 1}); err == nil {
 		t.Fatal("query audit should error")

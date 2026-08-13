@@ -646,3 +646,41 @@ func (m *Mem) QueryMCPAudit(_ context.Context, f store.MCPAuditFilter) ([]store.
 	}
 	return matched[lo:hi], total, nil
 }
+
+// DeleteMCPAuditOlderThan deletes a bounded batch of old exchanges and their messages.
+func (m *Mem) DeleteMCPAuditOlderThan(_ context.Context, cutoff time.Time, batchSize int) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return 0, err
+	}
+	if batchSize < 1 {
+		return 0, nil
+	}
+	eligible := make([]store.MCPAuditExchange, 0)
+	for _, exchange := range m.mcpExchanges {
+		if exchange.CompletedAt != nil && exchange.CompletedAt.Before(cutoff) {
+			eligible = append(eligible, exchange)
+		}
+	}
+	sort.Slice(eligible, func(i, j int) bool {
+		if eligible[i].CompletedAt.Equal(*eligible[j].CompletedAt) {
+			return eligible[i].ID.String() < eligible[j].ID.String()
+		}
+		return eligible[i].CompletedAt.Before(*eligible[j].CompletedAt)
+	})
+	if len(eligible) > batchSize {
+		eligible = eligible[:batchSize]
+	}
+	deleted := make(map[uuid.UUID]struct{}, len(eligible))
+	for _, exchange := range eligible {
+		deleted[exchange.ID] = struct{}{}
+		delete(m.mcpExchanges, exchange.ID)
+	}
+	for messageID, message := range m.mcpMessages {
+		if _, ok := deleted[message.ExchangeID]; ok {
+			delete(m.mcpMessages, messageID)
+		}
+	}
+	return int64(len(eligible)), nil
+}
