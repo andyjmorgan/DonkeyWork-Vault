@@ -2,6 +2,7 @@ package mcpoauth
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
@@ -15,6 +16,8 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+
+	"donkeywork.dev/vault-server/internal/contracts"
 )
 
 type memoryRepository struct {
@@ -60,9 +63,13 @@ func (r *memoryRepository) SaveClientConfiguration(_ context.Context, configurat
 	if r.saveErr != nil {
 		return r.saveErr
 	}
+	resource := ""
+	if r.config != nil {
+		resource = r.config.Resource
+	}
 	r.config = &ConnectionOAuth{
 		ConnectionID: configuration.ConnectionID, UserID: configuration.UserID, TenantID: configuration.TenantID,
-		Issuer: configuration.Issuer, ClientIDCipher: configuration.ClientIDCipher,
+		Resource: resource, Issuer: configuration.Issuer, ClientIDCipher: configuration.ClientIDCipher,
 		ClientSecretCipher: configuration.ClientSecretCipher, Scopes: configuration.Scopes,
 	}
 	r.authorization = nil
@@ -226,17 +233,19 @@ func (c *plainCipher) DecryptToString(value []byte) (string, error) {
 }
 
 type oauthServer struct {
-	server       *httptest.Server
-	resource     string
-	issuer       string
-	tokenStatus  int
-	tokenBody    string
-	metadataCode int
-	tokenCalls   atomic.Int32
-	lastForm     url.Values
-	basicUser    string
-	basicSecret  string
-	mu           sync.Mutex
+	server        *httptest.Server
+	resource      string
+	issuer        string
+	tokenStatus   int
+	tokenBody     string
+	metadataCode  int
+	tokenCalls    atomic.Int32
+	registerCalls atomic.Int32
+	lastForm      url.Values
+	registration  registrationRequest
+	basicUser     string
+	basicSecret   string
+	mu            sync.Mutex
 }
 
 func newOAuthServer(t *testing.T) *oauthServer {
@@ -250,7 +259,12 @@ func newOAuthServer(t *testing.T) *oauthServer {
 			_, _ = io.WriteString(w, `{"resource":`+quote(f.resource)+`,"authorization_servers":[`+quote(f.issuer)+`],"scopes_supported":["read","write"]}`)
 		case "/.well-known/oauth-authorization-server":
 			w.WriteHeader(f.metadataCode)
-			_, _ = io.WriteString(w, `{"issuer":`+quote(f.issuer)+`,"authorization_endpoint":`+quote(f.server.URL+"/authorize")+`,"token_endpoint":`+quote(f.server.URL+"/token")+`,"token_endpoint_auth_methods_supported":["client_secret_basic"],"code_challenge_methods_supported":["S256"]}`)
+			_, _ = io.WriteString(w, `{"issuer":`+quote(f.issuer)+`,"authorization_endpoint":`+quote(f.server.URL+"/authorize")+`,"token_endpoint":`+quote(f.server.URL+"/token")+`,"registration_endpoint":`+quote(f.server.URL+"/register")+`,"token_endpoint_auth_methods_supported":["client_secret_basic","none"],"code_challenge_methods_supported":["S256"],"scopes_supported":["read","write"]}`)
+		case "/register":
+			f.registerCalls.Add(1)
+			_ = json.NewDecoder(r.Body).Decode(&f.registration)
+			w.WriteHeader(http.StatusCreated)
+			_, _ = io.WriteString(w, `{"client_id":"dynamic-client","redirect_uris":[`+quote(f.registration.RedirectURIs[0])+`],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"none"}`)
 		case "/token":
 			f.tokenCalls.Add(1)
 			_ = r.ParseForm()
@@ -372,6 +386,200 @@ func TestAuthorizationFlowAndLiveToken(t *testing.T) {
 		t.Fatalf("live token = %+v, token calls = %d", live, upstream.tokenCalls.Load())
 	}
 }
+
+func TestBeginWithDynamicRegistration(t *testing.T) {
+	upstream := newOAuthServer(t)
+	connectionID, userID, tenantID := uuid.New(), uuid.New(), uuid.New()
+	repository := &memoryRepository{config: &ConnectionOAuth{
+		ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: upstream.resource,
+	}}
+	service := NewService(repository, &plainCipher{}, upstream.server.Client())
+	ctx := contracts.WithCaller(context.Background(), contracts.Caller{UserID: userID, TenantID: tenantID})
+	redirectURI := "https://vault.example/api/mcp/oauth/callback"
+
+	begin, err := service.BeginWithDynamicRegistration(ctx, connectionID, redirectURI)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if begin.AuthorizationURL == "" || upstream.registerCalls.Load() != 1 {
+		t.Fatalf("begin=%+v registrations=%d", begin, upstream.registerCalls.Load())
+	}
+	if string(repository.config.ClientIDCipher) != "encrypted:dynamic-client" || repository.config.Issuer != upstream.issuer || len(repository.config.ClientSecretCipher) != 0 ||
+		!slices.Equal(repository.config.Scopes, []string{"read", "write"}) {
+		t.Fatalf("dynamic configuration: %+v", repository.config)
+	}
+	if upstream.registration.ClientName != "DonkeyWork Vault MCP Gateway" || upstream.registration.ApplicationType != "web" ||
+		upstream.registration.TokenEndpointAuthMethod != "none" || !slices.Equal(upstream.registration.RedirectURIs, []string{redirectURI}) || upstream.registration.Scope != "read write" {
+		t.Fatalf("registration request: %+v", upstream.registration)
+	}
+	if _, err := service.BeginWithDynamicRegistration(ctx, connectionID, redirectURI); err != nil {
+		t.Fatal(err)
+	}
+	if upstream.registerCalls.Load() != 1 {
+		t.Fatalf("existing dynamic client registered again: %d", upstream.registerCalls.Load())
+	}
+}
+
+func TestDynamicRegistrationValidation(t *testing.T) {
+	redirectURI := "https://vault.example/api/mcp/oauth/callback"
+	discovery := &Discovery{AuthorizationServer: AuthorizationServerMetadata{
+		RegistrationEndpoint: "https://issuer.example/register", TokenAuthMethods: []string{"none"},
+	}}
+	responses := []struct {
+		name   string
+		status int
+		body   string
+	}{
+		{"http error", http.StatusBadRequest, `{}`},
+		{"invalid JSON", http.StatusCreated, `{`},
+		{"missing client", http.StatusCreated, `{"redirect_uris":["https://vault.example/api/mcp/oauth/callback"],"grant_types":["authorization_code"],"response_types":["code"],"token_endpoint_auth_method":"none"}`},
+		{"auth method", http.StatusCreated, `{"client_id":"c","redirect_uris":["https://vault.example/api/mcp/oauth/callback"],"grant_types":["authorization_code"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post"}`},
+		{"redirect", http.StatusCreated, `{"client_id":"c","redirect_uris":["https://other.example/callback"],"grant_types":["authorization_code"],"response_types":["code"],"token_endpoint_auth_method":"none"}`},
+		{"flow", http.StatusCreated, `{"client_id":"c","redirect_uris":["https://vault.example/api/mcp/oauth/callback"],"grant_types":["refresh_token"],"response_types":["token"],"token_endpoint_auth_method":"none"}`},
+	}
+	for _, test := range responses {
+		t.Run(test.name, func(t *testing.T) {
+			client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+				return &http.Response{StatusCode: test.status, Body: io.NopCloser(strings.NewReader(test.body)), Header: make(http.Header)}, nil
+			})}
+			service := NewService(&memoryRepository{}, &plainCipher{}, client)
+			if _, err := service.register(context.Background(), discovery, redirectURI); err == nil {
+				t.Fatal("expected registration error")
+			}
+		})
+	}
+	missing := &Discovery{AuthorizationServer: AuthorizationServerMetadata{TokenAuthMethods: []string{"none"}}}
+	if _, err := NewService(&memoryRepository{}, &plainCipher{}, nil).register(context.Background(), missing, redirectURI); err == nil {
+		t.Fatal("missing registration endpoint accepted")
+	}
+	if _, err := chooseRegistrationAuthMethod([]string{"private_key_jwt"}); err == nil {
+		t.Fatal("unsupported registration auth method accepted")
+	}
+	if method, err := chooseRegistrationAuthMethod(nil); err != nil || method != "none" {
+		t.Fatalf("default registration method = %q, %v", method, err)
+	}
+	if method, err := chooseRegistrationAuthMethod([]string{"client_secret_post"}); err != nil || method != "client_secret_post" {
+		t.Fatalf("confidential registration method = %q, %v", method, err)
+	}
+	if _, err := NewService(&memoryRepository{}, &plainCipher{}, nil).BeginWithDynamicRegistration(context.Background(), uuid.New(), "http://vault.example/callback"); err == nil {
+		t.Fatal("invalid registration redirect accepted")
+	}
+	invalidEndpoint := &Discovery{AuthorizationServer: AuthorizationServerMetadata{RegistrationEndpoint: "http://issuer.example/register", TokenAuthMethods: []string{"none"}}}
+	if _, err := NewService(&memoryRepository{}, &plainCipher{}, nil).register(context.Background(), invalidEndpoint, redirectURI); err == nil {
+		t.Fatal("invalid registration endpoint accepted")
+	}
+	failedClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) { return nil, errors.New("network failed") })}
+	if _, err := NewService(&memoryRepository{}, &plainCipher{}, failedClient).register(context.Background(), discovery, redirectURI); err == nil {
+		t.Fatal("registration network error ignored")
+	}
+	largeClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(strings.Repeat("x", maxMetadataBytes+1))), Header: make(http.Header)}, nil
+	})}
+	if _, err := NewService(&memoryRepository{}, &plainCipher{}, largeClient).register(context.Background(), discovery, redirectURI); err == nil {
+		t.Fatal("oversized registration response accepted")
+	}
+	readErrorClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(errorReader{}), Header: make(http.Header)}, nil
+	})}
+	if _, err := NewService(&memoryRepository{}, &plainCipher{}, readErrorClient).register(context.Background(), discovery, redirectURI); err == nil {
+		t.Fatal("registration response read error ignored")
+	}
+	confidential := &Discovery{AuthorizationServer: AuthorizationServerMetadata{RegistrationEndpoint: "https://issuer.example/register", TokenAuthMethods: []string{"client_secret_post"}}}
+	missingSecretClient := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"client_id":"c","redirect_uris":["` + redirectURI + `"],"grant_types":["authorization_code"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post"}`
+		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	if _, err := NewService(&memoryRepository{}, &plainCipher{}, missingSecretClient).register(context.Background(), confidential, redirectURI); err == nil {
+		t.Fatal("confidential registration without secret accepted")
+	}
+}
+
+func TestDynamicRegistrationConfidentialClient(t *testing.T) {
+	redirectURI := "https://vault.example/api/mcp/oauth/callback"
+	discovery := &Discovery{AuthorizationServer: AuthorizationServerMetadata{
+		RegistrationEndpoint: "https://issuer.example/register", TokenAuthMethods: []string{"client_secret_post"},
+	}}
+	client := &http.Client{Transport: roundTripFunc(func(*http.Request) (*http.Response, error) {
+		body := `{"client_id":"client","client_secret":"secret","redirect_uris":["` + redirectURI + `"],"grant_types":["authorization_code","refresh_token"],"response_types":["code"],"token_endpoint_auth_method":"client_secret_post"}`
+		return &http.Response{StatusCode: http.StatusCreated, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+	})}
+	registered, err := NewService(&memoryRepository{}, &plainCipher{}, client).register(context.Background(), discovery, redirectURI)
+	if err != nil || registered.ClientSecret != "secret" {
+		t.Fatalf("registered=%+v err=%v", registered, err)
+	}
+}
+
+func TestDynamicRegistrationProvisioningErrors(t *testing.T) {
+	connectionID, userID, tenantID := uuid.New(), uuid.New(), uuid.New()
+	ctx := contracts.WithCaller(context.Background(), contracts.Caller{UserID: userID, TenantID: tenantID})
+	redirectURI := "https://vault.example/api/mcp/oauth/callback"
+	repository := &memoryRepository{}
+	service := NewService(repository, &plainCipher{}, nil)
+	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
+		t.Fatal("missing connection accepted")
+	}
+	repository.err = errors.New("database failed")
+	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
+		t.Fatal("repository error ignored")
+	}
+	repository.err = nil
+	repository.config = &ConnectionOAuth{ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: "http://example.com/mcp"}
+	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
+		t.Fatal("discovery error ignored")
+	}
+
+	upstream := newOAuthServer(t)
+	repository.config.Resource = upstream.resource
+	service = NewService(repository, &plainCipher{encryptErr: errors.New("encrypt failed"), encryptAt: 1}, upstream.server.Client())
+	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
+		t.Fatal("client ID encryption error ignored")
+	}
+	repository.saveErr = errors.New("save failed")
+	service = NewService(repository, &plainCipher{}, upstream.server.Client())
+	if err := service.ensureClient(ctx, connectionID, redirectURI); err == nil {
+		t.Fatal("client configuration save error ignored")
+	}
+}
+
+func TestDynamicRegistrationConcurrentReuse(t *testing.T) {
+	upstream := newOAuthServer(t)
+	connectionID, userID, tenantID := uuid.New(), uuid.New(), uuid.New()
+	repository := &memoryRepository{config: &ConnectionOAuth{
+		ConnectionID: connectionID, UserID: userID, TenantID: tenantID, Resource: upstream.resource,
+	}}
+	ctx := contracts.WithCaller(context.Background(), contracts.Caller{UserID: userID, TenantID: tenantID})
+	services := []*Service{
+		NewService(repository, &plainCipher{}, upstream.server.Client()),
+		NewService(repository, &plainCipher{}, upstream.server.Client()),
+	}
+	errorsFound := make(chan error, len(services))
+	var wg sync.WaitGroup
+	for _, service := range services {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			errorsFound <- service.ensureClient(ctx, connectionID, "https://vault.example/api/mcp/oauth/callback")
+		}()
+	}
+	wg.Wait()
+	close(errorsFound)
+	for err := range errorsFound {
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if upstream.registerCalls.Load() != 1 {
+		t.Fatalf("concurrent registration calls = %d", upstream.registerCalls.Load())
+	}
+}
+
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(request *http.Request) (*http.Response, error) { return f(request) }
+
+type errorReader struct{}
+
+func (errorReader) Read([]byte) (int, error) { return 0, errors.New("read failed") }
 
 func TestBeginSupersedesEarlierState(t *testing.T) {
 	service, repository, upstream, connectionID := newFixture(t)
