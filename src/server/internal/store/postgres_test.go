@@ -208,13 +208,12 @@ func TestMCPStore(t *testing.T) {
 
 	issuer := "https://auth.example"
 	oauth := &store.MCPOAuthAuthorization{UserID: u, TenantID: tenant, ConnectionID: connection.ID,
-		IssuerURL: &issuer, TokenAuthMethod: "client_secret_post", ClientIDCipher: []byte{1},
-		ClientSecretCipher: []byte{2}, AccessTokenCipher: []byte{3}, RefreshTokenCipher: []byte{4},
+		IssuerURL: &issuer, TokenAuthMethod: "none", ClientIDCipher: []byte{1},
 		Scopes: []string{"mcp"}, ExpiresAt: &expires}
 	if err := pg.InsertMCPOAuthAuthorization(ctx(), oauth); err != nil {
 		t.Fatal(err)
 	}
-	if got, err := pg.GetMCPOAuthAuthorization(ctx(), u, connection.ID); err != nil || got == nil || got.TokenAuthMethod != "client_secret_post" {
+	if got, err := pg.GetMCPOAuthAuthorization(ctx(), u, connection.ID); err != nil || got == nil || got.TokenAuthMethod != "none" || got.ClientSecretCipher == nil || got.AccessTokenCipher == nil || got.RefreshTokenCipher == nil {
 		t.Fatalf("get OAuth: %+v %v", got, err)
 	}
 	oauth.AccessTokenCipher = []byte{9}
