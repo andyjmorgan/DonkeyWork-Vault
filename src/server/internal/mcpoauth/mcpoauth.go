@@ -99,10 +99,23 @@ type Authorization struct {
 	LastRefreshedAt       time.Time
 }
 
+// Status is the secret-free OAuth state for one owner-scoped MCP connection.
+type Status struct {
+	ConnectionID    uuid.UUID
+	Configured      bool
+	Authorized      bool
+	Issuer          string
+	Resource        string
+	Scopes          []string
+	ExpiresAt       *time.Time
+	LastRefreshedAt *time.Time
+}
+
 // Repository is the persistence boundary required by Service. ClaimState must atomically return
 // and delete a state, returning nil after the first successful claim.
 type Repository interface {
 	GetConnectionOAuth(context.Context, uuid.UUID, uuid.UUID) (*ConnectionOAuth, error)
+	GetStatus(context.Context, uuid.UUID, uuid.UUID) (*Status, error)
 	SaveClientConfiguration(context.Context, *ClientConfiguration) error
 	SaveState(context.Context, *State) error
 	ClaimState(context.Context, string) (*State, error)
@@ -172,6 +185,14 @@ func NewService(repository Repository, cipher crypto.Cipher, client *http.Client
 		}
 	}
 	return &Service{repository: repository, cipher: cipher, client: client, now: time.Now, locks: connectionLocks{entries: make(map[uuid.UUID]*lockEntry)}}
+}
+
+// Status returns the caller's secret-free OAuth state, or nil when the connection is not visible.
+func (s *Service) Status(ctx context.Context, connectionID uuid.UUID) (*Status, error) {
+	if connectionID == uuid.Nil {
+		return nil, errors.New("MCP connection ID is required")
+	}
+	return s.repository.GetStatus(ctx, contracts.CallerFrom(ctx).UserID, connectionID)
 }
 
 // ConfigureClient encrypts and stores an OAuth client registration for an MCP connection. Issuer

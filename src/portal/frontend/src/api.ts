@@ -53,6 +53,10 @@ export interface MCPConnection {
 export interface MCPGrant { id: string; connectionId: string; accessKeyId: string; createdAt: string }
 export interface MCPHeaderBinding { id: string; connectionId: string; credentialId: string; headerName?: string; createdAt: string }
 export interface MCPToolPolicy { id: string; connectionId: string; method: string; toolName: string; allow: boolean; createdAt: string; updatedAt?: string }
+export interface MCPOAuthStatus {
+  connectionId: string; configured: boolean; authorized: boolean; issuer?: string; resource?: string; scopes: string[]
+  expiresAt?: string; lastRefreshedAt?: string
+}
 export interface MCPAuditMessage {
   id: string; exchangeId: string; connectionId: string; sequenceNo: number; observedAt: string
   direction: string; messageKind: string; policyDecision: string; jsonrpcIdType?: string
@@ -102,6 +106,7 @@ export const api = {
   deleteMcpPolicy: (id: string) => authed(`/mcp/policies/${id}`, { method: 'DELETE' }),
   configureMcpOAuth: (connectionId: string, config: { issuer?: string; clientId: string; clientSecret?: string; scopes: string[] }) =>
     authed(`/mcp/connections/${connectionId}/oauth`, { method: 'PUT', body: JSON.stringify(config) }),
+  mcpOAuthStatus: (connectionId: string) => authed(`/mcp/connections/${connectionId}/oauth`) as Promise<MCPOAuthStatus>,
   connectMcpOAuth: (connectionId: string) => authed(`/mcp/connections/${connectionId}/oauth/connect`) as Promise<{ authorizeUrl: string; expiresAt: string }>,
   deleteMcpOAuth: (connectionId: string) => authed(`/mcp/connections/${connectionId}/oauth`, { method: 'DELETE' }),
   mcpAudit: (q: Record<string, string | number | undefined> = {}) => {

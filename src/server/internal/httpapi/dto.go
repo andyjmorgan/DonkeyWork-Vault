@@ -342,6 +342,17 @@ type upsertMCPToolPolicyRequest struct {
 	Allow    bool   `json:"allow"`
 }
 
+type mcpOAuthStatusDTO struct {
+	ConnectionID    uuid.UUID  `json:"connectionId"`
+	Configured      bool       `json:"configured"`
+	Authorized      bool       `json:"authorized"`
+	Issuer          *string    `json:"issuer"`
+	Resource        *string    `json:"resource"`
+	Scopes          []string   `json:"scopes"`
+	ExpiresAt       *time.Time `json:"expiresAt"`
+	LastRefreshedAt *time.Time `json:"lastRefreshedAt"`
+}
+
 type configureMCPOAuthRequest struct {
 	Issuer       string   `json:"issuer"`
 	ClientID     string   `json:"clientId"`

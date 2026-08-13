@@ -3,6 +3,7 @@ package mcpoauth
 import (
 	"context"
 	"errors"
+	"slices"
 
 	"github.com/google/uuid"
 
@@ -16,6 +17,34 @@ type StoreRepository struct {
 
 // NewStoreRepository constructs a Store-backed MCP OAuth repository.
 func NewStoreRepository(s store.Store) *StoreRepository { return &StoreRepository{store: s} }
+
+// GetStatus returns a secret-free owner-scoped OAuth projection. An existing connection without an
+// OAuth row is represented as unconfigured rather than being indistinguishable from a missing row.
+func (r *StoreRepository) GetStatus(ctx context.Context, userID, connectionID uuid.UUID) (*Status, error) {
+	connection, err := r.store.GetMCPConnectionByID(ctx, userID, connectionID)
+	if err != nil || connection == nil {
+		return nil, err
+	}
+	row, err := r.store.GetMCPOAuthAuthorization(ctx, userID, connectionID)
+	if err != nil {
+		return nil, err
+	}
+	status := &Status{ConnectionID: connectionID}
+	if row == nil {
+		return status, nil
+	}
+	status.Configured = len(row.ClientIDCipher) > 0
+	status.Authorized = len(row.AccessTokenCipher) > 0
+	status.Issuer = dereference(row.IssuerURL)
+	status.Resource = dereference(row.Resource)
+	if status.Resource == "" {
+		status.Resource = connection.UpstreamURL
+	}
+	status.Scopes = slices.Clone(row.Scopes)
+	status.ExpiresAt = row.ExpiresAt
+	status.LastRefreshedAt = row.LastRefreshedAt
+	return status, nil
+}
 
 // SaveClientConfiguration creates or replaces the encrypted OAuth client registration while
 // clearing tokens minted under the previous registration.

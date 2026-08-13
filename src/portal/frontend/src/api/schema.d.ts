@@ -667,7 +667,35 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        get?: never;
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    connectionID: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Secret-free OAuth status */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["MCPOAuthStatus"];
+                    };
+                };
+                /** @description Connection not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         put: {
             parameters: {
                 query?: never;
@@ -1876,6 +1904,19 @@ export interface components {
     schemas: {
         /** @enum {string} */
         MCPUpstreamProtocolMode: "modern_2026_07" | "legacy_session";
+        MCPOAuthStatus: {
+            /** Format: uuid */
+            connectionId: string;
+            configured: boolean;
+            authorized: boolean;
+            issuer: string | null;
+            resource: string | null;
+            scopes: string[];
+            /** Format: date-time */
+            expiresAt: string | null;
+            /** Format: date-time */
+            lastRefreshedAt: string | null;
+        };
         /** @enum {string} */
         MCPLegacyProtocolVersion: "2025-03-26" | "2025-06-18" | "2025-11-25";
         AccessKeyDto: {

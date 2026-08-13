@@ -1063,11 +1063,38 @@ func TestMCPOAuthHandlers(t *testing.T) {
 	h := newHarness(t)
 	connection := createMCPConnection(t, h, "https://example.com/mcp")
 	path := "/api/v1/mcp/connections/" + connection.ID.String() + "/oauth"
+	status := decode[mcpOAuthStatusDTO](t, h.do(t, http.MethodGet, path, nil, true))
+	if status.ConnectionID != connection.ID || status.Configured || status.Authorized || status.Issuer != nil || status.Resource != nil || status.ExpiresAt != nil || status.LastRefreshedAt != nil {
+		t.Fatalf("unconfigured OAuth status: %+v", status)
+	}
 	if rec := h.do(t, http.MethodPut, path, configureMCPOAuthRequest{}, true); rec.Code != 400 {
 		t.Fatalf("invalid config %d", rec.Code)
 	}
 	if rec := h.do(t, http.MethodPut, path, configureMCPOAuthRequest{ClientID: "client", Scopes: []string{"read"}}, true); rec.Code != 204 {
 		t.Fatalf("config %d %s", rec.Code, rec.Body)
+	}
+	status = decode[mcpOAuthStatusDTO](t, h.do(t, http.MethodGet, path, nil, true))
+	if !status.Configured || status.Authorized || status.Resource == nil || *status.Resource != "https://example.com/mcp" || len(status.Scopes) != 1 || status.Scopes[0] != "read" {
+		t.Fatalf("configured OAuth status: %+v", status)
+	}
+	expiresAt, refreshedAt := time.Now().UTC().Add(time.Hour), time.Now().UTC()
+	row, err := h.ms.GetMCPOAuthAuthorization(t.Context(), h.userID, connection.ID)
+	if err != nil || row == nil {
+		t.Fatalf("OAuth row: %+v, %v", row, err)
+	}
+	issuer, resource := "https://issuer.example", "https://resource.example"
+	row.IssuerURL, row.Resource, row.AccessTokenCipher = &issuer, &resource, []byte("encrypted-token")
+	row.ExpiresAt, row.LastRefreshedAt = &expiresAt, &refreshedAt
+	if updated, updateErr := h.ms.UpdateMCPOAuthAuthorization(t.Context(), row); updateErr != nil || !updated {
+		t.Fatalf("authorize OAuth row: %v, %v", updated, updateErr)
+	}
+	status = decode[mcpOAuthStatusDTO](t, h.do(t, http.MethodGet, path, nil, true))
+	if !status.Configured || !status.Authorized || status.Issuer == nil || *status.Issuer != issuer || status.Resource == nil || *status.Resource != resource || status.ExpiresAt == nil || !status.ExpiresAt.Equal(expiresAt) || status.LastRefreshedAt == nil || !status.LastRefreshedAt.Equal(refreshedAt) {
+		t.Fatalf("authorized OAuth status: %+v", status)
+	}
+	statusBody := h.do(t, http.MethodGet, path, nil, true).Body.String()
+	if strings.Contains(statusBody, "encrypted-token") || strings.Contains(statusBody, "clientId") || strings.Contains(statusBody, "clientSecret") || strings.Contains(statusBody, "refreshToken") {
+		t.Fatalf("OAuth status exposed secret material: %s", statusBody)
 	}
 	if rec := h.do(t, http.MethodGet, path+"/connect", nil, true); rec.Code != 400 {
 		t.Fatalf("unreachable discovery %d", rec.Code)
@@ -1077,6 +1104,12 @@ func TestMCPOAuthHandlers(t *testing.T) {
 	}
 	if rec := h.do(t, http.MethodDelete, path, nil, true); rec.Code != 404 {
 		t.Fatalf("delete OAuth twice %d", rec.Code)
+	}
+	if rec := h.do(t, http.MethodGet, "/api/v1/mcp/connections/"+uuid.NewString()+"/oauth", nil, true); rec.Code != http.StatusNotFound {
+		t.Fatalf("missing connection status %d", rec.Code)
+	}
+	if rec := h.do(t, http.MethodGet, "/api/v1/mcp/connections/not-a-uuid/oauth", nil, true); rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid connection status %d", rec.Code)
 	}
 	for _, query := range []string{"?error=denied", "?code=x&state=missing"} {
 		req := httptest.NewRequest(http.MethodGet, "/api/mcp/oauth/callback"+query, nil)

@@ -47,6 +47,23 @@ func (r *memoryRepository) GetConnectionOAuth(context.Context, uuid.UUID, uuid.U
 	return r.config, nil
 }
 
+func (r *memoryRepository) GetStatus(context.Context, uuid.UUID, uuid.UUID) (*Status, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
+	if r.config == nil {
+		return nil, nil
+	}
+	status := &Status{ConnectionID: r.config.ConnectionID, Configured: true, Issuer: r.config.Issuer, Resource: r.config.Resource, Scopes: slices.Clone(r.config.Scopes)}
+	if r.authorization != nil {
+		refreshed := r.authorization.LastRefreshedAt
+		status.Authorized = len(r.authorization.AccessTokenCipher) > 0
+		status.ExpiresAt = r.authorization.ExpiresAt
+		status.LastRefreshedAt = &refreshed
+	}
+	return status, nil
+}
+
 func (r *memoryRepository) SaveState(_ context.Context, state *State) error {
 	if r.saveErr != nil {
 		return r.saveErr
@@ -175,6 +192,33 @@ func newFixture(t *testing.T) (*Service, *memoryRepository, *oauthServer, uuid.U
 	service := NewService(repository, &plainCipher{}, server.server.Client())
 	service.now = func() time.Time { return time.Date(2026, 8, 13, 12, 0, 0, 0, time.UTC) }
 	return service, repository, server, id
+}
+
+func TestServiceStatus(t *testing.T) {
+	connectionID := uuid.New()
+	repository := &memoryRepository{config: &ConnectionOAuth{
+		ConnectionID: connectionID, Issuer: "https://issuer.example", Resource: "https://mcp.example", Scopes: []string{"read"},
+	}}
+	service := NewService(repository, &plainCipher{}, nil)
+
+	status, err := service.Status(context.Background(), connectionID)
+	if err != nil || status == nil || !status.Configured || status.Authorized || status.Issuer != "https://issuer.example" || status.Resource != "https://mcp.example" || !slices.Equal(status.Scopes, []string{"read"}) {
+		t.Fatalf("configured status: %+v, %v", status, err)
+	}
+	now := time.Now().UTC()
+	expiresAt := now.Add(time.Hour)
+	repository.authorization = &Authorization{AccessTokenCipher: []byte("ciphertext"), ExpiresAt: &expiresAt, LastRefreshedAt: now}
+	status, err = service.Status(context.Background(), connectionID)
+	if err != nil || status == nil || !status.Authorized || status.ExpiresAt == nil || !status.ExpiresAt.Equal(expiresAt) || status.LastRefreshedAt == nil || !status.LastRefreshedAt.Equal(now) {
+		t.Fatalf("authorized status: %+v, %v", status, err)
+	}
+	if _, err := service.Status(context.Background(), uuid.Nil); err == nil {
+		t.Fatal("nil connection ID accepted")
+	}
+	repository.err = errors.New("repository failed")
+	if _, err := service.Status(context.Background(), connectionID); err == nil {
+		t.Fatal("repository error not returned")
+	}
 }
 
 func TestAuthorizationFlowAndLiveToken(t *testing.T) {

@@ -86,6 +86,7 @@ func (s *Server) router() chi.Router {
 				r.Put("/mcp/connections/{connectionID}/policies", s.handleUpsertMCPPolicy)
 				r.Delete("/mcp/policies/{id}", s.handleDeleteMCPPolicy)
 				r.Put("/mcp/connections/{connectionID}/oauth", s.handleConfigureMCPOAuth)
+				r.Get("/mcp/connections/{connectionID}/oauth", s.handleGetMCPOAuthStatus)
 				r.Get("/mcp/connections/{connectionID}/oauth/connect", s.handleConnectMCPOAuth)
 				r.Delete("/mcp/connections/{connectionID}/oauth", s.handleDeleteMCPOAuth)
 			})
