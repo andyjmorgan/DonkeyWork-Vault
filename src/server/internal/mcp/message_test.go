@@ -97,6 +97,17 @@ func TestInspectClientRequestMetadataAndNames(t *testing.T) {
 	}
 }
 
+func TestInspectClientReportsCursorPresence(t *testing.T) {
+	body := requestBody("7", "tools/list", `"cursor":"next"`)
+	message, err := InspectClient([]byte(body), validHeaders("tools/list", ""), Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !message.HasCursor {
+		t.Fatal("expected cursor presence")
+	}
+}
+
 func TestInspectClientNotification(t *testing.T) {
 	body := `{"jsonrpc":"2.0","method":"example/notice","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28"}}}`
 	message, err := InspectClient([]byte(body), validHeaders("example/notice", ""), Options{})

@@ -225,6 +225,119 @@ func (p *Postgres) DeleteMCPToolPolicy(ctx context.Context, userID, id uuid.UUID
 	return tag.RowsAffected() > 0, err
 }
 
+// ReplaceMCPToolParameterHeaders atomically replaces a connection's discovered parameter-header metadata.
+func (p *Postgres) ReplaceMCPToolParameterHeaders(ctx context.Context, userID, tenantID, connectionID uuid.UUID, headers []MCPToolParameterHeader) error {
+	if err := ValidateMCPToolParameterHeaders(headers); err != nil {
+		return err
+	}
+	for i := range headers {
+		if headers[i].UserID != uuid.Nil && headers[i].UserID != userID ||
+			headers[i].TenantID != uuid.Nil && headers[i].TenantID != tenantID ||
+			headers[i].ConnectionID != uuid.Nil && headers[i].ConnectionID != connectionID {
+			return ErrOwnershipMismatch
+		}
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err //coverage:ignore a live pool beginning this short transaction has no deterministic unit-test failure seam.
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var owns bool
+	if err := tx.QueryRow(ctx, `SELECT true FROM vault.mcp_connections WHERE id=$1 AND user_id=$2 AND tenant_id=$3 FOR UPDATE`, connectionID, userID, tenantID).Scan(&owns); err != nil {
+		if noRows(err) {
+			return ErrOwnershipMismatch
+		}
+		return err //coverage:ignore the fixed SELECT can only fail after the pool/transaction becomes unusable.
+	}
+	if _, err := tx.Exec(ctx, `DELETE FROM vault.mcp_tool_parameter_headers WHERE connection_id=$1`, connectionID); err != nil {
+		return err //coverage:ignore the fixed DELETE can only fail after the validated transaction becomes unusable.
+	}
+	for i := range headers {
+		header := &headers[i]
+		if err := tx.QueryRow(ctx, `
+			INSERT INTO vault.mcp_tool_parameter_headers
+				(user_id, tenant_id, connection_id, tool_name, header_name, argument_path, required)
+			VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`, userID, tenantID,
+			connectionID, header.ToolName, header.HeaderName, header.ArgumentPath, header.Required).
+			Scan(&header.ID, &header.CreatedAt); err != nil {
+			return err
+		}
+		header.UserID, header.TenantID, header.ConnectionID = userID, tenantID, connectionID
+	}
+	return tx.Commit(ctx)
+}
+
+// UpsertMCPToolParameterHeaders atomically replaces metadata for explicitly observed tools.
+func (p *Postgres) UpsertMCPToolParameterHeaders(ctx context.Context, userID, tenantID, connectionID uuid.UUID, snapshots []MCPToolHeaderSnapshot) error {
+	if err := ValidateMCPToolHeaderSnapshots(snapshots); err != nil {
+		return err
+	}
+	for i := range snapshots {
+		for j := range snapshots[i].Headers {
+			header := &snapshots[i].Headers[j]
+			if header.UserID != uuid.Nil && header.UserID != userID ||
+				header.TenantID != uuid.Nil && header.TenantID != tenantID ||
+				header.ConnectionID != uuid.Nil && header.ConnectionID != connectionID {
+				return ErrOwnershipMismatch
+			}
+		}
+	}
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err //coverage:ignore a live pool beginning this short transaction has no deterministic unit-test failure seam.
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var owns bool
+	if err := tx.QueryRow(ctx, `SELECT true FROM vault.mcp_connections WHERE id=$1 AND user_id=$2 AND tenant_id=$3 FOR UPDATE`, connectionID, userID, tenantID).Scan(&owns); err != nil {
+		if noRows(err) {
+			return ErrOwnershipMismatch
+		}
+		return err //coverage:ignore the fixed SELECT can only fail after the pool/transaction becomes unusable.
+	}
+	for i := range snapshots {
+		snapshot := &snapshots[i]
+		if _, err := tx.Exec(ctx, `DELETE FROM vault.mcp_tool_parameter_headers WHERE connection_id=$1 AND tool_name=$2`, connectionID, snapshot.ToolName); err != nil {
+			return err //coverage:ignore the fixed DELETE can only fail after the validated transaction becomes unusable.
+		}
+		for j := range snapshot.Headers {
+			header := &snapshot.Headers[j]
+			header.ToolName = snapshot.ToolName
+			if err := tx.QueryRow(ctx, `
+				INSERT INTO vault.mcp_tool_parameter_headers
+					(user_id, tenant_id, connection_id, tool_name, header_name, argument_path, required)
+				VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, created_at`, userID, tenantID,
+				connectionID, header.ToolName, header.HeaderName, header.ArgumentPath, header.Required).
+				Scan(&header.ID, &header.CreatedAt); err != nil {
+				return err
+			}
+			header.UserID, header.TenantID, header.ConnectionID = userID, tenantID, connectionID
+		}
+	}
+	return tx.Commit(ctx)
+}
+
+// ListMCPToolParameterHeaders returns discovered parameter headers for one owner-scoped tool.
+func (p *Postgres) ListMCPToolParameterHeaders(ctx context.Context, userID, connectionID uuid.UUID, toolName string) ([]MCPToolParameterHeader, error) {
+	rows, err := p.pool.Query(ctx, `
+		SELECT id, user_id, tenant_id, connection_id, tool_name, header_name, argument_path, required, created_at
+		FROM vault.mcp_tool_parameter_headers
+		WHERE user_id=$1 AND connection_id=$2 AND tool_name=$3 ORDER BY lower(header_name)`, userID, connectionID, toolName)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MCPToolParameterHeader
+	for rows.Next() {
+		var header MCPToolParameterHeader
+		if err := rows.Scan(&header.ID, &header.UserID, &header.TenantID, &header.ConnectionID,
+			&header.ToolName, &header.HeaderName, &header.ArgumentPath, &header.Required, &header.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, header)
+	}
+	return out, rows.Err()
+}
+
 const mcpOAuthCols = `id, user_id, tenant_id, connection_id, issuer_url, authorization_endpoint, token_endpoint, resource, token_type, token_auth_method, client_id_cipher, client_secret_cipher, access_token_cipher, refresh_token_cipher, scopes, expires_at, last_refreshed_at, created_at, updated_at`
 
 func scanMCPOAuthAuthorization(row pgx.Row) (*MCPOAuthAuthorization, error) {

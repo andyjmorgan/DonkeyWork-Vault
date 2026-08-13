@@ -78,6 +78,7 @@ type ClientMessage struct {
 	ProtocolVersion string
 	Client          ClientInfo
 	Audit           AuditFields
+	HasCursor       bool
 }
 
 // ServerMessage is a classified server-to-client notification or final response.
@@ -182,7 +183,8 @@ func InspectClient(body []byte, headers http.Header, opts Options) (ClientMessag
 		return ClientMessage{}, &ValidationError{Kind: ErrorUnsupportedVersion, Field: "params._meta.protocolVersion"}
 	}
 	audit := extractRequestAudit(method, params, opts.RequestStateHMACKey)
-	message := ClientMessage{Kind: kind, ID: id, ProtocolVersion: version, Client: client, Audit: audit}
+	_, hasCursor := params["cursor"]
+	message := ClientMessage{Kind: kind, ID: id, ProtocolVersion: version, Client: client, Audit: audit, HasCursor: hasCursor}
 	if err := validateHeaders(headers, method, version, params, opts.ParamHeaders); err != nil {
 		return ClientMessage{}, err
 	}

@@ -34,13 +34,23 @@ type Decision struct {
 
 // Evaluate applies method policy to every message and tool policy to tools/call requests.
 func (p Policy) Evaluate(message ClientMessage) Decision {
-	if !p.Methods.allows(message.Audit.Method) {
+	if !p.AllowsMethod(message.Audit.Method) {
 		return Decision{Field: "method", Value: message.Audit.Method}
 	}
-	if message.Audit.Method == "tools/call" && !p.Tools.allows(message.Audit.ToolName) {
+	if message.Audit.Method == "tools/call" && !p.AllowsTool(message.Audit.ToolName) {
 		return Decision{Field: "tool", Value: message.Audit.ToolName}
 	}
 	return Decision{Allowed: true}
+}
+
+// AllowsMethod reports whether an exact MCP method passes the configured method policy.
+func (p Policy) AllowsMethod(method string) bool {
+	return p.Methods.allows(method)
+}
+
+// AllowsTool reports whether an exact tool name passes the configured tool policy.
+func (p Policy) AllowsTool(toolName string) bool {
+	return p.Tools.allows(toolName)
 }
 
 func (rule AllowRule) allows(value string) bool {

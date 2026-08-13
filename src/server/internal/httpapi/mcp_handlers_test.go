@@ -2,12 +2,15 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"donkeywork.dev/vault-server/internal/contracts"
 	"donkeywork.dev/vault-server/internal/mcp"
+	"donkeywork.dev/vault-server/internal/service"
 	"donkeywork.dev/vault-server/internal/store"
 )
 
@@ -164,14 +167,243 @@ func TestMCPProxySSE(t *testing.T) {
 	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
 		t.Fatal(err)
 	}
-	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
-	rec := mcpRequest(t, h, body, "tools/list", "")
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	rec := mcpRequest(t, h, body, "subscriptions/listen", "")
 	if rec.Code != 200 || !bytes.Contains(rec.Body.Bytes(), []byte("notifications/progress")) {
 		t.Fatalf("SSE %d %s", rec.Code, rec.Body)
 	}
 	page := decode[mcpAuditPageResponse](t, h.do(t, http.MethodGet, "/api/v1/mcp/audit?connectionId="+connection.ID.String(), nil, true))
 	if page.Total != 3 {
 		t.Fatalf("SSE audit total %d", page.Total)
+	}
+}
+
+func TestMCPProxyDiscoveryIsGatewayOwned(t *testing.T) {
+	upstreamCalls := 0
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		upstreamCalls++
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	h.server.deps.ServiceVersion = "test-version"
+	connection := createMCPConnection(t, h, upstream.URL)
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"jsonrpc":"2.0","id":"discover-1","method":"server/discover","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	rec := mcpRequest(t, h, body, "server/discover", "")
+	if rec.Code != http.StatusOK || upstreamCalls != 0 {
+		t.Fatalf("discovery status %d, upstream calls %d: %s", rec.Code, upstreamCalls, rec.Body)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "private, max-age=3600" {
+		t.Fatalf("unexpected discovery cache header %q", got)
+	}
+	var envelope struct {
+		ID     string `json:"id"`
+		Result struct {
+			ResultType        string                     `json:"resultType"`
+			SupportedVersions []string                   `json:"supportedVersions"`
+			Capabilities      map[string]json.RawMessage `json:"capabilities"`
+			Meta              map[string]json.RawMessage `json:"_meta"`
+			TTLMS             int64                      `json:"ttlMs"`
+			CacheScope        string                     `json:"cacheScope"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.ID != "discover-1" || envelope.Result.ResultType != "complete" || envelope.Result.CacheScope != "private" || envelope.Result.TTLMS != 3_600_000 || len(envelope.Result.SupportedVersions) != 1 || envelope.Result.SupportedVersions[0] != mcp.ProtocolVersion {
+		t.Fatalf("unexpected discovery: %+v", envelope)
+	}
+	if _, ok := envelope.Result.Capabilities["tools"]; !ok || len(envelope.Result.Capabilities) != 1 {
+		t.Fatalf("unexpected capabilities: %s", rec.Body)
+	}
+	if !bytes.Contains(envelope.Result.Meta["io.modelcontextprotocol/serverInfo"], []byte(`"name":"DonkeyWork Vault"`)) || !bytes.Contains(envelope.Result.Meta["io.modelcontextprotocol/serverInfo"], []byte(`"version":"test-version"`)) {
+		t.Fatalf("unexpected identity: %s", rec.Body)
+	}
+	page := decode[mcpAuditPageResponse](t, h.do(t, http.MethodGet, "/api/v1/mcp/audit?connectionId="+connection.ID.String(), nil, true))
+	if page.Total != 2 {
+		t.Fatalf("discovery audit total %d", page.Total)
+	}
+}
+
+func TestMCPProxyFiltersToolsAndEnforcesParameterHeaders(t *testing.T) {
+	upstreamCalls := 0
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls++
+		w.Header().Set("Content-Type", "application/json")
+		switch r.Header.Get("Mcp-Method") {
+		case "tools/list":
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":[` +
+				`{"name":"allowed","inputSchema":{"type":"object","required":["region"],"properties":{"region":{"type":"string","x-mcp-header":"Region"}}}},` +
+				`{"name":"blocked","inputSchema":{"type":"object"}},` +
+				`{"name":"invalid","inputSchema":{"type":"object","properties":{"value":{"type":"number","x-mcp-header":"Value"}}}}` +
+				`],"ttlMs":300000,"cacheScope":"public"}}`))
+		case "tools/call":
+			if r.Header.Get("Mcp-Param-Region") != "us-east-1" {
+				t.Errorf("missing upstream parameter header: %q", r.Header.Get("Mcp-Param-Region"))
+			}
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":2,"result":{"resultType":"complete","content":[]}}`))
+		default:
+			t.Errorf("unexpected method %q", r.Header.Get("Mcp-Method"))
+		}
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ms.UpsertMCPToolPolicy(t.Context(), &store.MCPToolPolicy{UserID: h.userID, ConnectionID: connection.ID, Method: "tools/call", ToolName: "allowed", Allow: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	listBody := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	rec := mcpRequest(t, h, listBody, "tools/list", "")
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"name":"allowed"`)) || bytes.Contains(rec.Body.Bytes(), []byte(`"name":"blocked"`)) || bytes.Contains(rec.Body.Bytes(), []byte(`"name":"invalid"`)) || !bytes.Contains(rec.Body.Bytes(), []byte(`"cacheScope":"private"`)) {
+		t.Fatalf("filtered list %d: %s", rec.Code, rec.Body)
+	}
+	if got := rec.Header().Get("Cache-Control"); got != "private" {
+		t.Fatalf("unexpected tools cache header %q", got)
+	}
+	metadata, err := h.ms.ListMCPToolParameterHeaders(t.Context(), h.userID, connection.ID, "allowed")
+	if err != nil || len(metadata) != 1 || metadata[0].HeaderName != "Region" || !metadata[0].Required {
+		t.Fatalf("stored metadata: %+v, %v", metadata, err)
+	}
+
+	callBody := []byte(`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"allowed","arguments":{"region":"us-east-1"},"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	beforeCall := upstreamCalls
+	for name, value := range map[string]string{"missing": "", "mismatch": "us-west-2"} {
+		t.Run(name, func(t *testing.T) {
+			rec := mcpRequestWithHeaders(t, h, callBody, "tools/call", "allowed", map[string]string{"Mcp-Param-Region": value})
+			if rec.Code != http.StatusBadRequest || !bytes.Contains(rec.Body.Bytes(), []byte(`"code":-32020`)) {
+				t.Fatalf("header rejection %d: %s", rec.Code, rec.Body)
+			}
+		})
+	}
+	if upstreamCalls != beforeCall {
+		t.Fatalf("invalid calls reached upstream: before %d after %d", beforeCall, upstreamCalls)
+	}
+	rec = mcpRequestWithHeaders(t, h, callBody, "tools/call", "allowed", map[string]string{"Mcp-Param-Region": "us-east-1"})
+	if rec.Code != http.StatusOK || upstreamCalls != beforeCall+1 {
+		t.Fatalf("allowed call %d upstream %d: %s", rec.Code, upstreamCalls, rec.Body)
+	}
+}
+
+func TestMCPProxyFiltersSSEToolsList(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = w.Write([]byte(": keepalive\n\ndata: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n" +
+			"event: message\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\",\"tools\":[{\"name\":\"allowed\",\"inputSchema\":{\"type\":\"object\"}},{\"name\":\"blocked\",\"inputSchema\":{\"type\":\"object\"}}],\"ttlMs\":1000,\"cacheScope\":\"public\"}}\n\n"))
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createMCPConnection(t, h, upstream.URL)
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := h.ms.UpsertMCPToolPolicy(t.Context(), &store.MCPToolPolicy{UserID: h.userID, ConnectionID: connection.ID, Method: "tools/call", ToolName: "allowed", Allow: true}); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	rec := mcpRequest(t, h, body, "tools/list", "")
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"name":"allowed"`)) || bytes.Contains(rec.Body.Bytes(), []byte(`"name":"blocked"`)) || !bytes.Contains(rec.Body.Bytes(), []byte(`"cacheScope":"private"`)) {
+		t.Fatalf("filtered SSE %d: %s", rec.Code, rec.Body)
+	}
+	if !bytes.Contains(rec.Body.Bytes(), []byte("event: message")) || !bytes.Contains(rec.Body.Bytes(), []byte("notifications/progress")) || rec.Header().Get("Cache-Control") != "private" {
+		t.Fatalf("SSE metadata lost: headers=%v body=%s", rec.Header(), rec.Body)
+	}
+	page := decode[mcpAuditPageResponse](t, h.do(t, http.MethodGet, "/api/v1/mcp/audit?connectionId="+connection.ID.String(), nil, true))
+	if page.Total != 3 {
+		t.Fatalf("SSE audit total %d", page.Total)
+	}
+}
+
+func TestMCPResponseTransformationPaginationAndErrors(t *testing.T) {
+	h := newHarness(t)
+	connection := createMCPConnection(t, h, "https://example.com/mcp")
+	resolved := &service.MCPResolvedConnection{Connection: store.MCPConnection{ID: connection.ID, UserID: h.userID}, Policy: mcp.Policy{Tools: mcp.AllowRule{Default: mcp.DefaultAllow}}}
+	ctx := contracts.WithCaller(context.Background(), contracts.Caller{UserID: h.userID})
+	if got, err := h.server.transformMCPResponse(ctx, mcp.ClientMessage{Audit: mcp.AuditFields{Method: "resources/list"}}, resolved, []byte(`{"unchanged":true}`)); err != nil || string(got) != `{"unchanged":true}` {
+		t.Fatalf("unrelated response: %s %v", got, err)
+	}
+	if _, err := h.server.transformMCPResponse(ctx, mcp.ClientMessage{Audit: mcp.AuditFields{Method: "tools/list"}}, resolved, []byte(`{}`)); err == nil {
+		t.Fatal("expected invalid tools response")
+	}
+	paginated := []byte(`{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete","tools":[{"name":"page","inputSchema":{"type":"object","properties":{"site":{"type":"string","x-mcp-header":"Site"}}}}],"nextCursor":"next","ttlMs":1000,"cacheScope":"public"}}`)
+	if _, err := h.server.transformMCPResponse(ctx, mcp.ClientMessage{Audit: mcp.AuditFields{Method: "tools/list"}}, resolved, paginated); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := h.ms.ListMCPToolParameterHeaders(ctx, h.userID, connection.ID, "page"); err != nil || len(rows) != 1 {
+		t.Fatalf("paginated metadata: %+v %v", rows, err)
+	}
+}
+
+func TestMCPToolsListSSERejectsInvalidStreams(t *testing.T) {
+	for _, test := range []struct {
+		name, stream string
+	}{
+		{name: "incomplete", stream: `data: {"jsonrpc":"2.0","id":1,"result":{}}`},
+		{name: "malformed", stream: "data: {bad}\n\n"},
+		{name: "no final", stream: ": keepalive\n\n"},
+		{name: "multiple final", stream: "data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\",\"tools\":[],\"ttlMs\":1,\"cacheScope\":\"public\"}}\n\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"resultType\":\"complete\",\"tools\":[],\"ttlMs\":1,\"cacheScope\":\"public\"}}\n\n"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				_, _ = w.Write([]byte(test.stream))
+			}))
+			defer upstream.Close()
+			h := newHarness(t)
+			h.server.deps.MCPClient = upstream.Client()
+			connection := createMCPConnection(t, h, upstream.URL)
+			key := firstAccessKey(t, h)
+			if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+				t.Fatal(err)
+			}
+			body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+			rec := mcpRequest(t, h, body, "tools/list", "")
+			if rec.Code != http.StatusBadGateway {
+				t.Fatalf("invalid stream %d: %s", rec.Code, rec.Body)
+			}
+		})
+	}
+}
+
+func TestMCPProxyUpstreamFailures(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{name: "malformed json", contentType: "application/json", body: `{bad}`},
+		{name: "wrong result shape", contentType: "application/json", body: `{"jsonrpc":"2.0","id":1,"result":{"resultType":"complete"}}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("Content-Type", test.contentType)
+				_, _ = w.Write([]byte(test.body))
+			}))
+			defer upstream.Close()
+			h := newHarness(t)
+			h.server.deps.MCPClient = upstream.Client()
+			connection := createMCPConnection(t, h, upstream.URL)
+			key := firstAccessKey(t, h)
+			if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+				t.Fatal(err)
+			}
+			body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+			rec := mcpRequest(t, h, body, "tools/list", "")
+			if rec.Code != http.StatusBadGateway {
+				t.Fatalf("upstream failure %d: %s", rec.Code, rec.Body)
+			}
+		})
 	}
 }
 
@@ -271,6 +503,10 @@ func firstAccessKey(t *testing.T, h *harness) store.AccessKey {
 }
 
 func mcpRequest(t *testing.T, h *harness, body []byte, method, name string) *httptest.ResponseRecorder {
+	return mcpRequestWithHeaders(t, h, body, method, name, nil)
+}
+
+func mcpRequestWithHeaders(t *testing.T, h *harness, body []byte, method, name string, extra map[string]string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/proxy/example", bytes.NewReader(body))
 	req.Header.Set("X-Api-Key", h.secret)
@@ -280,6 +516,11 @@ func mcpRequest(t *testing.T, h *harness, body []byte, method, name string) *htt
 	req.Header.Set("Mcp-Method", method)
 	if name != "" {
 		req.Header.Set("Mcp-Name", name)
+	}
+	for key, value := range extra {
+		if value != "" {
+			req.Header.Set(key, value)
+		}
 	}
 	rec := httptest.NewRecorder()
 	h.h.ServeHTTP(rec, req)

@@ -72,8 +72,9 @@ type Deps struct {
 	IPResolver      *audit.ForwardedIPResolver
 	Logger          *slog.Logger
 
-	OIDC          OIDCConfig
-	PublicBaseURL string
+	OIDC           OIDCConfig
+	PublicBaseURL  string
+	ServiceVersion string
 }
 
 // Server holds the transport dependencies and renders the HTTP handler.
@@ -108,6 +109,9 @@ func NewServer(ctx context.Context, deps Deps) (*Server, error) {
 	}
 	if s.deps.MCPAuditHMACKey == nil {
 		s.deps.MCPAuditHMACKey = []byte("donkeywork-vault-mcp-audit")
+	}
+	if s.deps.ServiceVersion == "" {
+		s.deps.ServiceVersion = "dev"
 	}
 
 	s.webClientID = deps.OIDC.effectiveWebClientID()
