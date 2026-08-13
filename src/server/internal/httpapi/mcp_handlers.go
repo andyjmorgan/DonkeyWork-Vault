@@ -581,12 +581,16 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
 			return
 		}
-		s.completeMCPExchange(r.Context(), exchange, http.StatusBadRequest, "malformed", 0, "protocol")
 		code := -32600
 		if mcp.IsErrorKind(err, mcp.ErrorHeaderMismatch) {
 			code = mcp.HeaderMismatchCode
 		}
-		writeMCPError(w, http.StatusBadRequest, code, "invalid MCP request metadata", nil)
+		responseBytes, ok := s.writeAuditedMCPError(w, r, exchange, resolved.Connection.AuditMode,
+			http.StatusBadRequest, code, "invalid MCP request metadata", mcp.ID{Kind: mcp.IDNone})
+		if !ok {
+			return
+		}
+		s.completeMCPExchange(r.Context(), exchange, http.StatusBadRequest, "malformed", responseBytes, "protocol")
 		return
 	}
 	decision := resolved.Policy.Evaluate(message)
@@ -606,8 +610,12 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !decision.Allowed {
-		s.completeMCPExchange(r.Context(), exchange, http.StatusForbidden, "denied", 0, "policy")
-		writeMCPError(w, http.StatusForbidden, -32600, "request denied by MCP gateway policy", messageIDValue(message.ID))
+		responseBytes, ok := s.writeAuditedMCPError(w, r, exchange, resolved.Connection.AuditMode,
+			http.StatusForbidden, -32600, "request denied by MCP gateway policy", message.ID)
+		if !ok {
+			return
+		}
+		s.completeMCPExchange(r.Context(), exchange, http.StatusForbidden, "denied", responseBytes, "policy")
 		return
 	}
 	if message.Audit.Method == "server/discover" {
@@ -684,11 +692,11 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	originalResponseBytes := int64(len(responseBody))
+	upstreamResponseBody := responseBody
 	if legacy {
 		responseBody, readErr = mcp.UpgradeLegacyResponse(responseBody, message.Audit.Method)
 		if readErr != nil {
-			s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", originalResponseBytes, "protocol")
-			writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
+			s.rejectMCPUpstreamResponse(w, r, exchange, responseSequence, upstreamResponseBody, resolved.Connection.AuditMode)
 			return
 		}
 	}
@@ -700,8 +708,7 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if inspectErr != nil {
-		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", originalResponseBytes, "protocol")
-		writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
+		s.rejectMCPUpstreamResponse(w, r, exchange, responseSequence, upstreamResponseBody, resolved.Connection.AuditMode)
 		return
 	}
 	if message.Audit.Method == "tools/list" {
@@ -717,6 +724,22 @@ func (s *Server) handleMCPProxy(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(response.StatusCode)
 	_, _ = w.Write(responseBody) //nolint:gosec // G705: validated JSON is returned with application/json, never rendered as HTML.
 	s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "complete", originalResponseBytes, "")
+}
+
+func (s *Server) rejectMCPUpstreamResponse(w http.ResponseWriter, r *http.Request, exchange *store.MCPAuditExchange, sequence int64, body []byte, auditMode string) {
+	record := rawMCPAuditRecord(exchange, sequence, "server_to_client", "malformed", body, auditMode)
+	record.PolicyDecision = "upstream_rejected"
+	if auditMode == "redacted" && record.PayloadRedacted == nil {
+		redacted := strconv.Quote(audit.Redacted)
+		record.PayloadRedacted = &redacted
+	}
+	if err := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), record); err != nil {
+		s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", int64(len(body)), "audit")
+		writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
+		return
+	}
+	s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", int64(len(body)), "protocol")
+	writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
 }
 
 func (s *Server) handleMCPDiscover(w http.ResponseWriter, r *http.Request, exchange *store.MCPAuditExchange, resolved *service.MCPResolvedConnection, message mcp.ClientMessage) {
@@ -889,63 +912,82 @@ func validMCPContentHeaders(headers http.Header) bool {
 }
 
 func (s *Server) proxyMCPSSE(w http.ResponseWriter, r *http.Request, response *http.Response, exchange *store.MCPAuditExchange, connection store.MCPConnection, requestMethod string, legacy bool, sequence int64) {
-	w.Header().Set("X-Accel-Buffering", "no")
-	w.WriteHeader(response.StatusCode)
-	flusher, _ := w.(http.Flusher)
-	var pending bytes.Buffer
-	buf := make([]byte, 32<<10)
-	total := int64(0)
-	for {
-		n, readErr := response.Body.Read(buf)
-		if n > 0 {
-			pending.Write(buf[:n])
-			for {
-				event, ok := takeSSEEvent(&pending)
-				if !ok {
-					break
-				}
-				total += int64(len(event))
-				message, hasMessage, err := mcp.InspectSSEEvent(event, s.deps.MCPAuditHMACKey)
-				if err != nil {
-					s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "failed", total, "protocol")
-					return
-				}
-				if legacy && hasMessage && message.Kind == mcp.KindResult {
-					upgraded, upgradeErr := mcp.UpgradeLegacyResponse(sseData(event), requestMethod)
-					if upgradeErr != nil {
-						s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "failed", total, "protocol")
-						return
-					}
-					event = replaceSSEData(event, upgraded)
-					message, hasMessage, err = mcp.InspectSSEEvent(event, s.deps.MCPAuditHMACKey)
-					if err != nil { //coverage:ignore UpgradeLegacyResponse returns a validated response.
-						return
-					}
-				}
-				if hasMessage {
-					record := mcpAuditRecord(exchange, sequence, "server_to_client", message.Kind, message.ID, message.Audit, message.ErrorCode, sseData(event), connection.AuditMode)
-					record.PolicyDecision = "allowed"
-					if err := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), record); err != nil {
-						s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "audit_failed", total, "audit")
-						return
-					}
-					sequence++
-				}
-				_, _ = w.Write(event)
-				if flusher != nil {
-					flusher.Flush()
-				}
+	body, err := io.ReadAll(io.LimitReader(response.Body, maxRequestBody+1))
+	if err != nil || len(body) > maxRequestBody {
+		s.rejectMCPUpstreamResponse(w, r, exchange, sequence, body, connection.AuditMode)
+		return
+	}
+
+	pending := bytes.NewBuffer(body)
+	events := make([][]byte, 0)
+	records := make([]*store.MCPAuditMessage, 0)
+	for pending.Len() > 0 {
+		event, ok := takeSSEEvent(pending)
+		if !ok {
+			err = errors.New("incomplete SSE event")
+			break
+		}
+		message, hasMessage, inspectErr := mcp.InspectSSEEvent(event, s.deps.MCPAuditHMACKey)
+		if inspectErr != nil {
+			err = inspectErr
+			break
+		}
+		if legacy && hasMessage && message.Kind == mcp.KindResult {
+			upgraded, upgradeErr := mcp.UpgradeLegacyResponse(sseData(event), requestMethod)
+			if upgradeErr != nil {
+				err = upgradeErr
+				break
+			}
+			event = replaceSSEData(event, upgraded)
+			message, hasMessage, inspectErr = mcp.InspectSSEEvent(event, s.deps.MCPAuditHMACKey)
+			if inspectErr != nil { //coverage:ignore UpgradeLegacyResponse returns validated JSON and SSE encoding is mechanical.
+				err = inspectErr
+				break
 			}
 		}
-		if readErr != nil {
-			if errors.Is(readErr, io.EOF) && pending.Len() == 0 {
-				s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "complete", total, "")
-			} else {
-				s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "failed", total, "stream")
+		if hasMessage {
+			record := mcpAuditRecord(exchange, sequence, "server_to_client", message.Kind, message.ID, message.Audit, message.ErrorCode, sseData(event), connection.AuditMode)
+			record.PolicyDecision = "allowed"
+			records = append(records, record)
+			sequence++
+		}
+		events = append(events, event)
+	}
+	if err != nil {
+		rejected := rawMCPAuditRecord(exchange, sequence, "server_to_client", "malformed", body, connection.AuditMode)
+		rejected.PolicyDecision = "upstream_rejected"
+		if connection.AuditMode == "redacted" && rejected.PayloadRedacted == nil {
+			redacted := strconv.Quote(audit.Redacted)
+			rejected.PayloadRedacted = &redacted
+		}
+		records = append(records, rejected)
+		for _, record := range records {
+			if insertErr := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), record); insertErr != nil {
+				s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", int64(len(body)), "audit")
+				writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
+				return
 			}
+		}
+		s.completeMCPExchange(r.Context(), exchange, http.StatusBadGateway, "failed", int64(len(body)), "protocol")
+		writeError(w, http.StatusBadGateway, "invalid MCP upstream response.")
+		return
+	}
+	for _, record := range records {
+		if err := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), record); err != nil {
+			s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", int64(len(body)), "audit")
+			writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
 			return
 		}
 	}
+
+	w.Header().Set("X-Accel-Buffering", "no")
+	w.WriteHeader(response.StatusCode)
+	responseBytes := int64(0)
+	for _, event := range events {
+		n, _ := w.Write(event)
+		responseBytes += int64(n)
+	}
+	s.completeMCPExchange(r.Context(), exchange, response.StatusCode, "complete", responseBytes, "")
 }
 
 func (s *Server) authoritativeMCPEvalRunID(ctx context.Context, connection store.MCPConnection, accessKeyID uuid.UUID) (*string, error) {
@@ -1074,10 +1116,27 @@ func copyMCPResponseHeaders(dst, src http.Header) {
 	}
 }
 
-func writeMCPError(w http.ResponseWriter, status, code int, message string, id any) {
+func (s *Server) writeAuditedMCPError(w http.ResponseWriter, r *http.Request, exchange *store.MCPAuditExchange, auditMode string, status, code int, message string, id mcp.ID) (int64, bool) {
+	var body bytes.Buffer
+	if err := json.NewEncoder(&body).Encode(map[string]any{
+		"jsonrpc": "2.0", "id": messageIDValue(id), "error": map[string]any{"code": code, "message": message},
+	}); err != nil { //coverage:ignore validated JSON-RPC IDs and fixed strings are always encodable.
+		s.completeMCPExchange(r.Context(), exchange, http.StatusInternalServerError, "failed", 0, "response")
+		writeError(w, http.StatusInternalServerError, "unable to build MCP error response.")
+		return 0, false
+	}
+	payload := body.Bytes()
+	record := mcpAuditRecord(exchange, 2, "server_to_client", mcp.KindError, id, mcp.AuditFields{}, code, payload, auditMode)
+	record.PolicyDecision = "allowed"
+	if err := s.deps.MCP.Store().InsertMCPAuditMessage(r.Context(), record); err != nil {
+		s.completeMCPExchange(r.Context(), exchange, http.StatusServiceUnavailable, "audit_failed", 0, "audit")
+		writeError(w, http.StatusServiceUnavailable, "MCP audit storage unavailable.")
+		return 0, false
+	}
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{"jsonrpc": "2.0", "id": id, "error": map[string]any{"code": code, "message": message}})
+	_, _ = w.Write(payload) //nolint:gosec // G705: payload is a gateway-built JSON-RPC error served as application/json.
+	return int64(len(payload)), true
 }
 
 func messageIDValue(id mcp.ID) any {

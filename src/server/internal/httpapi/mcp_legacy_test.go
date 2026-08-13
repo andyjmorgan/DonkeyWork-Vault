@@ -5,6 +5,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -88,6 +89,54 @@ func TestMCPProxyLegacySessionJSON(t *testing.T) {
 	}
 }
 
+func TestMCPProxyLegacyUpgradeFailureIsAudited(t *testing.T) {
+	const rejectedBody = `{"jsonrpc":"2.0","id":1,"result":{"tools":"invalid"}}`
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case bytes.Contains(body, []byte(`"method":"initialize"`)):
+			w.Header().Set("MCP-Session-Id", "legacy-session")
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"dwv-legacy-initialize","result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"Legacy","version":"1"}}}`))
+		case bytes.Contains(body, []byte(`"method":"notifications/initialized"`)):
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			_, _ = w.Write([]byte(rejectedBody))
+		}
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createLegacyMCPConnection(t, h, upstream.URL)
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/proxy/legacy", bytes.NewReader(body))
+	for name, value := range map[string]string{"X-Api-Key": h.secret, "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list"} {
+		req.Header.Set(name, value)
+	}
+	rec := httptest.NewRecorder()
+	h.h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("legacy rejection %d: %s", rec.Code, rec.Body)
+	}
+	rows, _, err := h.ms.QueryMCPAudit(t.Context(), store.MCPAuditFilter{UserID: h.userID, Limit: 10, ConnectionID: &connection.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.Direction == "server_to_client" && row.PolicyDecision == "upstream_rejected" {
+			if row.MessageKind != "malformed" || row.PayloadBytes != int64(len(rejectedBody)) || row.PayloadRedacted == nil {
+				t.Fatalf("legacy rejected audit: %+v", row)
+			}
+			return
+		}
+	}
+	t.Fatalf("missing legacy rejection audit: %+v", rows)
+}
+
 func TestLegacyAdapterPoolLifecycle(t *testing.T) {
 	pool := newLegacyAdapterPool()
 	client := &http.Client{}
@@ -114,6 +163,8 @@ func TestLegacyAdapterPoolLifecycle(t *testing.T) {
 }
 
 func TestMCPProxyLegacySessionSSE(t *testing.T) {
+	legacyStream := "data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n" +
+		"event: result\ndata: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"value\":\"legacy\"}}\n\n"
 	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		switch {
@@ -124,8 +175,7 @@ func TestMCPProxyLegacySessionSSE(t *testing.T) {
 			w.WriteHeader(http.StatusAccepted)
 		default:
 			w.Header().Set("Content-Type", "text/event-stream")
-			_, _ = w.Write([]byte("data: {\"jsonrpc\":\"2.0\",\"method\":\"notifications/progress\",\"params\":{}}\n\n" +
-				"data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":{\"tools\":[]}}\n\n"))
+			_, _ = w.Write([]byte(legacyStream))
 		}
 	}))
 	defer upstream.Close()
@@ -136,14 +186,55 @@ func TestMCPProxyLegacySessionSSE(t *testing.T) {
 	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
 		t.Fatal(err)
 	}
-	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/proxy/legacy", bytes.NewReader(body))
-	for name, value := range map[string]string{"X-Api-Key": h.secret, "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list"} {
+	for name, value := range map[string]string{"X-Api-Key": h.secret, "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "subscriptions/listen"} {
 		req.Header.Set(name, value)
 	}
 	rec := httptest.NewRecorder()
 	h.h.ServeHTTP(rec, req)
-	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte(`"resultType":"complete"`)) || !bytes.Contains(rec.Body.Bytes(), []byte(`"cacheScope":"private"`)) {
+	if rec.Code != http.StatusOK || !bytes.Contains(rec.Body.Bytes(), []byte("notifications/progress")) || !bytes.Contains(rec.Body.Bytes(), []byte("event: result")) || !bytes.Contains(rec.Body.Bytes(), []byte(`"value":"legacy"`)) || !bytes.Contains(rec.Body.Bytes(), []byte(`"resultType":"complete"`)) {
 		t.Fatalf("legacy SSE %d: %s", rec.Code, rec.Body)
+	}
+	if bytes.Contains(rec.Body.Bytes(), []byte(`"cacheScope"`)) {
+		t.Fatalf("non-list legacy SSE gained cache metadata: %s", rec.Body)
+	}
+	page := decode[mcpAuditPageResponse](t, h.do(t, http.MethodGet, "/api/v1/mcp/audit?connectionId="+connection.ID.String(), nil, true))
+	if page.Total != 6 {
+		t.Fatalf("legacy SSE audit total %d", page.Total)
+	}
+}
+
+func TestMCPProxyLegacySessionSSERejectsInvalidResultBeforeHeaders(t *testing.T) {
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		switch {
+		case bytes.Contains(body, []byte(`"method":"initialize"`)):
+			w.Header().Set("MCP-Session-Id", "legacy-session")
+			_, _ = w.Write([]byte(`{"jsonrpc":"2.0","id":"dwv-legacy-initialize","result":{"protocolVersion":"2025-06-18","capabilities":{"tools":{}},"serverInfo":{"name":"Legacy","version":"1"}}}`))
+		case bytes.Contains(body, []byte(`"method":"notifications/initialized"`)):
+			w.WriteHeader(http.StatusAccepted)
+		default:
+			w.Header().Set("Content-Type", "text/event-stream")
+			_, _ = w.Write([]byte("data: {\"jsonrpc\":\"2.0\",\"id\":1,\"result\":[]}\n\n"))
+		}
+	}))
+	defer upstream.Close()
+	h := newHarness(t)
+	h.server.deps.MCPClient = upstream.Client()
+	connection := createLegacyMCPConnection(t, h, upstream.URL)
+	key := firstAccessKey(t, h)
+	if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+		t.Fatal(err)
+	}
+	body := []byte(`{"jsonrpc":"2.0","id":1,"method":"subscriptions/listen","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/proxy/legacy", bytes.NewReader(body))
+	for name, value := range map[string]string{"X-Api-Key": h.secret, "Content-Type": "application/json", "Accept": "application/json, text/event-stream", "MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "subscriptions/listen"} {
+		req.Header.Set(name, value)
+	}
+	rec := httptest.NewRecorder()
+	h.h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadGateway || strings.HasPrefix(rec.Header().Get("Content-Type"), "text/event-stream") || !bytes.Contains(rec.Body.Bytes(), []byte(`"error"`)) {
+		t.Fatalf("legacy invalid SSE %d headers=%v body=%s", rec.Code, rec.Header(), rec.Body)
 	}
 }
