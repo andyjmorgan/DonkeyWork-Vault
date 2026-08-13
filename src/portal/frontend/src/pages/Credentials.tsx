@@ -72,12 +72,37 @@ export function CredentialsPage() {
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
   const [err, setErr] = useState<string>()
   const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; kind: CredentialKind; view?: boolean }>({ open: false, kind: 'header_api_key' })
+  const [deleting, setDeleting] = useState<{ kind: 'apiKey'; item: ApiKeyItem } | { kind: 'oauthToken'; item: OAuthTokenItem }>()
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteErr, setDeleteErr] = useState<string>()
 
   const load = () => {
-    api.apiKeys().then(setKeys).catch((e) => setErr(String(e)))
+    api.apiKeys().then((items) => { setKeys(items); setErr(undefined) }).catch((e) => setErr(String(e)))
     api.oauthTokens().then(setTokens).catch(() => {})
   }
   useEffect(() => { load() }, [])
+
+  const edit = (item: ApiKeyItem) => setForm({ open: true, item, kind: item.kind })
+  const view = (item: ApiKeyItem) => setForm({ open: true, item, kind: item.kind, view: true })
+  const requestDelete = (target: NonNullable<typeof deleting>) => {
+    setForm({ open: false, kind: 'header_api_key' })
+    setDeleteErr(undefined)
+    setDeleting(target)
+  }
+  const remove = async () => {
+    if (!deleting) return
+    setDeleteBusy(true); setDeleteErr(undefined)
+    try {
+      if (deleting.kind === 'apiKey') await api.deleteApiKey(deleting.item.id)
+      else await api.deleteOAuthToken(deleting.item.id)
+      setDeleting(undefined)
+      load()
+    } catch (e) {
+      setDeleteErr(String(e))
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
 
   // When editing/viewing, the kind is fixed by the stored credential; when adding, it's the default
   // the dialog opens with — the user changes it via the Kind selector inside the form.
@@ -105,7 +130,7 @@ export function CredentialsPage() {
                   <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Kind</TableHead><TableHead>Auth</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>
                     {keys.map((k) => (
-                      <TableRow key={k.id} className="cursor-pointer" onClick={() => setForm({ open: true, item: k, kind: k.kind, view: true })}>
+                      <TableRow key={k.id} className="cursor-pointer" onClick={() => view(k)}>
                         <TableCell>
                           <div className="font-medium">{k.name}</div>
                           {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
@@ -115,8 +140,8 @@ export function CredentialsPage() {
                         <TableCell className="max-w-[12rem] truncate text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
                         <TableCell onClick={(e) => e.stopPropagation()}><RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
                         <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k, kind: k.kind })}><Pencil className="size-4" /></Button>
-                          <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteApiKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
+                          <Button variant="ghost" size="icon" aria-label={`Edit ${k.name}`} onClick={() => edit(k)}><Pencil className="size-4" /></Button>
+                          <Button variant="ghost" size="icon" aria-label={`Delete ${k.name}`} onClick={() => requestDelete({ kind: 'apiKey', item: k })}><Trash2 className="size-4 text-destructive" /></Button>
                         </TableCell>
                       </TableRow>
                     ))}
@@ -126,15 +151,15 @@ export function CredentialsPage() {
               {/* Mobile: a card per key with a two-column detail grid. */}
               <div className="space-y-3 sm:hidden">
                 {keys.map((k) => (
-                  <div key={k.id} className="cursor-pointer rounded-xl border border-border p-3" onClick={() => setForm({ open: true, item: k, kind: k.kind, view: true })}>
+                  <div key={k.id} className="cursor-pointer rounded-xl border border-border p-3" onClick={() => view(k)}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="font-medium">{k.name}</div>
                         {k.description && <div className="truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
                       </div>
                       <div className="-mr-1 flex shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" aria-label="Edit" onClick={() => setForm({ open: true, item: k, kind: k.kind })}><Pencil className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteApiKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
+                        <Button variant="ghost" size="icon" aria-label={`Edit ${k.name}`} onClick={() => edit(k)}><Pencil className="size-4" /></Button>
+                        <Button variant="ghost" size="icon" aria-label={`Delete ${k.name}`} onClick={() => requestDelete({ kind: 'apiKey', item: k })}><Trash2 className="size-4 text-destructive" /></Button>
                       </div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
@@ -166,8 +191,28 @@ export function CredentialsPage() {
             kind={formKind}
             readOnly={!!form.view}
             onClose={() => setForm({ open: false, kind: 'header_api_key' })}
+            onEdit={form.item ? () => edit(form.item!) : undefined}
+            onDelete={form.item ? () => requestDelete({ kind: 'apiKey', item: form.item! }) : undefined}
             onStored={() => { load(); setForm({ open: false, kind: 'header_api_key' }) }}
           />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleting} onOpenChange={(open) => { if (!open && !deleteBusy) setDeleting(undefined) }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Delete credential?</DialogTitle>
+            <DialogDescription>
+              {deleting?.kind === 'apiKey'
+                ? `This permanently deletes ${deleting.item.name}.`
+                : `This permanently deletes the ${deleting?.item.provider}${deleting?.item.account ? ` connection for ${deleting.item.account}` : ' connection'}.`}
+            </DialogDescription>
+          </DialogHeader>
+          {deleteErr && <p className="text-sm text-destructive">{deleteErr}</p>}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" disabled={deleteBusy} onClick={() => setDeleting(undefined)}>Cancel</Button>
+            <Button variant="destructive" disabled={deleteBusy} onClick={remove}>{deleteBusy ? 'Deleting…' : 'Delete'}</Button>
+          </div>
         </DialogContent>
       </Dialog>
 
@@ -181,7 +226,7 @@ export function CredentialsPage() {
               {/* Desktop: table. */}
               <div className="hidden sm:block">
                 <Table>
-                  <TableHeader><TableRow><TableHead>Provider</TableHead><TableHead>Account</TableHead><TableHead>Expires</TableHead><TableHead>Scopes</TableHead><TableHead>Token</TableHead></TableRow></TableHeader>
+                  <TableHeader><TableRow><TableHead>Provider</TableHead><TableHead>Account</TableHead><TableHead>Expires</TableHead><TableHead>Scopes</TableHead><TableHead>Token</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>
                     {tokens.map((t) => (
                       <TableRow key={t.id}>
@@ -190,6 +235,7 @@ export function CredentialsPage() {
                         <TableCell className="text-muted-foreground">{t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '—'}</TableCell>
                         <TableCell><ScopeBadges scopes={t.scopes} className="max-w-[16rem]" /></TableCell>
                         <TableCell><RevealButton title={`${t.provider}${t.account ? ` · ${t.account}` : ''}`} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} /></TableCell>
+                        <TableCell className="text-right"><Button variant="ghost" size="icon" aria-label={`Delete ${t.provider} connection`} onClick={() => requestDelete({ kind: 'oauthToken', item: t })}><Trash2 className="size-4 text-destructive" /></Button></TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -204,7 +250,10 @@ export function CredentialsPage() {
                         <div className="font-medium">{t.provider}</div>
                         {t.account && <div className="truncate text-xs text-muted-foreground">{t.account}</div>}
                       </div>
-                      <RevealButton title={`${t.provider}${t.account ? ` · ${t.account}` : ''}`} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} />
+                      <div className="-mr-1 flex shrink-0">
+                        <RevealButton title={`${t.provider}${t.account ? ` · ${t.account}` : ''}`} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} />
+                        <Button variant="ghost" size="icon" aria-label={`Delete ${t.provider} connection`} onClick={() => requestDelete({ kind: 'oauthToken', item: t })}><Trash2 className="size-4 text-destructive" /></Button>
+                      </div>
                     </div>
                     <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
                       <Field label="Expires">{t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '—'}</Field>
@@ -267,7 +316,7 @@ function RevealButton({ title, load }: { title: string; load: () => Promise<stri
   )
 }
 
-function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onStored }: { initial?: ApiKeyItem; kind: CredentialKind; readOnly?: boolean; onClose?: () => void; onStored: () => void }) {
+function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onEdit, onDelete, onStored }: { initial?: ApiKeyItem; kind: CredentialKind; readOnly?: boolean; onClose?: () => void; onEdit?: () => void; onDelete?: () => void; onStored: () => void }) {
   // Read-only view is always opened with a stored credential. Guarding here keeps a stray render
   // with no `initial` (e.g. the brief frame as the dialog clears its item on close) from throwing.
   const view = readOnly && !!initial
@@ -281,6 +330,7 @@ function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onSto
     username: initial?.username ?? '',
   })
   const [msg, setMsg] = useState<string>()
+  const [busy, setBusy] = useState(false)
   const set = (patch: Partial<typeof k>) => setK({ ...k, ...patch })
   const editing = !!initial
 
@@ -290,7 +340,7 @@ function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onSto
   const fieldProps = (value: string) => readOnly ? { value, readOnly: true, className: ro } : undefined
 
   const submit = async () => {
-    setMsg(undefined)
+    setBusy(true); setMsg(undefined)
     // Send only the fields this shape uses so another shape's values can't leak through: clear the
     // username for shapes without one, and header/prefix for shapes that don't expose them.
     const payload: NewApiKey = {
@@ -299,7 +349,9 @@ function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onSto
       header: conf.headerPrefix ? k.header : '',
       prefix: conf.headerPrefix ? k.prefix : '',
     }
-    try { await api.createApiKey(payload); onStored() } catch (e) { setMsg(String(e)) }
+    try { await api.createApiKey(payload); onStored() }
+    catch (e) { setMsg(String(e)) }
+    finally { setBusy(false) }
   }
 
   return (
@@ -343,9 +395,13 @@ function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onSto
 
         {msg && <p className="text-sm text-destructive sm:col-span-2">{msg}</p>}
         {readOnly ? (
-          <div className="flex justify-end sm:col-span-2"><Button variant="outline" onClick={onClose}>Close</Button></div>
+          <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
+            {onDelete && <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={onDelete}><Trash2 className="size-4" /> Delete</Button>}
+            {onEdit && <Button variant="outline" onClick={onEdit}><Pencil className="size-4" /> Edit</Button>}
+            <Button variant="outline" onClick={onClose}>Close</Button>
+          </div>
         ) : (
-          <div className="sm:col-span-2"><Button onClick={submit} disabled={!k.name || (!editing && !k.secret) || (!!conf.username && !k.username.trim())}>{editing ? 'Save changes' : 'Save key'}</Button></div>
+          <div className="sm:col-span-2"><Button onClick={submit} disabled={busy || !k.name || (!editing && !k.secret) || (!!conf.username && !k.username.trim())}>{busy ? 'Saving…' : (editing ? 'Save changes' : 'Save key')}</Button></div>
         )}
       </div>
     </div>
