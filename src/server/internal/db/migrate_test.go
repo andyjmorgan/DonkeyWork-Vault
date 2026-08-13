@@ -6,9 +6,7 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"donkeywork.dev/vault-server/internal/db"
@@ -77,67 +75,6 @@ func TestMigrate(t *testing.T) {
 	var ok bool
 	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='vault' AND table_name='access_keys')`).Scan(&ok); err != nil || !ok {
 		t.Fatalf("expected vault.access_keys after migrate: ok=%v err=%v", ok, err)
-	}
-}
-
-// TestMigrateMCPOAuthStateSupersession verifies that an upgrade from the pre-0008 schema removes
-// duplicate connection states deterministically before adding the uniqueness constraint.
-func TestMigrateMCPOAuthStateSupersession(t *testing.T) {
-	dsn := os.Getenv("VAULT_TEST_DSN")
-	if dsn == "" {
-		t.Skip("VAULT_TEST_DSN not set")
-	}
-	ctx := context.Background()
-	pool := freshMigrateDB(t, dsn)
-	defer pool.Close()
-	if err := db.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := pool.Exec(ctx, `DROP INDEX vault.ix_mcp_oauth_states_connection`); err != nil {
-		t.Fatal(err)
-	}
-	userID, tenantID := uuid.New(), uuid.New()
-	var connectionID uuid.UUID
-	if err := pool.QueryRow(ctx, `
-		INSERT INTO vault.mcp_connections
-			(user_id, tenant_id, slug, name, upstream_url, auth_mode, audit_mode, protocol_version, enabled)
-		VALUES ($1,$2,$3,'OAuth migration','https://example.com/mcp','oauth','metadata','2026-07-28',true)
-		RETURNING id`, userID, tenantID, "oauth-migration-"+uuid.NewString()).Scan(&connectionID); err != nil {
-		t.Fatal(err)
-	}
-	insertState := func(state string, createdAt time.Time) {
-		t.Helper()
-		if _, err := pool.Exec(ctx, `
-			INSERT INTO vault.mcp_oauth_states
-				(state, connection_id, user_id, tenant_id, code_verifier, redirect_uri, resource,
-				 issuer_url, auth_endpoint, token_endpoint, token_auth_method, expires_at, created_at)
-			VALUES ($1,$2,$3,$4,'verifier','https://vault.example/callback','https://example.com/mcp',
-				'https://issuer.example','https://issuer.example/authorize','https://issuer.example/token',
-				'none',$5,$6)`, state, connectionID, userID, tenantID, time.Now().Add(time.Hour), createdAt); err != nil {
-			t.Fatal(err)
-		}
-	}
-	oldState, currentState := "old-"+uuid.NewString(), "current-"+uuid.NewString()
-	insertState(oldState, time.Now().Add(-time.Minute))
-	insertState(currentState, time.Now())
-	if _, err := pool.Exec(ctx, `DELETE FROM vault.schema_migrations WHERE version='0008_mcp_oauth_state_supersession'`); err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Migrate(ctx, pool); err != nil {
-		t.Fatal(err)
-	}
-	var oldExists, currentExists, indexExists bool
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vault.mcp_oauth_states WHERE state=$1)`, oldState).Scan(&oldExists); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vault.mcp_oauth_states WHERE state=$1)`, currentState).Scan(&currentExists); err != nil {
-		t.Fatal(err)
-	}
-	if err := pool.QueryRow(ctx, `SELECT to_regclass('vault.ix_mcp_oauth_states_connection') IS NOT NULL`).Scan(&indexExists); err != nil {
-		t.Fatal(err)
-	}
-	if oldExists || !currentExists || !indexExists {
-		t.Fatalf("migration result: old=%v current=%v index=%v", oldExists, currentExists, indexExists)
 	}
 }
 

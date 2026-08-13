@@ -4,7 +4,7 @@ package httpapi
 // user is the trusted human/admin (full set incl. audit); the CLI (device authorization) gets the
 // operational subset.
 var (
-	webVaultScopes = []string{"vault:read", "vault:readwrite", "vault:audit", "vault:mcp"}
+	webVaultScopes = []string{"vault:read", "vault:readwrite", "vault:audit"}
 	cliVaultScopes = []string{"vault:read", "vault:readwrite"}
 )
 
