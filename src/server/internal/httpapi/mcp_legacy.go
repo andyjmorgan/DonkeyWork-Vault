@@ -56,7 +56,7 @@ func (s *Server) legacyLifecycleObserver(ctx context.Context, exchange *store.MC
 		if err := s.deps.MCP.Store().InsertMCPAuditMessage(ctx, record); err != nil {
 			return err
 		}
-		*sequence = *sequence + 1
+		*sequence++
 		return nil
 	}
 }
