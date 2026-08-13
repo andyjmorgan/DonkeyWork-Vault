@@ -17,6 +17,7 @@ import (
 	"donkeywork.dev/vault-server/internal/audit"
 	"donkeywork.dev/vault-server/internal/crypto"
 	"donkeywork.dev/vault-server/internal/manifests"
+	"donkeywork.dev/vault-server/internal/mcpoauth"
 	"donkeywork.dev/vault-server/internal/service"
 	"donkeywork.dev/vault-server/internal/store"
 	"donkeywork.dev/vault-server/internal/store/memstore"
@@ -109,6 +110,9 @@ func contractServer(t *testing.T) *Server {
 		OAuthConfigs:  service.NewOAuthConfigService(ms, cipher, auditLog, resolver),
 		OAuthTokens:   service.NewOAuthTokenService(ms, cipher, auditLog, resolver, http.DefaultClient),
 		OAuthFlow:     service.NewOAuthFlowService(ms, cipher, resolver, auditLog, http.DefaultClient, nil),
+		MCP:           service.NewMCPService(ms, cipher),
+		MCPOAuth:      mcpoauth.NewService(mcpoauth.NewStoreRepository(ms), cipher, http.DefaultClient),
+		MCPClient:     http.DefaultClient,
 		Resolver:      resolver,
 		Discovery:     manifests.NewDiscovery(http.DefaultClient),
 		AuditLog:      auditLog,

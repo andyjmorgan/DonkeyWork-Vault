@@ -25,6 +25,7 @@ type Store interface {
 	UpdateAPIKey(ctx context.Context, k *APIKey) error
 	ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]APIKey, error)
 	GetAPIKeyByName(ctx context.Context, userID uuid.UUID, name string) (*APIKey, error)
+	GetAPIKeyByID(ctx context.Context, userID, id uuid.UUID) (*APIKey, error)
 	DeleteAPIKey(ctx context.Context, userID, id uuid.UUID) (bool, error)
 	TouchAPIKeyLastUsed(ctx context.Context, id uuid.UUID) error
 
@@ -62,4 +63,43 @@ type Store interface {
 	InsertAuditBatch(ctx context.Context, entries []AuditEntry) error
 	QueryAudit(ctx context.Context, f AuditFilter) (items []AuditEntry, total int, err error)
 	DeleteAuditOlderThan(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
+
+	// --- MCP connections ---
+	InsertMCPConnection(ctx context.Context, c *MCPConnection) error
+	UpdateMCPConnection(ctx context.Context, c *MCPConnection) (bool, error)
+	ListMCPConnections(ctx context.Context, userID uuid.UUID) ([]MCPConnection, error)
+	GetMCPConnectionByID(ctx context.Context, userID, id uuid.UUID) (*MCPConnection, error)
+	GetMCPConnectionBySlug(ctx context.Context, userID uuid.UUID, slug string) (*MCPConnection, error)
+	DeleteMCPConnection(ctx context.Context, userID, id uuid.UUID) (bool, error)
+
+	// --- MCP access grants and upstream credentials ---
+	InsertMCPConnectionGrant(ctx context.Context, g *MCPConnectionGrant) error
+	ListMCPConnectionGrants(ctx context.Context, userID, connectionID uuid.UUID) ([]MCPConnectionGrant, error)
+	// HasMCPConnectionGrant bypasses user scoping because access-key authentication supplies the
+	// key ID; database ownership constraints prevent cross-owner grants from being inserted.
+	HasMCPConnectionGrant(ctx context.Context, accessKeyID, connectionID uuid.UUID) (bool, error)
+	DeleteMCPConnectionGrant(ctx context.Context, userID, id uuid.UUID) (bool, error)
+	InsertMCPHeaderBinding(ctx context.Context, b *MCPHeaderBinding) error
+	ListMCPHeaderBindings(ctx context.Context, userID, connectionID uuid.UUID) ([]MCPHeaderBinding, error)
+	DeleteMCPHeaderBinding(ctx context.Context, userID, id uuid.UUID) (bool, error)
+
+	// --- MCP policies ---
+	UpsertMCPToolPolicy(ctx context.Context, p *MCPToolPolicy) error
+	ListMCPToolPolicies(ctx context.Context, userID, connectionID uuid.UUID) ([]MCPToolPolicy, error)
+	DeleteMCPToolPolicy(ctx context.Context, userID, id uuid.UUID) (bool, error)
+
+	// --- MCP upstream OAuth ---
+	InsertMCPOAuthAuthorization(ctx context.Context, a *MCPOAuthAuthorization) error
+	UpdateMCPOAuthAuthorization(ctx context.Context, a *MCPOAuthAuthorization) (bool, error)
+	GetMCPOAuthAuthorization(ctx context.Context, userID, connectionID uuid.UUID) (*MCPOAuthAuthorization, error)
+	DeleteMCPOAuthAuthorization(ctx context.Context, userID, connectionID uuid.UUID) (bool, error)
+	InsertMCPOAuthState(ctx context.Context, s *MCPOAuthState) error
+	// ClaimMCPOAuthState atomically consumes a state so concurrent callback replays cannot succeed.
+	ClaimMCPOAuthState(ctx context.Context, state string) (*MCPOAuthState, error)
+
+	// --- MCP message audit ---
+	InsertMCPAuditExchange(ctx context.Context, e *MCPAuditExchange) error
+	CompleteMCPAuditExchange(ctx context.Context, e *MCPAuditExchange) (bool, error)
+	InsertMCPAuditMessage(ctx context.Context, m *MCPAuditMessage) error
+	QueryMCPAudit(ctx context.Context, f MCPAuditFilter) (items []MCPAuditMessage, total int, err error)
 }

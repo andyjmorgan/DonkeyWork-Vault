@@ -9,6 +9,7 @@ import { ProvidersPage } from './pages/Providers'
 import { ConnectPage } from './pages/Connect'
 import { AuditPage } from './pages/Audit'
 import { ProfilePage } from './pages/Profile'
+import { MCPPage } from './pages/MCP'
 
 // The signed-in shell: gated, loads the caller, and renders the app chrome around the active route.
 function AppShell() {
@@ -31,6 +32,7 @@ export function App() {
         <Route path="/providers" element={<ProvidersPage />} />
         <Route path="/oauthconnect" element={<ConnectPage />} />
         <Route path="/audit" element={<AuditPage />} />
+        <Route path="/mcp" element={<MCPPage />} />
         <Route path="/profile" element={<ProfilePage />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />

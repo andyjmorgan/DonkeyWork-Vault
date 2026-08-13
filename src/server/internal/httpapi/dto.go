@@ -97,12 +97,14 @@ type accessKeyDTO struct {
 	Prefix      string     `json:"prefix"`
 	CreatedAt   time.Time  `json:"createdAt"`
 	LastUsedAt  *time.Time `json:"lastUsedAt"`
+	ExpiresAt   *time.Time `json:"expiresAt"`
 }
 
 type createAccessKeyRequest struct {
-	Name        string   `json:"name"`
-	Description *string  `json:"description"`
-	Scopes      []string `json:"scopes"`
+	Name        string     `json:"name"`
+	Description *string    `json:"description"`
+	Scopes      []string   `json:"scopes"`
+	ExpiresAt   *time.Time `json:"expiresAt"`
 }
 
 type createdAccessKeyResponse struct {
@@ -235,6 +237,113 @@ type auditPageResponse struct {
 	Offset int             `json:"offset"`
 }
 
+type mcpConnectionDTO struct {
+	ID              uuid.UUID  `json:"id"`
+	Slug            string     `json:"slug"`
+	Name            string     `json:"name"`
+	Description     *string    `json:"description"`
+	UpstreamURL     string     `json:"upstreamUrl"`
+	AuthMode        string     `json:"authMode"`
+	AuditMode       string     `json:"auditMode"`
+	ProtocolVersion string     `json:"protocolVersion"`
+	Enabled         bool       `json:"enabled"`
+	CreatedAt       time.Time  `json:"createdAt"`
+	UpdatedAt       *time.Time `json:"updatedAt"`
+}
+
+type upsertMCPConnectionRequest struct {
+	ID          uuid.UUID `json:"id"`
+	Slug        string    `json:"slug"`
+	Name        string    `json:"name"`
+	Description *string   `json:"description"`
+	UpstreamURL string    `json:"upstreamUrl"`
+	AuthMode    string    `json:"authMode"`
+	AuditMode   string    `json:"auditMode"`
+	Enabled     *bool     `json:"enabled"`
+}
+
+type mcpGrantDTO struct {
+	ID           uuid.UUID `json:"id"`
+	ConnectionID uuid.UUID `json:"connectionId"`
+	AccessKeyID  uuid.UUID `json:"accessKeyId"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type createMCPGrantRequest struct {
+	AccessKeyID uuid.UUID `json:"accessKeyId"`
+}
+
+type mcpHeaderBindingDTO struct {
+	ID           uuid.UUID `json:"id"`
+	ConnectionID uuid.UUID `json:"connectionId"`
+	CredentialID uuid.UUID `json:"credentialId"`
+	HeaderName   *string   `json:"headerName"`
+	CreatedAt    time.Time `json:"createdAt"`
+}
+
+type createMCPHeaderBindingRequest struct {
+	CredentialID uuid.UUID `json:"credentialId"`
+	HeaderName   *string   `json:"headerName"`
+}
+
+type mcpToolPolicyDTO struct {
+	ID           uuid.UUID  `json:"id"`
+	ConnectionID uuid.UUID  `json:"connectionId"`
+	Method       string     `json:"method"`
+	ToolName     string     `json:"toolName"`
+	Allow        bool       `json:"allow"`
+	CreatedAt    time.Time  `json:"createdAt"`
+	UpdatedAt    *time.Time `json:"updatedAt"`
+}
+
+type upsertMCPToolPolicyRequest struct {
+	Method   string `json:"method"`
+	ToolName string `json:"toolName"`
+	Allow    bool   `json:"allow"`
+}
+
+type configureMCPOAuthRequest struct {
+	Issuer       string   `json:"issuer"`
+	ClientID     string   `json:"clientId"`
+	ClientSecret string   `json:"clientSecret"`
+	Scopes       []string `json:"scopes"`
+}
+
+type mcpOAuthConnectResponse struct {
+	AuthorizeURL string    `json:"authorizeUrl"`
+	ExpiresAt    time.Time `json:"expiresAt"`
+}
+
+type mcpAuditMessageDTO struct {
+	ID               uuid.UUID `json:"id"`
+	ExchangeID       uuid.UUID `json:"exchangeId"`
+	ConnectionID     uuid.UUID `json:"connectionId"`
+	SequenceNo       int64     `json:"sequenceNo"`
+	ObservedAt       time.Time `json:"observedAt"`
+	Direction        string    `json:"direction"`
+	MessageKind      string    `json:"messageKind"`
+	PolicyDecision   string    `json:"policyDecision"`
+	JSONRPCIDType    *string   `json:"jsonrpcIdType"`
+	JSONRPCIDText    *string   `json:"jsonrpcIdText"`
+	Method           *string   `json:"method"`
+	ToolName         *string   `json:"toolName"`
+	PolicyRule       *string   `json:"policyRule"`
+	ResultType       *string   `json:"resultType"`
+	SubscriptionID   *string   `json:"subscriptionId"`
+	ErrorCode        *int      `json:"errorCode"`
+	PayloadRedacted  *string   `json:"payloadRedacted"`
+	PayloadBytes     int64     `json:"payloadBytes"`
+	PayloadTruncated bool      `json:"payloadTruncated"`
+	RedactionPaths   []string  `json:"redactionPaths"`
+}
+
+type mcpAuditPageResponse struct {
+	Items  []mcpAuditMessageDTO `json:"items"`
+	Total  int                  `json:"total"`
+	Limit  int                  `json:"limit"`
+	Offset int                  `json:"offset"`
+}
+
 type errorResponse struct {
 	Error string `json:"error"`
 }
@@ -252,6 +361,7 @@ func toAccessKeyDTO(k service.StoredAccessKey) accessKeyDTO {
 	return accessKeyDTO{
 		ID: k.ID, Name: k.Name, Description: k.Description, Scopes: orEmpty(k.Scopes),
 		Enabled: k.Enabled, Prefix: k.Prefix, CreatedAt: k.CreatedAt, LastUsedAt: k.LastUsedAt,
+		ExpiresAt: k.ExpiresAt,
 	}
 }
 
@@ -308,6 +418,22 @@ func toAuditDTO(e store.AuditEntry) auditEventDTO {
 		SourceIP: e.SourceIP, TargetKind: e.TargetKind, TargetProvider: e.TargetProvider, TargetAccount: e.TargetAccount,
 		TargetName: e.TargetName, Transport: e.Transport, Method: e.Method, Detail: e.Detail, CreatedAt: e.CreatedAt,
 	}
+}
+
+func toMCPConnectionDTO(c store.MCPConnection) mcpConnectionDTO {
+	return mcpConnectionDTO{ID: c.ID, Slug: c.Slug, Name: c.Name, Description: c.Description,
+		UpstreamURL: c.UpstreamURL, AuthMode: c.AuthMode, AuditMode: c.AuditMode,
+		ProtocolVersion: c.ProtocolVersion, Enabled: c.Enabled, CreatedAt: c.CreatedAt, UpdatedAt: c.UpdatedAt}
+}
+
+func toMCPAuditMessageDTO(m store.MCPAuditMessage) mcpAuditMessageDTO {
+	return mcpAuditMessageDTO{ID: m.ID, ExchangeID: m.ExchangeID, ConnectionID: m.ConnectionID,
+		SequenceNo: m.SequenceNo, ObservedAt: m.ObservedAt, Direction: m.Direction,
+		MessageKind: m.MessageKind, PolicyDecision: m.PolicyDecision, JSONRPCIDType: m.JSONRPCIDType,
+		JSONRPCIDText: m.JSONRPCIDText, Method: m.Method, ToolName: m.ToolName, PolicyRule: m.PolicyRule,
+		ResultType: m.ResultType, SubscriptionID: m.SubscriptionID, ErrorCode: m.ErrorCode,
+		PayloadRedacted: m.PayloadRedacted, PayloadBytes: m.PayloadBytes,
+		PayloadTruncated: m.PayloadTruncated, RedactionPaths: orEmpty(m.RedactionPaths)}
 }
 
 func orEmpty(s []string) []string {
