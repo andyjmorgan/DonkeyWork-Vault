@@ -18,6 +18,7 @@ import (
 
 	"donkeywork.dev/vault-server/internal/contracts"
 	"donkeywork.dev/vault-server/internal/mcp"
+	"donkeywork.dev/vault-server/internal/mcpoauth"
 	"donkeywork.dev/vault-server/internal/service"
 	"donkeywork.dev/vault-server/internal/store"
 )
@@ -65,6 +66,19 @@ type failMCPResponseAuditStore struct {
 type completionContextStore struct {
 	store.Store
 	ctxErr error
+}
+
+type captureMCPCompletionStore struct {
+	store.Store
+	completed []store.MCPAuditExchange
+}
+
+func (s *captureMCPCompletionStore) CompleteMCPAuditExchange(ctx context.Context, exchange *store.MCPAuditExchange) (bool, error) {
+	ok, err := s.Store.CompleteMCPAuditExchange(ctx, exchange)
+	if err == nil && ok {
+		s.completed = append(s.completed, *exchange)
+	}
+	return ok, err
 }
 
 func (s *completionContextStore) CompleteMCPAuditExchange(ctx context.Context, exchange *store.MCPAuditExchange) (bool, error) {
@@ -475,6 +489,133 @@ func TestMCPProxyJSONAndPolicy(t *testing.T) {
 	rec = mcpRequest(t, h, []byte(`{"bad":true}`), "tools/call", "allowed")
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("malformed %d %s", rec.Code, rec.Body)
+	}
+}
+
+func TestMCPProxyOAuthRefreshFailureStopsBeforeUpstreamAndCompletesAudit(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		cancel bool
+	}{
+		{name: "provider failure"},
+		{name: "request cancellation", cancel: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			refreshStarted := make(chan struct{})
+			refreshRelease := make(chan struct{})
+			tokenServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if test.cancel {
+					close(refreshStarted)
+					select {
+					case <-r.Context().Done():
+					case <-refreshRelease:
+					}
+					return
+				}
+				http.Error(w, "refresh rejected", http.StatusBadGateway)
+			}))
+			defer tokenServer.Close()
+			defer close(refreshRelease)
+
+			upstreamCalls := 0
+			upstream := httptest.NewTLSServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+				upstreamCalls++
+			}))
+			defer upstream.Close()
+
+			h := newHarness(t)
+			h.server.deps.MCPClient = upstream.Client()
+			connection := createMCPConnection(t, h, upstream.URL)
+			rec := h.do(t, http.MethodPut, "/api/v1/mcp/connections/"+connection.ID.String(), upsertMCPConnectionRequest{
+				Slug: connection.Slug, Name: connection.Name, UpstreamURL: connection.UpstreamURL,
+				AuthMode: "oauth", AuditMode: connection.AuditMode,
+				UpstreamProtocolMode: connection.UpstreamProtocolMode, LegacyProtocolVersion: connection.LegacyProtocolVersion,
+				Enabled: boolPtr(true),
+			}, true)
+			if rec.Code != http.StatusOK {
+				t.Fatalf("set OAuth mode %d: %s", rec.Code, rec.Body)
+			}
+			key := firstAccessKey(t, h)
+			if err := h.ms.InsertMCPConnectionGrant(t.Context(), &store.MCPConnectionGrant{UserID: h.userID, ConnectionID: connection.ID, AccessKeyID: key.ID}); err != nil {
+				t.Fatal(err)
+			}
+			storedConnection, err := h.ms.GetMCPConnectionByID(t.Context(), h.userID, connection.ID)
+			if err != nil || storedConnection == nil {
+				t.Fatalf("connection lookup: %v", err)
+			}
+
+			clientID, err := h.cipher.EncryptString("client-id")
+			if err != nil {
+				t.Fatal(err)
+			}
+			accessToken, err := h.cipher.EncryptString("expired-access-token")
+			if err != nil {
+				t.Fatal(err)
+			}
+			refreshToken, err := h.cipher.EncryptString("refresh-token")
+			if err != nil {
+				t.Fatal(err)
+			}
+			expiresAt := time.Now().UTC().Add(-time.Minute)
+			issuer, resource, tokenType := "https://issuer.example", upstream.URL, "Bearer" //nolint:gosec // G101: inert OAuth test metadata, not credentials.
+			if err := h.ms.InsertMCPOAuthAuthorization(t.Context(), &store.MCPOAuthAuthorization{
+				UserID: h.userID, TenantID: storedConnection.TenantID, ConnectionID: connection.ID,
+				IssuerURL: &issuer, TokenEndpoint: &tokenServer.URL, Resource: &resource, TokenType: &tokenType,
+				TokenAuthMethod: "none", ClientIDCipher: clientID, AccessTokenCipher: accessToken,
+				RefreshTokenCipher: refreshToken, ExpiresAt: &expiresAt,
+			}); err != nil {
+				t.Fatal(err)
+			}
+			h.server.deps.MCPOAuth = mcpoauth.NewService(mcpoauth.NewStoreRepository(h.ms), h.cipher, tokenServer.Client())
+			completionStore := &captureMCPCompletionStore{Store: h.ms}
+			h.server.deps.MCP = service.NewMCPService(completionStore, h.cipher)
+
+			body := []byte(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{"_meta":{"io.modelcontextprotocol/protocolVersion":"2026-07-28","io.modelcontextprotocol/clientCapabilities":{},"io.modelcontextprotocol/clientInfo":{"name":"test","version":"1"}}}}`)
+			req := httptest.NewRequest(http.MethodPost, "/api/v1/mcp/proxy/example", bytes.NewReader(body))
+			for name, value := range map[string]string{
+				"X-Api-Key": h.secret, "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
+				"MCP-Protocol-Version": "2026-07-28", "Mcp-Method": "tools/list",
+			} {
+				req.Header.Set(name, value)
+			}
+			if test.cancel {
+				ctx, cancel := context.WithCancel(req.Context())
+				req = req.WithContext(ctx)
+				defer cancel()
+				rec = httptest.NewRecorder()
+				done := make(chan struct{})
+				go func() {
+					h.h.ServeHTTP(rec, req)
+					close(done)
+				}()
+				select {
+				case <-refreshStarted:
+					cancel()
+				case <-time.After(time.Second):
+					t.Fatal("OAuth refresh did not reach the token endpoint")
+				}
+				select {
+				case <-done:
+				case <-time.After(time.Second):
+					t.Fatal("gateway did not return after request cancellation")
+				}
+			} else {
+				rec = httptest.NewRecorder()
+				h.h.ServeHTTP(rec, req)
+			}
+
+			if rec.Code != http.StatusBadGateway || upstreamCalls != 0 || !strings.Contains(rec.Body.String(), "MCP upstream authorization unavailable.") {
+				t.Fatalf("status=%d upstream=%d body=%s", rec.Code, upstreamCalls, rec.Body)
+			}
+			if len(completionStore.completed) != 1 {
+				t.Fatalf("completed exchanges=%d", len(completionStore.completed))
+			}
+			completed := completionStore.completed[0]
+			if completed.CompletedAt == nil || completed.StatusCode == nil || *completed.StatusCode != http.StatusBadGateway ||
+				completed.Outcome != "failed" || completed.ErrorClass == nil || *completed.ErrorClass != "oauth" {
+				t.Fatalf("completed exchange=%+v", completed)
+			}
+		})
 	}
 }
 

@@ -19,6 +19,9 @@ import (
 
 type memoryRepository struct {
 	mu            sync.Mutex
+	refreshMu     sync.Mutex
+	refreshLocks  map[uuid.UUID]chan struct{}
+	refreshCalls  atomic.Int32
 	config        *ConnectionOAuth
 	states        map[string]*State
 	authorization *Authorization
@@ -28,7 +31,30 @@ type memoryRepository struct {
 	upsertErr     error
 }
 
+func (r *memoryRepository) WithRefreshLock(ctx context.Context, connectionID uuid.UUID, fn func() error) error {
+	r.refreshCalls.Add(1)
+	r.refreshMu.Lock()
+	lock := r.refreshLocks[connectionID]
+	if lock == nil {
+		if r.refreshLocks == nil {
+			r.refreshLocks = make(map[uuid.UUID]chan struct{})
+		}
+		lock = make(chan struct{}, 1)
+		r.refreshLocks[connectionID] = lock
+	}
+	r.refreshMu.Unlock()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case lock <- struct{}{}:
+	}
+	defer func() { <-lock }()
+	return fn()
+}
+
 func (r *memoryRepository) SaveClientConfiguration(_ context.Context, configuration *ClientConfiguration) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.saveErr != nil {
 		return r.saveErr
 	}
@@ -40,14 +66,35 @@ func (r *memoryRepository) SaveClientConfiguration(_ context.Context, configurat
 	return nil
 }
 
+func (r *memoryRepository) DeleteAuthorization(context.Context, uuid.UUID, uuid.UUID) (bool, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.authorization == nil && r.config == nil {
+		return false, nil
+	}
+	r.authorization, r.config = nil, nil
+	return true, nil
+}
+
 func (r *memoryRepository) GetConnectionOAuth(context.Context, uuid.UUID, uuid.UUID) (*ConnectionOAuth, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.err != nil {
 		return nil, r.err
 	}
-	return r.config, nil
+	if r.config == nil {
+		return nil, nil
+	}
+	config := *r.config
+	config.ClientIDCipher = slices.Clone(r.config.ClientIDCipher)
+	config.ClientSecretCipher = slices.Clone(r.config.ClientSecretCipher)
+	config.Scopes = slices.Clone(r.config.Scopes)
+	return &config, nil
 }
 
 func (r *memoryRepository) GetStatus(context.Context, uuid.UUID, uuid.UUID) (*Status, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.err != nil {
 		return nil, r.err
 	}
@@ -89,21 +136,32 @@ func (r *memoryRepository) ClaimState(_ context.Context, state string) (*State, 
 }
 
 func (r *memoryRepository) GetAuthorization(context.Context, uuid.UUID, uuid.UUID) (*Authorization, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.err != nil {
 		return nil, r.err
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	return r.authorization, nil
+	if r.authorization == nil {
+		return nil, nil
+	}
+	authorization := *r.authorization
+	authorization.AccessTokenCipher = slices.Clone(r.authorization.AccessTokenCipher)
+	authorization.RefreshTokenCipher = slices.Clone(r.authorization.RefreshTokenCipher)
+	authorization.Scopes = slices.Clone(r.authorization.Scopes)
+	return &authorization, nil
 }
 
 func (r *memoryRepository) UpsertAuthorization(_ context.Context, authorization *Authorization) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
 	if r.upsertErr != nil {
 		return r.upsertErr
 	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	r.authorization = authorization
+	stored := *authorization
+	stored.AccessTokenCipher = slices.Clone(authorization.AccessTokenCipher)
+	stored.RefreshTokenCipher = slices.Clone(authorization.RefreshTokenCipher)
+	stored.Scopes = slices.Clone(authorization.Scopes)
+	r.authorization = &stored
 	return nil
 }
 
@@ -315,6 +373,8 @@ func TestConfigureClient(t *testing.T) {
 
 func TestRefreshRotatesAndSerializes(t *testing.T) {
 	service, repository, upstream, connectionID := newFixture(t)
+	secondService := NewService(repository, &plainCipher{}, upstream.server.Client())
+	secondService.now = service.now
 	now := service.now().UTC()
 	repository.authorization = &Authorization{
 		ConnectionID: connectionID, Resource: upstream.resource, Issuer: upstream.issuer,
@@ -326,16 +386,16 @@ func TestRefreshRotatesAndSerializes(t *testing.T) {
 
 	var wg sync.WaitGroup
 	errorsFound := make(chan error, 2)
-	for range 2 {
+	for _, currentService := range []*Service{service, secondService} {
 		wg.Add(1)
-		go func() {
+		go func(svc *Service) {
 			defer wg.Done()
-			token, err := service.AccessToken(context.Background(), connectionID)
+			token, err := svc.AccessToken(context.Background(), connectionID)
 			if err == nil && (token.AccessToken != "new-access" || !slices.Equal(token.Scopes, []string{"old-scope"})) {
 				err = errors.New("unexpected refreshed token")
 			}
 			errorsFound <- err
-		}()
+		}(currentService)
 	}
 	wg.Wait()
 	close(errorsFound)
@@ -349,6 +409,100 @@ func TestRefreshRotatesAndSerializes(t *testing.T) {
 	}
 	if string(repository.authorization.RefreshTokenCipher) != "encrypted:new-refresh" || string(repository.authorization.AccessTokenCipher) != "encrypted:new-access" {
 		t.Fatalf("rotated token set not persisted: %+v", repository.authorization)
+	}
+}
+
+func TestRefreshLockCancellationAndErrorRelease(t *testing.T) {
+	repository := &memoryRepository{}
+	connectionID := uuid.New()
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- repository.WithRefreshLock(context.Background(), connectionID, func() error {
+			close(entered)
+			<-release
+			return errors.New("refresh failed")
+		})
+	}()
+	<-entered
+	waitCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	called := false
+	if err := repository.WithRefreshLock(waitCtx, connectionID, func() error {
+		called = true
+		return nil
+	}); !errors.Is(err, context.Canceled) || called {
+		t.Fatalf("cancelled lock: err=%v called=%v", err, called)
+	}
+	close(release)
+	if err := <-done; err == nil || err.Error() != "refresh failed" {
+		t.Fatalf("callback error = %v", err)
+	}
+	if err := repository.WithRefreshLock(context.Background(), connectionID, func() error {
+		called = true
+		return nil
+	}); err != nil || !called {
+		t.Fatalf("lock not released after callback error: err=%v called=%v", err, called)
+	}
+}
+
+func TestConfigurationAndDeleteUseRefreshLock(t *testing.T) {
+	service, repository, _, connectionID := newFixture(t)
+	if err := service.ConfigureClient(context.Background(), connectionID, "", "replacement", "", []string{"new"}); err != nil {
+		t.Fatal(err)
+	}
+	if calls := repository.refreshCalls.Load(); calls != 1 {
+		t.Fatalf("configure refresh lock calls = %d", calls)
+	}
+	deleted, err := service.DeleteAuthorization(context.Background(), connectionID)
+	if err != nil || !deleted {
+		t.Fatalf("delete = %v, %v", deleted, err)
+	}
+	if calls := repository.refreshCalls.Load(); calls != 2 {
+		t.Fatalf("delete refresh lock calls = %d", calls)
+	}
+	if deleted, err := service.DeleteAuthorization(context.Background(), connectionID); err != nil || deleted {
+		t.Fatalf("second delete = %v, %v", deleted, err)
+	}
+	if _, err := service.DeleteAuthorization(context.Background(), uuid.Nil); err == nil {
+		t.Fatal("nil connection ID accepted")
+	}
+}
+
+func TestCompleteRejectsConcurrentReconfiguration(t *testing.T) {
+	service, repository, upstream, connectionID := newFixture(t)
+	state := &State{
+		State: "state", ConnectionID: connectionID, Resource: upstream.resource, Issuer: upstream.issuer,
+		AuthorizationEndpoint: upstream.server.URL + "/authorize", TokenEndpoint: upstream.server.URL + "/token",
+		TokenAuthMethod: "client_secret_basic", ExpiresAt: service.now().Add(time.Minute),
+	}
+	repository.states = map[string]*State{state.State: state}
+	originalClient := upstream.server.Config.Handler
+	tokenStarted := make(chan struct{})
+	releaseToken := make(chan struct{})
+	upstream.server.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path == "/token" {
+			close(tokenStarted)
+			<-releaseToken
+		}
+		originalClient.ServeHTTP(w, r)
+	})
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.Complete(context.Background(), "code", state.State)
+		done <- err
+	}()
+	<-tokenStarted
+	if err := service.ConfigureClient(context.Background(), connectionID, "", "replacement", "", []string{"changed"}); err != nil {
+		t.Fatal(err)
+	}
+	close(releaseToken)
+	if err := <-done; !errors.Is(err, ErrBindingMismatch) {
+		t.Fatalf("complete error = %v", err)
+	}
+	if repository.authorization != nil {
+		t.Fatal("stale callback persisted authorization")
 	}
 }
 

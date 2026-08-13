@@ -270,3 +270,19 @@ func TestStoreRepositoryStatus(t *testing.T) {
 		t.Fatal("authorization lookup error not returned")
 	}
 }
+
+func TestStoreRepositoryRefreshLockAndDelete(t *testing.T) {
+	memory := memstore.New()
+	repository := NewStoreRepository(memory)
+	connectionID := uuid.New()
+	called := false
+	if err := repository.WithRefreshLock(context.Background(), connectionID, func() error {
+		called = true
+		return nil
+	}); err != nil || !called {
+		t.Fatalf("refresh lock: called=%v err=%v", called, err)
+	}
+	if deleted, err := repository.DeleteAuthorization(context.Background(), uuid.New(), connectionID); err != nil || deleted {
+		t.Fatalf("delete missing authorization: deleted=%v err=%v", deleted, err)
+	}
+}

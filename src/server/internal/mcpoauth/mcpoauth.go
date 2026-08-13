@@ -2,6 +2,7 @@
 package mcpoauth
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -116,7 +117,9 @@ type Status struct {
 type Repository interface {
 	GetConnectionOAuth(context.Context, uuid.UUID, uuid.UUID) (*ConnectionOAuth, error)
 	GetStatus(context.Context, uuid.UUID, uuid.UUID) (*Status, error)
+	WithRefreshLock(context.Context, uuid.UUID, func() error) error
 	SaveClientConfiguration(context.Context, *ClientConfiguration) error
+	DeleteAuthorization(context.Context, uuid.UUID, uuid.UUID) (bool, error)
 	SaveState(context.Context, *State) error
 	ClaimState(context.Context, string) (*State, error)
 	GetAuthorization(context.Context, uuid.UUID, uuid.UUID) (*Authorization, error)
@@ -218,11 +221,32 @@ func (s *Service) ConfigureClient(ctx context.Context, connectionID uuid.UUID, i
 		}
 	}
 	caller := contracts.CallerFrom(ctx)
-	return s.repository.SaveClientConfiguration(ctx, &ClientConfiguration{
+	configuration := &ClientConfiguration{
 		ConnectionID: connectionID, UserID: caller.UserID, TenantID: caller.TenantID,
 		Issuer: issuer, ClientIDCipher: clientIDCipher, ClientSecretCipher: clientSecretCipher,
 		Scopes: normalizeScopes(scopes),
+	}
+	unlock := s.locks.lock(connectionID)
+	defer unlock()
+	return s.repository.WithRefreshLock(ctx, connectionID, func() error {
+		return s.repository.SaveClientConfiguration(ctx, configuration)
 	})
+}
+
+// DeleteAuthorization removes the caller's OAuth client configuration and token set.
+func (s *Service) DeleteAuthorization(ctx context.Context, connectionID uuid.UUID) (bool, error) {
+	if connectionID == uuid.Nil {
+		return false, errors.New("MCP connection ID is required")
+	}
+	unlock := s.locks.lock(connectionID)
+	defer unlock()
+	var deleted bool
+	err := s.repository.WithRefreshLock(ctx, connectionID, func() error {
+		var err error
+		deleted, err = s.repository.DeleteAuthorization(ctx, contracts.CallerFrom(ctx).UserID, connectionID)
+		return err
+	})
+	return deleted, err
 }
 
 // Discover resolves and validates protected-resource and authorization-server metadata.
@@ -388,10 +412,30 @@ func (s *Service) Complete(ctx context.Context, code, stateValue string) (*Token
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repository.UpsertAuthorization(ctx, authorization); err != nil {
+	unlock := s.locks.lock(state.ConnectionID)
+	defer unlock()
+	err = s.repository.WithRefreshLock(ctx, state.ConnectionID, func() error {
+		current, loadErr := s.repository.GetConnectionOAuth(ctx, state.UserID, state.ConnectionID)
+		if loadErr != nil {
+			return loadErr
+		}
+		if !sameConnectionOAuth(config, current) {
+			return ErrBindingMismatch
+		}
+		return s.repository.UpsertAuthorization(ctx, authorization)
+	})
+	if err != nil {
 		return nil, err
 	}
 	return token, nil
+}
+
+func sameConnectionOAuth(expected, current *ConnectionOAuth) bool {
+	return expected != nil && current != nil && expected.ConnectionID == current.ConnectionID &&
+		expected.UserID == current.UserID && expected.TenantID == current.TenantID &&
+		expected.Resource == current.Resource && expected.Issuer == current.Issuer &&
+		bytes.Equal(expected.ClientIDCipher, current.ClientIDCipher) &&
+		bytes.Equal(expected.ClientSecretCipher, current.ClientSecretCipher) && slices.Equal(expected.Scopes, current.Scopes)
 }
 
 // AccessToken returns a live connection-bound token, refreshing close-to-expiry tokens.
@@ -410,37 +454,48 @@ func (s *Service) AccessToken(ctx context.Context, connectionID uuid.UUID) (*Tok
 
 	unlock := s.locks.lock(connectionID)
 	defer unlock()
-	_, authorization, err = s.boundAuthorization(ctx, userID, connectionID)
-	if err != nil {
-		return nil, err
-	}
-	if authorization.ExpiresAt == nil || authorization.ExpiresAt.After(s.now().UTC().Add(refreshWindow)) {
-		return s.decryptToken(authorization)
-	}
-	refreshToken, err := s.cipher.DecryptToString(authorization.RefreshTokenCipher)
-	if err != nil {
-		return nil, err
-	}
-	response, err := s.exchange(ctx, config, authorization.TokenEndpoint, authorization.TokenAuthMethod, url.Values{
-		"grant_type":    {"refresh_token"},
-		"refresh_token": {refreshToken},
-		"resource":      {authorization.Resource},
+	var token *Token
+	err = s.repository.WithRefreshLock(ctx, connectionID, func() error {
+		// Another replica may have refreshed or reconfigured this connection while this caller waited.
+		// Both records must therefore be re-read under the distributed lock.
+		config, authorization, err = s.boundAuthorization(ctx, userID, connectionID)
+		if err != nil {
+			return err
+		}
+		if authorization.ExpiresAt == nil || authorization.ExpiresAt.After(s.now().UTC().Add(refreshWindow)) || len(authorization.RefreshTokenCipher) == 0 {
+			token, err = s.decryptToken(authorization)
+			return err
+		}
+		refreshToken, decryptErr := s.cipher.DecryptToString(authorization.RefreshTokenCipher)
+		if decryptErr != nil {
+			return decryptErr
+		}
+		response, exchangeErr := s.exchange(ctx, config, authorization.TokenEndpoint, authorization.TokenAuthMethod, url.Values{
+			"grant_type":    {"refresh_token"},
+			"refresh_token": {refreshToken},
+			"resource":      {authorization.Resource},
+		})
+		if exchangeErr != nil {
+			return exchangeErr
+		}
+		updated, refreshed, encryptErr := s.encryptResponse(connectionID, authorization.UserID, authorization.TenantID, authorization.Resource, authorization.Issuer, authorization.AuthorizationEndpoint, authorization.TokenEndpoint, authorization.TokenAuthMethod, authorization.Scopes, response)
+		if encryptErr != nil {
+			return encryptErr
+		}
+		if response.RefreshToken == "" {
+			updated.RefreshTokenCipher = authorization.RefreshTokenCipher
+		}
+		if len(response.Scopes) == 0 {
+			updated.Scopes = slices.Clone(authorization.Scopes)
+			refreshed.Scopes = slices.Clone(authorization.Scopes)
+		}
+		if persistErr := s.repository.UpsertAuthorization(ctx, updated); persistErr != nil {
+			return persistErr
+		}
+		token = refreshed
+		return nil
 	})
 	if err != nil {
-		return nil, err
-	}
-	updated, token, err := s.encryptResponse(connectionID, authorization.UserID, authorization.TenantID, authorization.Resource, authorization.Issuer, authorization.AuthorizationEndpoint, authorization.TokenEndpoint, authorization.TokenAuthMethod, authorization.Scopes, response)
-	if err != nil {
-		return nil, err
-	}
-	if response.RefreshToken == "" {
-		updated.RefreshTokenCipher = authorization.RefreshTokenCipher
-	}
-	if len(response.Scopes) == 0 {
-		updated.Scopes = slices.Clone(authorization.Scopes)
-		token.Scopes = slices.Clone(authorization.Scopes)
-	}
-	if err := s.repository.UpsertAuthorization(ctx, updated); err != nil {
 		return nil, err
 	}
 	return token, nil

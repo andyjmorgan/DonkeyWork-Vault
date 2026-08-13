@@ -109,6 +109,8 @@ type Store interface {
 	UpdateMCPOAuthAuthorization(ctx context.Context, a *MCPOAuthAuthorization) (bool, error)
 	GetMCPOAuthAuthorization(ctx context.Context, userID, connectionID uuid.UUID) (*MCPOAuthAuthorization, error)
 	DeleteMCPOAuthAuthorization(ctx context.Context, userID, connectionID uuid.UUID) (bool, error)
+	// WithMCPOAuthRefreshLock serializes refresh work for a connection across service replicas.
+	WithMCPOAuthRefreshLock(ctx context.Context, connectionID uuid.UUID, fn func() error) error
 	InsertMCPOAuthState(ctx context.Context, s *MCPOAuthState) error
 	// ClaimMCPOAuthState atomically consumes a state so concurrent callback replays cannot succeed.
 	ClaimMCPOAuthState(ctx context.Context, state string) (*MCPOAuthState, error)
