@@ -118,4 +118,6 @@ type Store interface {
 	CompleteMCPAuditExchange(ctx context.Context, e *MCPAuditExchange) (bool, error)
 	InsertMCPAuditMessage(ctx context.Context, m *MCPAuditMessage) error
 	QueryMCPAudit(ctx context.Context, f MCPAuditFilter) (items []MCPAuditMessage, total int, err error)
+	// DeleteMCPAuditOlderThan deletes bounded exchange batches and their cascaded messages.
+	DeleteMCPAuditOlderThan(ctx context.Context, cutoff time.Time, batchSize int) (int64, error)
 }

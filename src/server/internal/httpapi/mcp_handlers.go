@@ -30,6 +30,8 @@ const maxMCPAuditPayload = 256 << 10
 
 const mcpProbeRequestID = "dwv-probe"
 
+const mcpAuditCompletionTimeout = 5 * time.Second
+
 var errMCPGrantRequired = errors.New("MCP connection grant required")
 
 var errInvalidMCPEvalRunCorrelation = errors.New("invalid MCP eval-run correlation")
@@ -1108,7 +1110,9 @@ func (s *Server) completeMCPExchange(ctx context.Context, exchange *store.MCPAud
 	now := time.Now().UTC()
 	exchange.CompletedAt, exchange.StatusCode, exchange.Outcome, exchange.ResponseBytes = &now, &status, outcome, responseBytes
 	exchange.ErrorClass = emptyStringPtr(errorClass)
-	if _, err := s.deps.MCP.Store().CompleteMCPAuditExchange(ctx, exchange); err != nil {
+	completionCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), mcpAuditCompletionTimeout)
+	defer cancel()
+	if _, err := s.deps.MCP.Store().CompleteMCPAuditExchange(completionCtx, exchange); err != nil {
 		s.logger.Error("MCP audit exchange completion failed", "exchange_id", exchange.ID, "err", err)
 	}
 }

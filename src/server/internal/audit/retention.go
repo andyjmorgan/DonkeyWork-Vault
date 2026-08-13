@@ -68,19 +68,34 @@ func (r *Retention) Run(ctx context.Context) {
 // Sweep deletes everything older than the cutoff, batch by batch. Exposed for direct testing.
 func (r *Retention) Sweep(ctx context.Context) error {
 	cutoff := time.Now().UTC().AddDate(0, 0, -r.opts.RetentionDays)
-	var total int64
+	var auditTotal, mcpExchangeTotal int64
+	complete := false
+	defer func() {
+		if auditTotal > 0 || mcpExchangeTotal > 0 {
+			r.logger.Info("audit retention removed old rows", "audit_count", auditTotal,
+				"mcp_exchange_count", mcpExchangeTotal, "days", r.opts.RetentionDays, "complete", complete)
+		}
+	}()
 	for ctx.Err() == nil {
 		deleted, err := r.store.DeleteAuditOlderThan(ctx, cutoff, r.opts.BatchSize)
 		if err != nil {
 			return err
 		}
-		total += deleted
+		auditTotal += deleted
 		if deleted < int64(r.opts.BatchSize) {
 			break
 		}
 	}
-	if total > 0 {
-		r.logger.Info("audit retention removed old rows", "count", total, "days", r.opts.RetentionDays)
+	for ctx.Err() == nil {
+		deleted, err := r.store.DeleteMCPAuditOlderThan(ctx, cutoff, r.opts.BatchSize)
+		if err != nil {
+			return err
+		}
+		mcpExchangeTotal += deleted
+		if deleted < int64(r.opts.BatchSize) {
+			break
+		}
 	}
+	complete = ctx.Err() == nil
 	return nil
 }
