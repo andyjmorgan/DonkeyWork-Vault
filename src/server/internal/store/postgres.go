@@ -50,19 +50,19 @@ func noRows(err error) bool { return errors.Is(err, pgx.ErrNoRows) }
 // InsertAccessKey persists a new access key and back-fills its generated ID and timestamp.
 func (p *Postgres) InsertAccessKey(ctx context.Context, k *AccessKey) error {
 	return p.pool.QueryRow(ctx, `
-		INSERT INTO vault.access_keys (user_id, tenant_id, name, description, key_hash, key_prefix, scopes, enabled, expires_at)
-		VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+		INSERT INTO vault.access_keys (user_id, tenant_id, name, description, key_hash, key_prefix, scopes, enabled)
+		VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
 		RETURNING id, created_at`,
-		k.UserID, k.TenantID, k.Name, k.Description, k.KeyHash, k.KeyPrefix, k.Scopes, k.Enabled, k.ExpiresAt,
+		k.UserID, k.TenantID, k.Name, k.Description, k.KeyHash, k.KeyPrefix, k.Scopes, k.Enabled,
 	).Scan(&k.ID, &k.CreatedAt)
 }
 
-const accessKeyCols = `id, user_id, tenant_id, name, description, key_hash, key_prefix, scopes, enabled, created_at, updated_at, last_used_at, expires_at`
+const accessKeyCols = `id, user_id, tenant_id, name, description, key_hash, key_prefix, scopes, enabled, created_at, updated_at, last_used_at`
 
 func scanAccessKey(row pgx.Row) (*AccessKey, error) {
 	var k AccessKey
 	err := row.Scan(&k.ID, &k.UserID, &k.TenantID, &k.Name, &k.Description, &k.KeyHash, &k.KeyPrefix,
-		&k.Scopes, &k.Enabled, &k.CreatedAt, &k.UpdatedAt, &k.LastUsedAt, &k.ExpiresAt)
+		&k.Scopes, &k.Enabled, &k.CreatedAt, &k.UpdatedAt, &k.LastUsedAt)
 	if err != nil {
 		return nil, err
 	}
@@ -186,15 +186,6 @@ func (p *Postgres) ListAPIKeys(ctx context.Context, userID uuid.UUID) ([]APIKey,
 // GetAPIKeyByName returns a user's API key by name, or nil if none matches.
 func (p *Postgres) GetAPIKeyByName(ctx context.Context, userID uuid.UUID, name string) (*APIKey, error) {
 	k, err := scanAPIKey(p.pool.QueryRow(ctx, `SELECT `+apiKeyCols+` FROM vault.api_keys WHERE user_id=$1 AND name=$2`, userID, name))
-	if noRows(err) {
-		return nil, nil
-	}
-	return k, err
-}
-
-// GetAPIKeyByID returns a user's API key by ID, or nil if none matches.
-func (p *Postgres) GetAPIKeyByID(ctx context.Context, userID, id uuid.UUID) (*APIKey, error) {
-	k, err := scanAPIKey(p.pool.QueryRow(ctx, `SELECT `+apiKeyCols+` FROM vault.api_keys WHERE user_id=$1 AND id=$2`, userID, id))
 	if noRows(err) {
 		return nil, nil
 	}

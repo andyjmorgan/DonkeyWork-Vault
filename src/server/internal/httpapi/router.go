@@ -30,7 +30,6 @@ func (s *Server) router() chi.Router {
 		// Anonymous endpoints.
 		r.Get("/api/config", s.handleConfig)
 		r.Get("/api/oauth/callback", s.handleOAuthCallback)
-		r.Get("/api/mcp/oauth/callback", s.handleMCPOAuthCallback)
 
 		// Authenticated API surface.
 		r.Route("/api/v1", func(r chi.Router) {
@@ -67,39 +66,11 @@ func (s *Server) router() chi.Router {
 				r.Delete("/oauth/tokens/{id}", s.handleDeleteToken)
 				r.Get("/oauth/{provider}/token", s.handleGetToken)
 				r.Get("/oauth/{provider}/connect", s.handleConnect)
-
-				r.Get("/mcp/connections", s.handleListMCPConnections)
-				r.Post("/mcp/connections", s.handleUpsertMCPConnection)
-				r.Put("/mcp/connections/{id}", s.handleUpsertMCPConnection)
-				r.Delete("/mcp/connections/{id}", s.handleDeleteMCPConnection)
-				r.Post("/mcp/connections/{connectionID}/probe", s.handleMCPProtocolProbe)
-				r.Get("/mcp/connections/{connectionID}/grants", s.handleListMCPGrants)
-				r.Post("/mcp/connections/{connectionID}/grants", s.handleCreateMCPGrant)
-				r.Delete("/mcp/grants/{id}", s.handleDeleteMCPGrant)
-				r.Get("/mcp/eval-runs", s.handleListMCPEvalRuns)
-				r.Post("/mcp/eval-runs", s.handleCreateMCPEvalRun)
-				r.Delete("/mcp/eval-runs/{id}", s.handleRevokeMCPEvalRun)
-				r.Get("/mcp/connections/{connectionID}/headers", s.handleListMCPHeaders)
-				r.Post("/mcp/connections/{connectionID}/headers", s.handleCreateMCPHeader)
-				r.Delete("/mcp/headers/{id}", s.handleDeleteMCPHeader)
-				r.Get("/mcp/connections/{connectionID}/policies", s.handleListMCPPolicies)
-				r.Put("/mcp/connections/{connectionID}/policies", s.handleUpsertMCPPolicy)
-				r.Delete("/mcp/policies/{id}", s.handleDeleteMCPPolicy)
-				r.Put("/mcp/connections/{connectionID}/oauth", s.handleConfigureMCPOAuth)
-				r.Get("/mcp/connections/{connectionID}/oauth", s.handleGetMCPOAuthStatus)
-				r.Get("/mcp/connections/{connectionID}/oauth/connect", s.handleConnectMCPOAuth)
-				r.Delete("/mcp/connections/{connectionID}/oauth", s.handleDeleteMCPOAuth)
-			})
-
-			r.Group(func(r chi.Router) {
-				r.Use(s.scopeGate("vault:mcp"))
-				r.Post("/mcp/proxy/{slug}", s.handleMCPProxy)
 			})
 
 			r.Group(func(r chi.Router) {
 				r.Use(s.scopeGate("vault:audit"))
 				r.Get("/audit", s.handleAudit)
-				r.Get("/mcp/audit", s.handleMCPAudit)
 			})
 		})
 	})

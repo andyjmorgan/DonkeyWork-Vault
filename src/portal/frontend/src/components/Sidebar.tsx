@@ -1,4 +1,4 @@
-import { KeyRound, Boxes, Plug, ScrollText, Network } from 'lucide-react'
+import { KeyRound, Boxes, Plug, ScrollText } from 'lucide-react'
 import { NavLink } from 'react-router-dom'
 import { cn } from '../ui/lib/utils'
 
@@ -6,7 +6,6 @@ export const navItems: { to: string; label: string; icon: typeof KeyRound }[] = 
   { to: '/credentials', label: 'Credentials', icon: KeyRound },
   { to: '/providers', label: 'Providers', icon: Boxes },
   { to: '/oauthconnect', label: 'OAuth Connect', icon: Plug },
-  { to: '/mcp', label: 'MCP gateway', icon: Network },
   { to: '/audit', label: 'Audit trail', icon: ScrollText },
 ]
 

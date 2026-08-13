@@ -14,7 +14,6 @@ import (
 	"donkeywork.dev/vault-server/internal/audit"
 	"donkeywork.dev/vault-server/internal/crypto"
 	"donkeywork.dev/vault-server/internal/manifests"
-	"donkeywork.dev/vault-server/internal/mcpoauth"
 	"donkeywork.dev/vault-server/internal/service"
 	"donkeywork.dev/vault-server/internal/store"
 	"donkeywork.dev/vault-server/internal/store/memstore"
@@ -22,7 +21,6 @@ import (
 
 type harness struct {
 	h      http.Handler
-	server *Server
 	ms     *memstore.Mem
 	cipher crypto.Cipher
 	userID uuid.UUID
@@ -49,8 +47,7 @@ func newHarness(t *testing.T) *harness {
 	hash := sha256.Sum256([]byte(secret))
 	_ = ms.InsertAccessKey(context.Background(), &store.AccessKey{
 		UserID: u, Name: "test", KeyHash: hash[:], KeyPrefix: secret[:9],
-		// Include MCP so this harness can exercise both admin configuration and proxy routes.
-		Scopes: []string{"vault:read", "vault:readwrite", "vault:audit", "vault:mcp"}, Enabled: true,
+		Scopes: []string{"vault:read", "vault:readwrite", "vault:audit"}, Enabled: true,
 	})
 
 	deps := Deps{
@@ -59,10 +56,6 @@ func newHarness(t *testing.T) *harness {
 		OAuthConfigs:  service.NewOAuthConfigService(ms, cipher, auditLog, resolver),
 		OAuthTokens:   service.NewOAuthTokenService(ms, cipher, auditLog, resolver, http.DefaultClient),
 		OAuthFlow:     service.NewOAuthFlowService(ms, cipher, resolver, auditLog, http.DefaultClient, nil),
-		MCP:           service.NewMCPService(ms, cipher),
-		MCPEvalRuns:   service.NewMCPEvalRunService(ms, auditLog),
-		MCPOAuth:      mcpoauth.NewService(mcpoauth.NewStoreRepository(ms), cipher, http.DefaultClient),
-		MCPClient:     http.DefaultClient,
 		Resolver:      resolver,
 		Discovery:     manifests.NewDiscovery(http.DefaultClient),
 		AuditLog:      auditLog,
@@ -74,7 +67,7 @@ func newHarness(t *testing.T) *harness {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return &harness{h: srv.Handler(), server: srv, ms: ms, cipher: cipher, userID: u, secret: secret}
+	return &harness{h: srv.Handler(), ms: ms, cipher: cipher, userID: u, secret: secret}
 }
 
 func (h *harness) do(t *testing.T, method, path string, body any, auth bool) *httptest.ResponseRecorder {

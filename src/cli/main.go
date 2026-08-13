@@ -110,7 +110,7 @@ func main() {
 	keys := &cobra.Command{Use: "keys", Short: "Manage access keys (scoped auth credentials)"}
 	keys.AddCommand(cmdKeysList(), cmdKeysCreate(), cmdKeysSetEnabled(true), cmdKeysSetEnabled(false), cmdKeysDelete())
 
-	root.AddCommand(creds, oauth, keys, mcpCmd(), authCmd(), cmdSkill(), cmdVersion(), cmdUpdate(), cmdUpdateCheckHidden())
+	root.AddCommand(creds, oauth, keys, authCmd(), cmdSkill(), cmdVersion(), cmdUpdate(), cmdUpdateCheckHidden())
 
 	if err := root.Execute(); err != nil {
 		fail("%v", err)
