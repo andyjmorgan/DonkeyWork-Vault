@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react'
-import { Trash2, Plus, Pencil, Eye } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
+import { Trash2, Plus, Pencil, Eye, Search, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
 import { Button } from '../ui/components/button'
@@ -14,6 +14,23 @@ import { Field } from '../components/Field'
 import { api, type ApiKeyItem, type NewApiKey, type OAuthTokenItem, type CredentialKind } from '../api'
 
 const lbl = 'mb-1 block text-xs text-muted-foreground'
+const PAGE_SIZE = 10
+
+// Flatten only values, not property names, so every text field returned for a credential is
+// searchable without making implementation details such as "baseUrl" produce false matches.
+const textValues = (value: unknown): string[] => {
+  if (typeof value === 'string') return [value]
+  if (Array.isArray(value)) return value.flatMap(textValues)
+  if (value && typeof value === 'object') return Object.values(value).flatMap(textValues)
+  return []
+}
+
+const matchesSearch = (value: unknown, query: string, extra: string[] = []) => {
+  const terms = query.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean)
+  if (terms.length === 0) return true
+  const searchable = [...textValues(value), ...extra].join(' ').toLocaleLowerCase()
+  return terms.every((term) => searchable.includes(term))
+}
 
 // Localize the internal kind discriminator to a human label for the console.
 const kindLabel: Record<CredentialKind, string> = {
@@ -70,6 +87,9 @@ function ScopeBadges({ scopes, className = '' }: { scopes: string[]; className?:
 export function CredentialsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
+  const [search, setSearch] = useState('')
+  const [keyPage, setKeyPage] = useState(0)
+  const [tokenPage, setTokenPage] = useState(0)
   const [err, setErr] = useState<string>()
   const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; kind: CredentialKind; view?: boolean }>({ open: false, kind: 'header_api_key' })
   const [deleting, setDeleting] = useState<{ kind: 'apiKey'; item: ApiKeyItem } | { kind: 'oauthToken'; item: OAuthTokenItem }>()
@@ -81,6 +101,31 @@ export function CredentialsPage() {
     api.oauthTokens().then(setTokens).catch(() => {})
   }
   useEffect(() => { load() }, [])
+
+  const filteredKeys = useMemo(
+    () => keys.filter((key) => matchesSearch(key, search, [prettyKind(key.kind)])),
+    [keys, search],
+  )
+  const filteredTokens = useMemo(
+    () => tokens.filter((token) => matchesSearch(token, search)),
+    [tokens, search],
+  )
+  const keyPageCount = Math.max(1, Math.ceil(filteredKeys.length / PAGE_SIZE))
+  const tokenPageCount = Math.max(1, Math.ceil(filteredTokens.length / PAGE_SIZE))
+  const currentKeyPage = Math.min(keyPage, keyPageCount - 1)
+  const currentTokenPage = Math.min(tokenPage, tokenPageCount - 1)
+  const visibleKeys = filteredKeys.slice(currentKeyPage * PAGE_SIZE, (currentKeyPage + 1) * PAGE_SIZE)
+  const visibleTokens = filteredTokens.slice(currentTokenPage * PAGE_SIZE, (currentTokenPage + 1) * PAGE_SIZE)
+
+  // Keep page state valid after deleting the last item on a page or narrowing the result set.
+  useEffect(() => setKeyPage((page) => Math.min(page, keyPageCount - 1)), [keyPageCount])
+  useEffect(() => setTokenPage((page) => Math.min(page, tokenPageCount - 1)), [tokenPageCount])
+
+  const updateSearch = (value: string) => {
+    setSearch(value)
+    setKeyPage(0)
+    setTokenPage(0)
+  }
 
   const edit = (item: ApiKeyItem) => setForm({ open: true, item, kind: item.kind })
   const view = (item: ApiKeyItem) => setForm({ open: true, item, kind: item.kind, view: true })
@@ -110,6 +155,18 @@ export function CredentialsPage() {
 
   return (
     <>
+      <div className="relative">
+        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          type="search"
+          value={search}
+          onChange={(event) => updateSearch(event.target.value)}
+          placeholder="Search credentials"
+          aria-label="Search credentials"
+          className="pl-9"
+        />
+      </div>
+
       <Card>
         <CardHeader className="flex-row items-center justify-between">
           <div>
@@ -120,8 +177,10 @@ export function CredentialsPage() {
         </CardHeader>
         <CardContent>
           {err && <p className="text-sm text-destructive">{err}</p>}
-          {keys.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No API keys yet — add one with the + button.</p>
+          {filteredKeys.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {keys.length === 0 ? 'No API keys yet — add one with the + button.' : 'No API keys match your search.'}
+            </p>
           ) : (
             <>
               {/* Desktop: table. */}
@@ -129,7 +188,7 @@ export function CredentialsPage() {
                 <Table>
                   <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Kind</TableHead><TableHead>Auth</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>
-                    {keys.map((k) => (
+                    {visibleKeys.map((k) => (
                       <TableRow key={k.id} className="cursor-pointer" onClick={() => view(k)}>
                         <TableCell>
                           <div className="font-medium">{k.name}</div>
@@ -150,7 +209,7 @@ export function CredentialsPage() {
               </div>
               {/* Mobile: a card per key with a two-column detail grid. */}
               <div className="space-y-3 sm:hidden">
-                {keys.map((k) => (
+                {visibleKeys.map((k) => (
                   <div key={k.id} className="cursor-pointer rounded-xl border border-border p-3" onClick={() => view(k)}>
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -174,6 +233,12 @@ export function CredentialsPage() {
                   </div>
                 ))}
               </div>
+              <CredentialPager
+                total={filteredKeys.length}
+                page={currentKeyPage}
+                onPage={setKeyPage}
+                label="API keys"
+              />
             </>
           )}
         </CardContent>
@@ -219,8 +284,10 @@ export function CredentialsPage() {
       <Card>
         <CardHeader><CardTitle>Connected OAuth accounts</CardTitle></CardHeader>
         <CardContent>
-          {tokens.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No OAuth tokens — connect a provider from the OAuth Connect tab.</p>
+          {filteredTokens.length === 0 ? (
+            <p className="text-sm text-muted-foreground">
+              {tokens.length === 0 ? 'No OAuth tokens — connect a provider from the OAuth Connect tab.' : 'No OAuth accounts match your search.'}
+            </p>
           ) : (
             <>
               {/* Desktop: table. */}
@@ -228,7 +295,7 @@ export function CredentialsPage() {
                 <Table>
                   <TableHeader><TableRow><TableHead>Provider</TableHead><TableHead>Account</TableHead><TableHead>Expires</TableHead><TableHead>Scopes</TableHead><TableHead>Token</TableHead><TableHead /></TableRow></TableHeader>
                   <TableBody>
-                    {tokens.map((t) => (
+                    {visibleTokens.map((t) => (
                       <TableRow key={t.id}>
                         <TableCell className="font-medium">{t.provider}</TableCell>
                         <TableCell>{t.account}</TableCell>
@@ -243,7 +310,7 @@ export function CredentialsPage() {
               </div>
               {/* Mobile: a card per connected account. */}
               <div className="space-y-3 sm:hidden">
-                {tokens.map((t) => (
+                {visibleTokens.map((t) => (
                   <div key={t.id} className="rounded-xl border border-border p-3">
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
@@ -264,11 +331,42 @@ export function CredentialsPage() {
                   </div>
                 ))}
               </div>
+              <CredentialPager
+                total={filteredTokens.length}
+                page={currentTokenPage}
+                onPage={setTokenPage}
+                label="OAuth accounts"
+              />
             </>
           )}
         </CardContent>
       </Card>
     </>
+  )
+}
+
+function CredentialPager({ total, page, onPage, label }: {
+  total: number
+  page: number
+  onPage: (page: number) => void
+  label: string
+}) {
+  const from = page * PAGE_SIZE + 1
+  const to = Math.min((page + 1) * PAGE_SIZE, total)
+  const canNext = to < total
+
+  return (
+    <div className="mt-4 flex items-center justify-between">
+      <span className="text-xs text-muted-foreground">{from}–{to} of {total}</span>
+      <div className="flex items-center gap-1">
+        <Button variant="outline" size="icon" aria-label={`Previous ${label} page`} disabled={page === 0} onClick={() => onPage(page - 1)}>
+          <ChevronLeft className="size-4" />
+        </Button>
+        <Button variant="outline" size="icon" aria-label={`Next ${label} page`} disabled={!canNext} onClick={() => onPage(page + 1)}>
+          <ChevronRight className="size-4" />
+        </Button>
+      </div>
+    </div>
   )
 }
 
