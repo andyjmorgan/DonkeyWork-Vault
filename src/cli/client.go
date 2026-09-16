@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -42,7 +43,10 @@ func requestAuth(base string) (map[string]string, error) {
 	}
 	c, src, err := credstore.ResolveCredential(base)
 	if err != nil {
-		return nil, fmt.Errorf("no credentials for %s; run `dwvault auth login` or set VAULT_API_KEY", base)
+		if errors.Is(err, credstore.ErrNotFound) {
+			return nil, fmt.Errorf("no credentials for %s; run `dwvault auth login` or set VAULT_API_KEY", base)
+		}
+		return nil, fmt.Errorf("read credential for %s: %w", base, err)
 	}
 	switch c.Type {
 	case credstore.TypeAPIKey:
@@ -95,7 +99,11 @@ func expiresSoon(s string) bool {
 
 func updateOAuthCredential(c *credstore.Credential, tok *oauthdevice.TokenResponse) {
 	c.AccessToken = tok.AccessToken
-	c.RefreshToken = tok.RefreshToken
+	// OAuth providers may omit a replacement refresh token. Keep the existing
+	// token in that case so the next access-token expiry can still be refreshed.
+	if tok.RefreshToken != "" {
+		c.RefreshToken = tok.RefreshToken
+	}
 	if tok.Scope != "" {
 		c.Scopes = tok.Scope
 	}

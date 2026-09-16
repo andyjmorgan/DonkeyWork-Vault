@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -63,8 +64,16 @@ func cmdAuthLogin() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, exists := cfg.Hosts[base]; exists && !force {
-				return fmt.Errorf("already logged in to %s; pass --force to replace", base)
+			// Host metadata can outlive the secret (for example, after a keyring
+			// reset). Use the same credential lookup as auth status.
+			if !force {
+				_, _, err := credstore.ResolveCredential(base)
+				switch {
+				case err == nil:
+					return fmt.Errorf("already logged in to %s; pass --force to replace", base)
+				case !errors.Is(err, credstore.ErrNotFound):
+					return fmt.Errorf("read credential for %s (pass --force to replace): %w", base, err)
+				}
 			}
 
 			if oauthMode && apiKeyMode {
@@ -105,9 +114,10 @@ func cmdAuthStatus() *cobra.Command {
 			base := httpBaseURL()
 			c, src, err := credstore.ResolveCredential(base)
 			if err != nil {
-				fmt.Fprintf(os.Stderr,
-					"not logged in to %s — set VAULT_API_KEY or run `dwvault auth login`\n", base)
-				os.Exit(1)
+				if errors.Is(err, credstore.ErrNotFound) {
+					return fmt.Errorf("not logged in to %s — set VAULT_API_KEY or run `dwvault auth login`", base)
+				}
+				return fmt.Errorf("read credential for %s: %w", base, err)
 			}
 			switch c.Type {
 			case credstore.TypeAPIKey:

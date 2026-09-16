@@ -398,3 +398,34 @@ func TestNewClient_AuthError(t *testing.T) {
 		t.Fatal("newClient: want error when no credential resolves, got nil")
 	}
 }
+
+func TestOAuthRefreshWithoutReplacementToken(t *testing.T) {
+	resetClientGlobals(t)
+	const host = "https://vault.example"
+	srv := oauthServer(t, oauthdevice.TokenResponse{AccessToken: "fresh", ExpiresIn: 3600}, http.StatusOK)
+	c := &credstore.Credential{Type: credstore.TypeOAuth, Issuer: srv.URL, ClientID: "cli", RefreshToken: "keep-refresh"}
+	for i := 0; i < 2; i++ {
+		c.ExpiresAt = ""
+		if _, err := oauthAccessToken(host, c, credstore.SourceKeyring); err != nil {
+			t.Fatal(err)
+		}
+		var err error
+		c, _, err = credstore.ResolveCredential(host)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if c.RefreshToken != "keep-refresh" {
+			t.Fatal("refresh token lost when provider omitted replacement")
+		}
+	}
+}
+
+func TestRequestAuthStorageFailure(t *testing.T) {
+	resetClientGlobals(t)
+	storageErr := errors.New("keyring locked")
+	keyring.MockInitWithError(storageErr)
+	t.Cleanup(keyring.MockInit)
+	if _, err := requestAuth("https://vault.example"); !errors.Is(err, storageErr) {
+		t.Fatalf("want storage error preserved, got %v", err)
+	}
+}

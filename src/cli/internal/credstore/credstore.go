@@ -85,7 +85,9 @@ func ResolveCredential(host string) (*Credential, Source, error) {
 	if v := os.Getenv(envVar); v != "" {
 		return &Credential{Type: TypeAPIKey, Secret: v}, SourceEnv, nil
 	}
-	if v, kerr := keyring.Get(service, host); kerr == nil && v != "" {
+	repairSessionBus()
+	v, kerr := keyring.Get(service, host)
+	if kerr == nil && v != "" {
 		c, err := parseCredential(v)
 		return c, SourceKeyring, err
 	}
@@ -96,6 +98,9 @@ func ResolveCredential(host string) (*Credential, Source, error) {
 	if ok {
 		c, err := parseCredential(v)
 		return c, SourceFile, err
+	}
+	if kerr != nil && !errors.Is(kerr, keyring.ErrNotFound) {
+		return nil, "", fmt.Errorf("read OS keyring (no file fallback available): %w", kerr)
 	}
 	return nil, "", ErrNotFound
 }
@@ -117,6 +122,7 @@ func StoreCredential(host string, c *Credential) (config.StoreKind, error) {
 }
 
 func storeRaw(host, key string) (config.StoreKind, error) {
+	repairSessionBus()
 	kerr := keyring.Set(service, host, key)
 	if kerr == nil {
 		_ = fileDelete(host) // drop any stale file copy once the keyring holds it
@@ -149,6 +155,7 @@ func parseCredential(raw string) (*Credential, error) {
 
 // Delete removes any stored credential for host from both stores.
 func Delete(host string) error {
+	repairSessionBus()
 	_ = keyring.Delete(service, host)
 	return fileDelete(host)
 }

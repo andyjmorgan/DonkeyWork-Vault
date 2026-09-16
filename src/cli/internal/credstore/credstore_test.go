@@ -1,6 +1,7 @@
 package credstore
 
 import (
+	"errors"
 	"os"
 	"testing"
 
@@ -115,5 +116,23 @@ func TestFileFallback(t *testing.T) {
 	}
 	if _, _, err := Resolve(host); err == nil {
 		t.Fatal("expected insecure-perms error, got nil")
+	}
+}
+
+func TestResolveKeyringFailure(t *testing.T) {
+	keyringErr := errors.New("keyring locked")
+	keyring.MockInitWithError(keyringErr)
+	t.Cleanup(keyring.MockInit)
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("VAULT_API_KEY", "")
+	const host = "https://vault.example"
+	if _, _, err := ResolveCredential(host); !errors.Is(err, keyringErr) || errors.Is(err, ErrNotFound) {
+		t.Fatalf("want keyring failure, got %v", err)
+	}
+	if err := fileSet(host, "dwv_fallback"); err != nil {
+		t.Fatal(err)
+	}
+	if _, src, err := ResolveCredential(host); err != nil || src != SourceFile {
+		t.Fatalf("file fallback should remain usable: source=%s error=%v", src, err)
 	}
 }
