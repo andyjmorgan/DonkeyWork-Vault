@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -223,7 +224,7 @@ func (s *OAuthFlowService) completeCore(ctx context.Context, code, state string)
 		"redirect_uri":  {stateRow.RedirectURI},
 		"code_verifier": {stateRow.CodeVerifier},
 	}
-	status, body, err := postForm(ctx, s.client, manifest.TokenEndpoint, form)
+	status, body, err := postForm(ctx, s.client, manifest.TokenEndpoint, form, manifest.TokenEndpointAuthMethod)
 	if err != nil {
 		return nil, OAuthAuthorizationError{fmt.Sprintf("token exchange failed: %v", err)}
 	}
@@ -317,7 +318,21 @@ func (s *OAuthFlowService) fetchAccount(ctx context.Context, m *manifests.Manife
 		return "default"
 	}
 	var info map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxTokenResponseBytes)).Decode(&info); err != nil {
+		return "default"
+	}
+	if m.UserinfoAccountPath != "" {
+		var value any = info
+		for _, key := range strings.Split(m.UserinfoAccountPath, ".") {
+			object, ok := value.(map[string]any)
+			if !ok {
+				return "default"
+			}
+			value = object[key]
+		}
+		if account, ok := value.(string); ok && account != "" {
+			return account
+		}
 		return "default"
 	}
 	for _, key := range []string{"email", "mail", "userPrincipalName", "preferred_username", "login", "sub"} {

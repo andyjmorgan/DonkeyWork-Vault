@@ -23,7 +23,7 @@ export interface OAuthScope { value: string; description?: string; category?: st
 export interface OAuthProvider {
   id?: string; parentId?: string; key: string; name: string; iconUrl?: string; docsUrl?: string; template?: boolean
   authorizationEndpoint: string; tokenEndpoint: string
-  userinfoEndpoint: string; scopeDelimiter: string; defaultScopes: string[]; scopes?: OAuthScope[]
+  userinfoEndpoint: string; tokenEndpointAuthMethod?: string; userinfoAccountPath?: string; scopeDelimiter: string; defaultScopes: string[]; scopes?: OAuthScope[]
   authorizeParams?: Record<string, string>
 }
 export type CredentialKind = 'opaque' | 'header_api_key' | 'http_basic' | 'username_password' | 'ssh' | 'connection_string'

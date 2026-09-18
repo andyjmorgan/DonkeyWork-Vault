@@ -129,35 +129,39 @@ type oauthScopeDTO struct {
 }
 
 type oauthManifestDTO struct {
-	ID                    uuid.UUID         `json:"id"`
-	ParentID              uuid.UUID         `json:"parentId"`
-	Key                   string            `json:"key"`
-	Name                  string            `json:"name"`
-	IconURL               string            `json:"iconUrl"`
-	DocsURL               string            `json:"docsUrl"`
-	Template              bool              `json:"template"`
-	AuthorizationEndpoint string            `json:"authorizationEndpoint"`
-	TokenEndpoint         string            `json:"tokenEndpoint"`
-	UserinfoEndpoint      string            `json:"userinfoEndpoint"`
-	ScopeDelimiter        string            `json:"scopeDelimiter"`
-	DefaultScopes         []string          `json:"defaultScopes"`
-	Scopes                []oauthScopeDTO   `json:"scopes"`
-	AuthorizeParams       map[string]string `json:"authorizeParams"`
+	ID                      uuid.UUID         `json:"id"`
+	ParentID                uuid.UUID         `json:"parentId"`
+	Key                     string            `json:"key"`
+	Name                    string            `json:"name"`
+	IconURL                 string            `json:"iconUrl"`
+	DocsURL                 string            `json:"docsUrl"`
+	Template                bool              `json:"template"`
+	AuthorizationEndpoint   string            `json:"authorizationEndpoint"`
+	TokenEndpoint           string            `json:"tokenEndpoint"`
+	UserinfoEndpoint        string            `json:"userinfoEndpoint"`
+	TokenEndpointAuthMethod string            `json:"tokenEndpointAuthMethod"`
+	UserinfoAccountPath     string            `json:"userinfoAccountPath"`
+	ScopeDelimiter          string            `json:"scopeDelimiter"`
+	DefaultScopes           []string          `json:"defaultScopes"`
+	Scopes                  []oauthScopeDTO   `json:"scopes"`
+	AuthorizeParams         map[string]string `json:"authorizeParams"`
 }
 
 type upsertOAuthManifestRequest struct {
-	Key                   string            `json:"key"`
-	ParentID              uuid.UUID         `json:"parentId"`
-	Name                  *string           `json:"name"`
-	IconURL               *string           `json:"iconUrl"`
-	DocsURL               *string           `json:"docsUrl"`
-	AuthorizationEndpoint *string           `json:"authorizationEndpoint"`
-	TokenEndpoint         *string           `json:"tokenEndpoint"`
-	UserinfoEndpoint      *string           `json:"userinfoEndpoint"`
-	ScopeDelimiter        *string           `json:"scopeDelimiter"`
-	DefaultScopes         []string          `json:"defaultScopes"`
-	Scopes                []oauthScopeDTO   `json:"scopes"`
-	AuthorizeParams       map[string]string `json:"authorizeParams"`
+	Key                     string            `json:"key"`
+	ParentID                uuid.UUID         `json:"parentId"`
+	Name                    *string           `json:"name"`
+	IconURL                 *string           `json:"iconUrl"`
+	DocsURL                 *string           `json:"docsUrl"`
+	AuthorizationEndpoint   *string           `json:"authorizationEndpoint"`
+	TokenEndpoint           *string           `json:"tokenEndpoint"`
+	UserinfoEndpoint        *string           `json:"userinfoEndpoint"`
+	TokenEndpointAuthMethod string            `json:"tokenEndpointAuthMethod"`
+	UserinfoAccountPath     string            `json:"userinfoAccountPath"`
+	ScopeDelimiter          *string           `json:"scopeDelimiter"`
+	DefaultScopes           []string          `json:"defaultScopes"`
+	Scopes                  []oauthScopeDTO   `json:"scopes"`
+	AuthorizeParams         map[string]string `json:"authorizeParams"`
 }
 
 type discoverOidcRequest struct {
@@ -269,6 +273,7 @@ func toManifestDTO(m manifests.Manifest, template bool) oauthManifestDTO {
 		Template: template, AuthorizationEndpoint: m.AuthorizationEndpoint, TokenEndpoint: m.TokenEndpoint,
 		UserinfoEndpoint: m.UserinfoEndpoint, ScopeDelimiter: m.ScopeDelimiter, DefaultScopes: orEmpty(m.DefaultScopes),
 		Scopes: scopes, AuthorizeParams: params,
+		TokenEndpointAuthMethod: m.TokenEndpointAuthMethod, UserinfoAccountPath: m.UserinfoAccountPath,
 	}
 }
 
@@ -290,6 +295,7 @@ func fromManifestRequest(dto upsertOAuthManifestRequest) manifests.Manifest {
 		DocsURL: derefOr(dto.DocsURL, ""), AuthorizationEndpoint: derefOr(dto.AuthorizationEndpoint, ""),
 		TokenEndpoint: derefOr(dto.TokenEndpoint, ""), UserinfoEndpoint: derefOr(dto.UserinfoEndpoint, ""),
 		ScopeDelimiter: delim, DefaultScopes: orEmpty(dto.DefaultScopes), Scopes: scopes, AuthorizeParams: params,
+		TokenEndpointAuthMethod: dto.TokenEndpointAuthMethod, UserinfoAccountPath: dto.UserinfoAccountPath,
 	}
 }
 

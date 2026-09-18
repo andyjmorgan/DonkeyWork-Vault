@@ -31,19 +31,21 @@ type ScopeDef struct {
 
 // Manifest is a single OAuth provider definition.
 type Manifest struct {
-	ID                    uuid.UUID         `json:"id" yaml:"id"`
-	ParentID              uuid.UUID         `json:"parentId" yaml:"parent_id"`
-	Key                   string            `json:"key" yaml:"key"`
-	Name                  string            `json:"name" yaml:"name"`
-	IconURL               string            `json:"iconUrl" yaml:"icon_url"`
-	DocsURL               string            `json:"docsUrl" yaml:"docs_url"`
-	AuthorizationEndpoint string            `json:"authorizationEndpoint" yaml:"authorization_endpoint"`
-	TokenEndpoint         string            `json:"tokenEndpoint" yaml:"token_endpoint"`
-	UserinfoEndpoint      string            `json:"userinfoEndpoint" yaml:"userinfo_endpoint"`
-	ScopeDelimiter        string            `json:"scopeDelimiter" yaml:"scope_delimiter"`
-	DefaultScopes         []string          `json:"defaultScopes" yaml:"default_scopes"`
-	Scopes                []ScopeDef        `json:"scopes" yaml:"scopes"`
-	AuthorizeParams       map[string]string `json:"authorizeParams" yaml:"authorize_params"`
+	ID                      uuid.UUID         `json:"id" yaml:"id"`
+	ParentID                uuid.UUID         `json:"parentId" yaml:"parent_id"`
+	Key                     string            `json:"key" yaml:"key"`
+	Name                    string            `json:"name" yaml:"name"`
+	IconURL                 string            `json:"iconUrl" yaml:"icon_url"`
+	DocsURL                 string            `json:"docsUrl" yaml:"docs_url"`
+	AuthorizationEndpoint   string            `json:"authorizationEndpoint" yaml:"authorization_endpoint"`
+	TokenEndpoint           string            `json:"tokenEndpoint" yaml:"token_endpoint"`
+	UserinfoEndpoint        string            `json:"userinfoEndpoint" yaml:"userinfo_endpoint"`
+	TokenEndpointAuthMethod string            `json:"tokenEndpointAuthMethod" yaml:"token_endpoint_auth_method"`
+	UserinfoAccountPath     string            `json:"userinfoAccountPath" yaml:"userinfo_account_path"`
+	ScopeDelimiter          string            `json:"scopeDelimiter" yaml:"scope_delimiter"`
+	DefaultScopes           []string          `json:"defaultScopes" yaml:"default_scopes"`
+	Scopes                  []ScopeDef        `json:"scopes" yaml:"scopes"`
+	AuthorizeParams         map[string]string `json:"authorizeParams" yaml:"authorize_params"`
 }
 
 // Loader holds the validated embedded catalog, indexed by key and by stable id.

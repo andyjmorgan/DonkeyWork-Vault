@@ -117,3 +117,112 @@ Removing provider credentials prevents new connects. Existing connected token re
 
 Deleting a provider removes that provider definition and its related app configs and connected tokens for your account.
 
+## X API and MCP
+
+The X template connects your X account using OAuth 2.0 Authorization Code with
+PKCE. Vault encrypts the access and refresh tokens and refreshes access tokens
+when you retrieve them. This is user-context access, so calls use your account's
+granted permissions.
+
+### Register and connect your app
+
+1. Create an app in the [X Developer Console](https://developer.x.com).
+2. Enable OAuth 2.0. Choose a confidential client type, such as Web App or Automated App / bot.
+3. Register `https://vault.donkeywork.dev/api/oauth/callback` as an exact callback URL.
+4. In Vault, open **Providers**, add **X** from the library, and enter the app's OAuth 2.0 client ID and client secret.
+5. Keep the template's HTTP Basic token authentication and `data.username` account field, then save.
+6. Open **OAuth Connect**, select X, choose scopes, and connect in your browser.
+
+Use the OAuth 2.0 client credentials, not OAuth 1.0a consumer keys or an app-only
+bearer token. This template supports confidential apps, which can keep a client
+secret securely on the Vault server.
+
+The default scopes are `tweet.read users.read offline.access`. X uses
+`offline.access`, not `offline_access`, to issue a refresh token. Access tokens
+normally last two hours. Add `bookmark.read` and `bookmark.write` for bookmark
+management, or `tweet.write` for posting through supported API endpoints. Select
+only the scopes you need, and reconnect when adding scopes.
+
+### Provider and connection shape
+
+| Setting | Value |
+| --- | --- |
+| Vault provider slug | `x` |
+| Authorization URL | `https://x.com/i/oauth2/authorize` |
+| Token and refresh URL | `https://api.x.com/2/oauth2/token` |
+| Token endpoint authentication | `client_secret_basic` for confidential apps |
+| PKCE method | `S256` |
+| Scope delimiter | A space |
+| Account lookup | `GET https://api.x.com/2/users/me` |
+| Account field | `data.username` |
+| API authentication | `Authorization: Bearer <user access token>` |
+| MCP URL | `https://api.x.com/mcp` |
+| MCP transport | Streamable HTTP |
+| Documented MCP protocol version | `2025-06-18` |
+
+X's account response is nested, for example:
+
+```json
+{"data":{"id":"123","name":"Alice","username":"alice"}}
+```
+
+Vault uses the username as the connected account label. For example,
+`dwvault oauth get x --account alice` retrieves that account's current token.
+
+### Use the token with the X API
+
+This example passes the token straight to X without printing it:
+
+```bash
+curl --fail-with-body https://api.x.com/2/users/me \
+  -H "Authorization: Bearer $(dwvault oauth get x)"
+```
+
+For multiple connected accounts, add `--account <username>` to the token command.
+
+### Use the token with MCP
+
+X provides an official hosted MCP server at `https://api.x.com/mcp`. It does not
+advertise native MCP OAuth discovery or support dynamic client registration.
+Configure your MCP client with that URL and an `Authorization: Bearer` header
+supplied from Vault. The MCP client must support external bearer tokens.
+
+For a client that accepts a token from an environment variable:
+
+```bash
+export X_ACCESS_TOKEN="$(dwvault oauth get x)"
+# Configure the client to use X_ACCESS_TOKEN as its bearer token, then launch it.
+```
+
+This exports a snapshot of the token. Vault refreshes tokens on retrieval;
+changing a stored token does not update an already running client's environment.
+For long-running sessions, use a client or bridge that retrieves a fresh token
+from Vault before expiry. Do not paste a token into a committed MCP configuration.
+
+A protocol-level handshake can be checked with:
+
+```bash
+curl --fail-with-body https://api.x.com/mcp \
+  -H "Authorization: Bearer $(dwvault oauth get x)" \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: application/json, text/event-stream' \
+  --data '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"vault-check","version":"1.0"}}}'
+```
+
+This only initializes a connection; an MCP client handles the remaining session
+messages and tool calls. The documented tools cover search, posts, users,
+bookmarks, trends, news, and Articles. Available operations depend on your scopes
+and X app entitlement. X documents `client-not-enrolled` as requiring the app's
+Pay-per-use package and Production environment.
+
+X's recommended `xurl mcp` bridge is another option, but it manages its own login
+and refresh-token cache. Vault does not configure that cache. The separate
+`https://docs.x.com/mcp` endpoint searches documentation; it does not call the X API.
+
+### Sources
+
+Verified against X's official documentation on September 18, 2026:
+
+- [X MCP server and authentication](https://docs.x.com/tools/mcp)
+- [OAuth 2.0 scopes and token lifetime](https://docs.x.com/fundamentals/authentication/oauth-2-0/authorization-code)
+- [PKCE token exchange and client authentication](https://docs.x.com/fundamentals/authentication/oauth-2-0/user-access-token)
