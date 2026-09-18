@@ -203,6 +203,12 @@ func (s *Server) handleUpsertManifest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request body.")
 		return
 	}
+	switch dto.TokenEndpointAuthMethod {
+	case "", "client_secret_post", "client_secret_basic":
+	default:
+		writeError(w, http.StatusBadRequest, "unsupported token endpoint authentication method.")
+		return
+	}
 	err := s.deps.Resolver.UpsertOAuth(r.Context(), fromManifestRequest(dto))
 	var slugErr manifests.ErrInvalidSlug
 	if errors.As(err, &slugErr) {

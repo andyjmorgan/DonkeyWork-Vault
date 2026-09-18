@@ -1157,6 +1157,13 @@ export interface components {
             template: boolean;
             tokenEndpoint: string;
             userinfoEndpoint: string;
+            /**
+             * @description Token endpoint client authentication: client_secret_post (default) or client_secret_basic.
+             * @enum {string}
+             */
+            tokenEndpointAuthMethod?: "" | "client_secret_post" | "client_secret_basic";
+            /** @description Dot-separated path to the account string in userinfo JSON, for example data.username. Empty uses standard identity fields. */
+            userinfoAccountPath?: string;
         };
         OAuthScopeDto: {
             category: string;
@@ -1213,6 +1220,13 @@ export interface components {
             scopes: components["schemas"]["OAuthScopeDto"][] | null;
             tokenEndpoint: string | null;
             userinfoEndpoint: string | null;
+            /**
+             * @description Token endpoint client authentication: client_secret_post (default) or client_secret_basic.
+             * @enum {string}
+             */
+            tokenEndpointAuthMethod?: "" | "client_secret_post" | "client_secret_basic";
+            /** @description Dot-separated path to the account string in userinfo JSON, for example data.username. Empty uses standard identity fields. */
+            userinfoAccountPath?: string;
         };
     };
     responses: never;

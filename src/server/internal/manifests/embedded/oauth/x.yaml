@@ -1,0 +1,38 @@
+id: 438ba9e0-c566-4955-a84d-b45d58390827
+key: x
+name: X
+docs_url: https://docs.x.com/tools/mcp
+authorization_endpoint: https://x.com/i/oauth2/authorize
+token_endpoint: https://api.x.com/2/oauth2/token
+token_endpoint_auth_method: client_secret_basic
+userinfo_endpoint: https://api.x.com/2/users/me
+userinfo_account_path: data.username
+scope_delimiter: " "
+# Register a Web App / Automated App with OAuth 2.0 enabled.
+# offline.access issues the refresh token; it is not the OIDC offline_access scope.
+default_scopes: [tweet.read, users.read, offline.access]
+scopes:
+  - { value: tweet.read, description: Read posts you can view, category: Posts }
+  - { value: tweet.write, description: Create posts and repost on your behalf, category: Posts, sensitive: true }
+  - { value: tweet.moderate.write, description: Hide and unhide replies to your posts, category: Posts, sensitive: true }
+  - { value: users.read, description: Read user profiles and identify your account, category: Account }
+  - { value: users.email, description: Read your email address, category: Account, sensitive: true }
+  - { value: offline.access, description: Keep access through automatic token refresh, category: Account }
+  - { value: bookmark.read, description: Read your bookmarks, category: Bookmarks }
+  - { value: bookmark.write, description: Add and remove bookmarks, category: Bookmarks, sensitive: true }
+  - { value: follows.read, description: Read followers and following, category: Relationships }
+  - { value: follows.write, description: Follow and unfollow accounts, category: Relationships, sensitive: true }
+  - { value: like.read, description: Read likes, category: Posts }
+  - { value: like.write, description: Like and unlike posts, category: Posts, sensitive: true }
+  - { value: list.read, description: Read lists and their members, category: Lists }
+  - { value: list.write, description: Create and manage lists, category: Lists, sensitive: true }
+  - { value: space.read, description: Read Spaces, category: Spaces }
+  - { value: mute.read, description: Read muted accounts, category: Relationships }
+  - { value: mute.write, description: Mute and unmute accounts, category: Relationships, sensitive: true }
+  - { value: block.read, description: Read blocked accounts, category: Relationships }
+  - { value: block.write, description: Block and unblock accounts, category: Relationships, sensitive: true }
+  - { value: dm.read, description: Read direct messages, category: Messages, sensitive: true }
+  - { value: dm.write, description: Send and manage direct messages, category: Messages, sensitive: true }
+  - { value: media.write, description: Upload media, category: Media, sensitive: true }
+  - { value: broadcast.read, description: Read your live broadcasts and chat, category: Broadcasts }
+  - { value: broadcast.write, description: Manage live broadcasts and send chat, category: Broadcasts, sensitive: true }

@@ -1178,7 +1178,7 @@ func (c *encDecOrderedCipher) DecryptToString(b []byte) (string, error) { return
 
 func TestPostFormBadEndpoint(t *testing.T) {
 	// An invalid URL makes http.NewRequestWithContext fail.
-	if _, _, err := postForm(context.Background(), http.DefaultClient, "://bad url", nil); err == nil {
+	if _, _, err := postForm(context.Background(), http.DefaultClient, "://bad url", nil, ""); err == nil {
 		t.Fatal("expected request build error")
 	}
 }
@@ -1188,7 +1188,7 @@ func TestPostFormOK(t *testing.T) {
 		_, _ = w.Write([]byte(`ok`))
 	}))
 	defer srv.Close()
-	status, body, err := postForm(context.Background(), srv.Client(), srv.URL, nil)
+	status, body, err := postForm(context.Background(), srv.Client(), srv.URL, nil, "")
 	if err != nil || status != 200 || string(body) != "ok" {
 		t.Fatalf("postForm: %d %q %v", status, body, err)
 	}

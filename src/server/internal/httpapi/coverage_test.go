@@ -447,3 +447,20 @@ func TestAccessKeyAuthMetadata(t *testing.T) {
 		t.Fatalf("authed read %d", rec.Code)
 	}
 }
+
+func TestManifestOAuthSettingsRoundTrip(t *testing.T) {
+	request := upsertOAuthManifestRequest{Key: "x", TokenEndpointAuthMethod: "client_secret_basic", UserinfoAccountPath: "data.username"}
+	manifest := fromManifestRequest(request)
+	dto := toManifestDTO(manifest, true)
+	if dto.TokenEndpointAuthMethod != request.TokenEndpointAuthMethod || dto.UserinfoAccountPath != request.UserinfoAccountPath {
+		t.Fatal("provider authentication or account mapping lost in DTO conversion")
+	}
+}
+
+func TestUpsertManifestInvalidAuthMethod(t *testing.T) {
+	h := newHarness(t)
+	rec := h.do(t, "POST", "/api/v1/manifests/oauth", upsertOAuthManifestRequest{Key: "x", TokenEndpointAuthMethod: "unsupported"}, true)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("invalid auth method: want 400, got %d", rec.Code)
+	}
+}

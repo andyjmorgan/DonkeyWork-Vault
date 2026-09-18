@@ -28,6 +28,20 @@ const (
 	UsernamePassword CredentialKind = "username_password"
 )
 
+// Defines values for OAuthManifestDtoTokenEndpointAuthMethod.
+const (
+	OAuthManifestDtoTokenEndpointAuthMethodClientSecretBasic OAuthManifestDtoTokenEndpointAuthMethod = "client_secret_basic"
+	OAuthManifestDtoTokenEndpointAuthMethodClientSecretPost  OAuthManifestDtoTokenEndpointAuthMethod = "client_secret_post"
+	OAuthManifestDtoTokenEndpointAuthMethodEmpty             OAuthManifestDtoTokenEndpointAuthMethod = ""
+)
+
+// Defines values for UpsertOAuthManifestRequestTokenEndpointAuthMethod.
+const (
+	UpsertOAuthManifestRequestTokenEndpointAuthMethodClientSecretBasic UpsertOAuthManifestRequestTokenEndpointAuthMethod = "client_secret_basic"
+	UpsertOAuthManifestRequestTokenEndpointAuthMethodClientSecretPost  UpsertOAuthManifestRequestTokenEndpointAuthMethod = "client_secret_post"
+	UpsertOAuthManifestRequestTokenEndpointAuthMethodEmpty             UpsertOAuthManifestRequestTokenEndpointAuthMethod = ""
+)
+
 // AccessKeyDto defines model for AccessKeyDto.
 type AccessKeyDto struct {
 	CreatedAt   time.Time          `json:"createdAt"`
@@ -215,8 +229,17 @@ type OAuthManifestDto struct {
 	Scopes                []OAuthScopeDto    `json:"scopes"`
 	Template              bool               `json:"template"`
 	TokenEndpoint         string             `json:"tokenEndpoint"`
-	UserinfoEndpoint      string             `json:"userinfoEndpoint"`
+
+	// TokenEndpointAuthMethod Token endpoint client authentication: client_secret_post (default) or client_secret_basic.
+	TokenEndpointAuthMethod *OAuthManifestDtoTokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"`
+
+	// UserinfoAccountPath Dot-separated path to the account string in userinfo JSON, for example data.username. Empty uses standard identity fields.
+	UserinfoAccountPath *string `json:"userinfoAccountPath,omitempty"`
+	UserinfoEndpoint    string  `json:"userinfoEndpoint"`
 }
+
+// OAuthManifestDtoTokenEndpointAuthMethod Token endpoint client authentication: client_secret_post (default) or client_secret_basic.
+type OAuthManifestDtoTokenEndpointAuthMethod string
 
 // OAuthScopeDto defines model for OAuthScopeDto.
 type OAuthScopeDto struct {
@@ -277,8 +300,17 @@ type UpsertOAuthManifestRequest struct {
 	ScopeDelimiter        *string            `json:"scopeDelimiter"`
 	Scopes                *[]OAuthScopeDto   `json:"scopes"`
 	TokenEndpoint         *string            `json:"tokenEndpoint"`
-	UserinfoEndpoint      *string            `json:"userinfoEndpoint"`
+
+	// TokenEndpointAuthMethod Token endpoint client authentication: client_secret_post (default) or client_secret_basic.
+	TokenEndpointAuthMethod *UpsertOAuthManifestRequestTokenEndpointAuthMethod `json:"tokenEndpointAuthMethod,omitempty"`
+
+	// UserinfoAccountPath Dot-separated path to the account string in userinfo JSON, for example data.username. Empty uses standard identity fields.
+	UserinfoAccountPath *string `json:"userinfoAccountPath,omitempty"`
+	UserinfoEndpoint    *string `json:"userinfoEndpoint"`
 }
+
+// UpsertOAuthManifestRequestTokenEndpointAuthMethod Token endpoint client authentication: client_secret_post (default) or client_secret_basic.
+type UpsertOAuthManifestRequestTokenEndpointAuthMethod string
 
 // GetApiOauthCallbackParams defines parameters for GetApiOauthCallback.
 type GetApiOauthCallbackParams struct {

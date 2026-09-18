@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { Trash2, Pencil, Plus, Search } from 'lucide-react'
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
 import { Button } from '../ui/components/button'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/components/select'
 import { Input } from '../ui/components/input'
 import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
@@ -181,6 +182,12 @@ function OAuthEditor({ value, config, isNew, onClose, onSaved }: {
             <div className="sm:col-span-2"><Label className={lbl}>Authorization endpoint</Label><Input value={m.authorizationEndpoint} onChange={(e) => set({ authorizationEndpoint: e.target.value })} /></div>
             <div className="sm:col-span-2"><Label className={lbl}>Token endpoint</Label><Input value={m.tokenEndpoint} onChange={(e) => set({ tokenEndpoint: e.target.value })} /></div>
             <div className="sm:col-span-2"><Label className={lbl}>Userinfo endpoint</Label><Input value={m.userinfoEndpoint} onChange={(e) => set({ userinfoEndpoint: e.target.value })} /></div>
+            <div><Label className={lbl}>Token endpoint authentication</Label><Select value={m.tokenEndpointAuthMethod || 'client_secret_post'} onValueChange={(v) => set({ tokenEndpointAuthMethod: v })}>
+              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
+              <SelectItem value="client_secret_post">Client secret in request body</SelectItem>
+              <SelectItem value="client_secret_basic">HTTP Basic (X confidential apps)</SelectItem>
+            </SelectContent></Select></div>
+            <div><Label className={lbl}>Account field (optional)</Label><Input value={m.userinfoAccountPath || ''} onChange={(e) => set({ userinfoAccountPath: e.target.value })} placeholder="e.g. data.username" /></div>
           </div>
 
           <div className="space-y-2 border-t border-border pt-3">

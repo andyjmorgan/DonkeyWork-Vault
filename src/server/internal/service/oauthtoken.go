@@ -197,7 +197,7 @@ func (s *OAuthTokenService) refresh(ctx context.Context, manifest *manifests.Man
 		return OAuthRefreshError{msg}
 	}
 
-	status, body, err := postForm(ctx, s.client, manifest.TokenEndpoint, form)
+	status, body, err := postForm(ctx, s.client, manifest.TokenEndpoint, form, manifest.TokenEndpointAuthMethod)
 	if err != nil {
 		return nil, emitFail(fmt.Sprintf("refresh failed for %s: %v", manifest.Key, err))
 	}
