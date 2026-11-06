@@ -1,32 +1,30 @@
-import { cva } from "class-variance-authority"
+import { cva } from 'class-variance-authority'
 
+// Brand buttons: a flat Sage primary (no gradients — those belong to the mark), bordered
+// secondary/outline, quiet ghost, and a tinted danger. Radius matches the sandbox (12px).
 export const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium ring-offset-background transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0",
+  'inline-flex cursor-pointer items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-semibold transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg]:size-4 [&_svg]:shrink-0',
   {
     variants: {
       variant: {
-        default: "bg-gradient-to-r from-cyan-500 to-blue-600 text-white hover:shadow-lg hover:shadow-cyan-500/25",
-        destructive:
-          "bg-destructive/10 text-destructive border border-destructive/20 hover:bg-destructive/20",
-        outline:
-          "border border-input bg-background hover:bg-accent hover:text-accent-foreground shadow-sm",
-        secondary:
-          "bg-secondary text-secondary-foreground border border-border hover:bg-secondary/80 shadow-sm",
-        ghost: "hover:bg-accent hover:text-accent-foreground",
-        link: "text-accent underline-offset-4 hover:underline",
-        success: "bg-gradient-to-r from-emerald-500 to-green-600 text-white hover:shadow-lg hover:shadow-emerald-500/25",
-        warning: "bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:shadow-lg hover:shadow-amber-500/25",
+        primary: 'bg-accent text-on-accent shadow-sm hover:bg-accent-strong',
+        secondary: 'border border-border bg-card text-foreground shadow-sm hover:border-accent/30 hover:bg-elevated',
+        outline: 'border border-border bg-transparent text-foreground hover:bg-elevated',
+        ghost: 'text-muted-foreground hover:bg-elevated hover:text-foreground',
+        danger: 'border border-danger/20 bg-danger/10 text-danger hover:bg-danger/20',
+        link: 'h-auto rounded-none p-0 font-medium text-foreground underline decoration-accent underline-offset-[3px] hover:text-accent',
       },
       size: {
-        default: "h-10 px-4 py-2.5",
-        sm: "h-9 rounded-xl px-3",
-        lg: "h-11 rounded-xl px-8",
-        icon: "h-10 w-10",
+        default: 'h-10 px-4',
+        sm: 'h-8 rounded-lg px-3 text-xs',
+        lg: 'h-11 px-6',
+        icon: 'size-9 px-0',
+        iconSm: 'size-8 rounded-lg px-0',
       },
     },
     defaultVariants: {
-      variant: "default",
-      size: "default",
+      variant: 'secondary',
+      size: 'default',
     },
-  }
+  },
 )

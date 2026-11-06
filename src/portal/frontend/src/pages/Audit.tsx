@@ -1,28 +1,21 @@
 import { useCallback, useEffect, useState } from 'react'
-import { ChevronLeft, ChevronRight, RotateCw } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
+import { Activity, RotateCw } from 'lucide-react'
 import { Button } from '../ui/components/button'
-import { Badge } from '../ui/components/badge'
-import { Label } from '../ui/components/label'
-import {
-  Select, SelectTrigger, SelectValue, SelectContent, SelectItem,
-} from '../ui/components/select'
-import { Field } from '../components/Field'
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/components/select'
+import { PageHeader } from '../components/PageHeader'
+import { ListCard, ListBar, ListHead, ListRows, ListRow, Cell, ListEmpty, ListPager } from '../components/ListCard'
+import { StatusPill } from '../components/StatusPill'
+import { Callout } from '../components/Callout'
+import { absoluteTime, relativeTime } from '../lib'
 import { api, type AuditEvent } from '../api'
 
 const PAGE = 25
 
 // Known event types from the spec; "all" clears the filter.
-const TYPES = [
-  'TokenAccessed', 'TokenRefreshed', 'TokenAdded', 'CredentialCreated',
-  'AuthSucceeded', 'AuthFailed', 'AuditAccessed',
-] as const
+const TYPES = ['TokenAccessed', 'TokenRefreshed', 'TokenAdded', 'CredentialCreated', 'AuthSucceeded', 'AuthFailed', 'AuditAccessed'] as const
 
-const lbl = 'mb-1 block text-xs text-muted-foreground'
 const ALL = '__all__'
-
-const fmt = (s?: string | null) => (s ? new Date(s).toLocaleString() : '—')
+const COLS = '150px minmax(0,1.5fr) 110px minmax(0,1.4fr) 150px minmax(0,1fr)'
 
 // A single line describing what was acted on, combining the target fields that are present.
 function target(e: AuditEvent): string {
@@ -35,9 +28,13 @@ function accessKey(e: AuditEvent): string {
   return [e.accessKeyName, e.accessKeyPrefix ? `${e.accessKeyPrefix}…` : undefined].filter(Boolean).join(' · ')
 }
 
-function OutcomeBadge({ outcome }: { outcome: string }) {
+// "TokenAccessed" → "Token accessed", so the event column reads as prose while the raw type stays
+// in the filter.
+const prettyType = (t: string) => t.replace(/([a-z])([A-Z])/g, (_, a: string, b: string) => `${a} ${b.toLowerCase()}`)
+
+function Outcome({ outcome }: { outcome: string }) {
   const fail = outcome?.toLowerCase() === 'failure'
-  return <Badge variant={fail ? 'destructive' : 'success'}>{outcome}</Badge>
+  return <StatusPill tone={fail ? 'danger' : 'success'}>{fail ? 'Failure' : 'Success'}</StatusPill>
 }
 
 export function AuditPage() {
@@ -48,58 +45,72 @@ export function AuditPage() {
   const [outcome, setOutcome] = useState<string>(ALL)
   const [err, setErr] = useState<string>()
   const [busy, setBusy] = useState(false)
+  const [loaded, setLoaded] = useState(false)
 
   const load = useCallback(() => {
-    setBusy(true); setErr(undefined)
-    api.audit({
-      limit: PAGE,
-      offset,
-      type: type === ALL ? undefined : type,
-      outcome: outcome === ALL ? undefined : outcome,
-    })
-      .then((p) => { setItems(p.items ?? []); setTotal(Number(p.total) || 0) })
+    setBusy(true)
+    setErr(undefined)
+    api
+      .audit({ limit: PAGE, offset, type: type === ALL ? undefined : type, outcome: outcome === ALL ? undefined : outcome })
+      .then((p) => {
+        setItems(p.items ?? [])
+        setTotal(Number(p.total) || 0)
+      })
       .catch((e) => setErr(String(e)))
-      .finally(() => setBusy(false))
+      .finally(() => {
+        setBusy(false)
+        setLoaded(true)
+      })
   }, [offset, type, outcome])
 
   useEffect(() => { load() }, [load])
 
   // Changing a filter resets to the first page.
-  const onFilter = (set: (v: string) => void) => (v: string) => { setOffset(0); set(v) }
+  const onFilter = (set: (v: string) => void) => (v: string) => {
+    setOffset(0)
+    set(v)
+  }
 
   const from = total === 0 ? 0 : offset + 1
   const to = Math.min(offset + PAGE, total)
-  const canPrev = offset > 0
-  const canNext = offset + PAGE < total
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3">
-        <div>
-          <CardTitle>Audit trail</CardTitle>
-          <CardDescription>Credential access and auth events, newest first.</CardDescription>
-        </div>
-        <Button variant="outline" size="icon" aria-label="Refresh" disabled={busy} onClick={load}>
-          <RotateCw className="size-4" />
-        </Button>
-      </CardHeader>
-      <CardContent>
-        {/* Filters. */}
-        <div className="mb-4 grid gap-3 sm:grid-cols-2 sm:max-w-md">
-          <div>
-            <Label className={lbl}>Type</Label>
+    <div className="space-y-6">
+      <PageHeader
+        title="Audit trail"
+        description="Every credential read, token refresh, and sign-in, newest first. Entries name the access key or user and where the request came from."
+        actions={
+          <Button variant="secondary" disabled={busy} onClick={load}>
+            <RotateCw className={busy ? 'animate-spin' : undefined} /> Refresh
+          </Button>
+        }
+      />
+
+      {err && <Callout tone="danger">{err}</Callout>}
+
+      <ListCard>
+        <ListBar>
+          <span>
+            {total.toLocaleString()} {total === 1 ? 'event' : 'events'}
+          </span>
+          <div className="flex w-full flex-wrap gap-2 sm:w-auto">
             <Select value={type} onValueChange={onFilter(setType)}>
-              <SelectTrigger><SelectValue placeholder="All types" /></SelectTrigger>
+              <SelectTrigger className="h-9 sm:w-48" aria-label="Event type">
+                <SelectValue placeholder="All types" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All types</SelectItem>
-                {TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                {TYPES.map((t) => (
+                  <SelectItem key={t} value={t}>
+                    {prettyType(t)}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-          </div>
-          <div>
-            <Label className={lbl}>Outcome</Label>
             <Select value={outcome} onValueChange={onFilter(setOutcome)}>
-              <SelectTrigger><SelectValue placeholder="All outcomes" /></SelectTrigger>
+              <SelectTrigger className="h-9 sm:w-40" aria-label="Outcome">
+                <SelectValue placeholder="All outcomes" />
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value={ALL}>All outcomes</SelectItem>
                 <SelectItem value="Success">Success</SelectItem>
@@ -107,77 +118,73 @@ export function AuditPage() {
               </SelectContent>
             </Select>
           </div>
-        </div>
+        </ListBar>
 
-        {err && <p className="mb-2 text-sm text-destructive">{err}</p>}
-
-        {items.length === 0 ? (
-          <p className="text-sm text-muted-foreground">{busy ? 'Loading…' : 'No audit events match these filters.'}</p>
-        ) : (
-          <>
-            {/* Desktop: table. */}
-            <div className="hidden lg:block">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Time</TableHead><TableHead>Type</TableHead><TableHead>Outcome</TableHead>
-                    <TableHead>Target</TableHead><TableHead>Source IP</TableHead><TableHead>Access key</TableHead>
-                    <TableHead>Method</TableHead><TableHead>Detail</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {items.map((e) => (
-                    <TableRow key={e.id}>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">{fmt(e.createdAt)}</TableCell>
-                      <TableCell className="whitespace-nowrap font-medium">{e.type}</TableCell>
-                      <TableCell><OutcomeBadge outcome={e.outcome} /></TableCell>
-                      <TableCell className="max-w-[16rem] truncate" title={target(e)}>{target(e)}</TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">{e.sourceIp || '—'}</TableCell>
-                      <TableCell className="max-w-[12rem] truncate text-muted-foreground" title={accessKey(e)}>{accessKey(e)}</TableCell>
-                      <TableCell className="whitespace-nowrap text-muted-foreground">{e.method || '—'}</TableCell>
-                      <TableCell className="max-w-[16rem] truncate text-muted-foreground" title={e.detail || undefined}>{e.detail || '—'}</TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
-            {/* Mobile / narrow: a card per event. */}
-            <div className="space-y-3 lg:hidden">
-              {items.map((e) => (
-                <div key={e.id} className="rounded-xl border border-border p-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <div className="font-medium">{e.type}</div>
-                      <div className="text-xs text-muted-foreground">{fmt(e.createdAt)}</div>
-                    </div>
-                    <OutcomeBadge outcome={e.outcome} />
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
-                    <Field label="Target">{target(e)}</Field>
-                    <Field label="Source IP">{e.sourceIp || '—'}</Field>
-                    <Field label="Access key">{accessKey(e)}</Field>
-                    <Field label="Method">{e.method || '—'}</Field>
-                  </div>
-                  {e.detail && <div className="mt-2"><Field label="Detail" truncate={false}>{e.detail}</Field></div>}
-                </div>
-              ))}
-            </div>
-          </>
+        {items.length > 0 && (
+          <ListHead cols={COLS} at="lg">
+            <span>Time</span>
+            <span>Event</span>
+            <span>Outcome</span>
+            <span>Target</span>
+            <span>Source</span>
+            <span>Access key</span>
+          </ListHead>
         )}
 
-        {/* Paging. */}
-        <div className="mt-4 flex items-center justify-between">
-          <span className="text-xs text-muted-foreground">{total > 0 ? `${from}–${to} of ${total}` : '—'}</span>
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" aria-label="Previous page" disabled={!canPrev || busy} onClick={() => setOffset(Math.max(0, offset - PAGE))}>
-              <ChevronLeft className="size-4" />
-            </Button>
-            <Button variant="outline" size="icon" aria-label="Next page" disabled={!canNext || busy} onClick={() => setOffset(offset + PAGE)}>
-              <ChevronRight className="size-4" />
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+        {items.length === 0 ? (
+          <ListEmpty icon={Activity} title={loaded && !busy ? 'No audit events match these filters' : 'Loading…'} />
+        ) : (
+          <ListRows className={busy ? 'opacity-60 transition-opacity' : 'transition-opacity'}>
+            {items.map((e) => (
+              <ListRow key={e.id} cols={COLS} at="lg" className="lg:py-4">
+                <Cell label="Time" at="lg">
+                  <span className="block font-mono text-xs text-muted-foreground" title={absoluteTime(e.createdAt)}>
+                    {relativeTime(e.createdAt)}
+                  </span>
+                </Cell>
+                <Cell label="Event" at="lg">
+                  <div className="truncate text-sm font-medium">{prettyType(e.type)}</div>
+                  {e.detail && (
+                    <div className="mt-0.5 truncate text-xs text-muted-foreground" title={e.detail}>
+                      {e.detail}
+                    </div>
+                  )}
+                </Cell>
+                <Cell label="Outcome" at="lg">
+                  <Outcome outcome={e.outcome} />
+                </Cell>
+                <Cell label="Target" at="lg">
+                  <span className="block truncate font-mono text-xs" title={target(e)}>
+                    {target(e)}
+                  </span>
+                </Cell>
+                <Cell label="Source" at="lg">
+                  <span className="block truncate font-mono text-xs text-muted-foreground">
+                    {e.sourceIp || '—'}
+                    {e.method ? <span className="text-faint-foreground"> · {e.method}</span> : null}
+                  </span>
+                </Cell>
+                <Cell label="Access key" at="lg">
+                  <span className="block truncate font-mono text-xs text-muted-foreground" title={accessKey(e)}>
+                    {accessKey(e)}
+                  </span>
+                </Cell>
+              </ListRow>
+            ))}
+          </ListRows>
+        )}
+
+        <ListPager
+          from={from}
+          to={to}
+          total={total}
+          canPrev={offset > 0}
+          canNext={offset + PAGE < total}
+          busy={busy}
+          onPrev={() => setOffset(Math.max(0, offset - PAGE))}
+          onNext={() => setOffset(offset + PAGE)}
+        />
+      </ListCard>
+    </div>
   )
 }

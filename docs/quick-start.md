@@ -59,7 +59,7 @@ Choose **Paste API key** in the selector (or run `dwvault auth login --api-key`)
 
 ## 5. Optional: Mint an Access Key for Automation
 
-For unattended scripts, CI jobs, or agents where browser login is impractical, go to **Profile** in the web app and create an API key.
+For unattended scripts, CI jobs, or agents where browser login is impractical, go to **API keys** in the web app and create one.
 
 Pick the least scope needed:
 

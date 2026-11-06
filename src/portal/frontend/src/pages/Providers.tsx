@@ -1,28 +1,38 @@
 import { useEffect, useState } from 'react'
-import { Trash2, Pencil, Plus, Search } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
+import { toast } from 'sonner'
+import { Boxes, Pencil, Plus, Search, Trash2 } from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/components/select'
 import { Input } from '../ui/components/input'
-import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
+import { Checkbox } from '../ui/components/checkbox'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from '../ui/components/dialog'
+import { PageHeader } from '../components/PageHeader'
+import { ListCard, ListBar, ListHead, ListRows, ListRow, Cell, RowActions, ListEmpty, Primary } from '../components/ListCard'
 import { ProviderIcon } from '../components/ProviderIcon'
 import { CopyButton } from '../components/CopyButton'
+import { StatusPill } from '../components/StatusPill'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { FormField, FormSection } from '../components/FormField'
+import { Callout } from '../components/Callout'
 import { api, type OAuthProvider, type OAuthScope, type OAuthConfigItem } from '../api'
 
-const lbl = 'mb-1 block text-xs text-muted-foreground'
+const COLS = 'minmax(0,1.5fr) minmax(0,1.7fr) 150px 100px'
 
 // The YAML templates are a LIBRARY. Adding one copies the whole template into a self-contained,
 // editable provider row (with a parent_id breadcrumb). A provider is connectable only once added.
-// All editing lives here; the Connect tab only selects scopes and connects.
+// All editing lives here; the Connect page only selects scopes and connects.
 export function ProvidersPage() {
   const [providers, setProviders] = useState<OAuthProvider[]>([])
   const [templates, setTemplates] = useState<OAuthProvider[]>([])
   const [configs, setConfigs] = useState<OAuthConfigItem[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [editing, setEditing] = useState<{ value: OAuthProvider; isNew: boolean } | null>(null)
+  const [deleting, setDeleting] = useState<OAuthProvider>()
+  const [deleteBusy, setDeleteBusy] = useState(false)
+  const [deleteErr, setDeleteErr] = useState<string>()
   const load = () => {
-    api.oauthProviders().then(setProviders).catch(() => {})
+    api.oauthProviders().then(setProviders).catch(() => {}).finally(() => setLoaded(true))
     api.oauthTemplates().then(setTemplates).catch(() => {})
     api.oauthConfigs().then(setConfigs).catch(() => {})
   }
@@ -36,36 +46,108 @@ export function ProvidersPage() {
   const addFromTemplate = (t: OAuthProvider) =>
     setEditing({ value: { ...structuredClone(t), id: undefined, parentId: t.id, template: false }, isNew: true })
 
+  const remove = async () => {
+    if (!deleting) return
+    setDeleteBusy(true)
+    setDeleteErr(undefined)
+    try {
+      await api.deleteProvider('oauth', deleting.key)
+      toast.success(`Removed ${deleting.name}`)
+      setDeleting(undefined)
+      load()
+    } catch (e) {
+      setDeleteErr(String(e))
+    } finally {
+      setDeleteBusy(false)
+    }
+  }
+
   return (
-    <>
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle>Your OAuth providers</CardTitle>
-            <CardDescription>Providers you've added. Edit scopes, credentials and authorize-params, then connect on the Connect tab.</CardDescription>
-          </div>
-          <Button size="sm" onClick={() => setEditing({ value: blankOAuth(), isNew: true })}><Plus className="size-4" /> Add custom</Button>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {providers.length === 0 && <p className="text-sm text-muted-foreground">No providers yet — add one from the library below or add a custom one.</p>}
-          {providers.map((p) => (
-            <div key={p.key} className="flex items-center justify-between rounded-xl border border-border p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                <ProviderIcon src={p.iconUrl} name={p.name} />
-                <div className="min-w-0">
-                  <div className="font-medium">{p.name} <span className="text-xs text-muted-foreground">({p.key})</span></div>
-                  <div className="truncate text-xs text-muted-foreground">{p.authorizationEndpoint}</div>
+    <div className="space-y-6">
+      <PageHeader
+        title="OAuth providers"
+        description="The identity providers agents can connect accounts through. Add one from the library or define a custom OIDC provider, set its app credentials, then connect on the Connect page."
+        actions={
+          <Button variant="primary" onClick={() => setEditing({ value: blankOAuth(), isNew: true })}>
+            <Plus /> Custom provider
+          </Button>
+        }
+      />
+
+      <ListCard>
+        <ListBar>
+          <span>
+            {providers.length.toLocaleString()} {providers.length === 1 ? 'provider' : 'providers'}
+          </span>
+        </ListBar>
+        {providers.length > 0 && (
+          <ListHead cols={COLS}>
+            <span>Provider</span>
+            <span>Authorization endpoint</span>
+            <span>App credentials</span>
+            <span className="text-right">Actions</span>
+          </ListHead>
+        )}
+        {providers.length === 0 ? (
+          <ListEmpty
+            icon={Boxes}
+            title={loaded ? 'No providers yet' : 'Loading…'}
+            hint={loaded ? 'Pick one from the library below or add a custom provider.' : undefined}
+          />
+        ) : (
+          <ListRows>
+            {providers.map((p) => (
+              <ListRow key={p.key} cols={COLS} onClick={() => setEditing({ value: structuredClone(p), isNew: false })}>
+                <div className="flex min-w-0 items-center gap-3">
+                  <ProviderIcon src={p.iconUrl} name={p.name} />
+                  <Primary title={p.name} subtitle={p.key} mono />
                 </div>
+                <Cell label="Authorization endpoint">
+                  <span className="block truncate font-mono text-xs text-muted-foreground" title={p.authorizationEndpoint}>
+                    {p.authorizationEndpoint || '—'}
+                  </span>
+                </Cell>
+                <Cell label="App credentials">
+                  {configFor(p.key) ? <StatusPill tone="success">Configured</StatusPill> : <StatusPill tone="muted">Not set</StatusPill>}
+                </Cell>
+                <RowActions>
+                  <Button variant="ghost" size="icon" aria-label={`Edit ${p.name}`} title="Edit" onClick={() => setEditing({ value: structuredClone(p), isNew: false })}>
+                    <Pencil />
+                  </Button>
+                  <Button variant="ghost" size="icon" className="hover:text-danger" aria-label={`Remove ${p.name}`} title="Remove" onClick={() => { setDeleteErr(undefined); setDeleting(p) }}>
+                    <Trash2 />
+                  </Button>
+                </RowActions>
+              </ListRow>
+            ))}
+          </ListRows>
+        )}
+      </ListCard>
+
+      {library.length > 0 && (
+        <section className="space-y-3">
+          <div>
+            <h2 className="text-base font-semibold">Library</h2>
+            <p className="mt-1 text-sm text-muted-foreground">Built-in templates. Adding one copies it into your providers, where you set credentials and connect.</p>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {library.map((t) => (
+              <div key={t.key} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 transition-colors hover:border-accent/40">
+                <div className="flex min-w-0 items-center gap-3">
+                  <ProviderIcon src={t.iconUrl} name={t.name} />
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-medium">{t.name}</div>
+                    <div className="mt-0.5 truncate font-mono text-xs text-muted-foreground">{t.key}</div>
+                  </div>
+                </div>
+                <Button variant="secondary" size="sm" onClick={() => addFromTemplate(t)}>
+                  <Plus /> Add
+                </Button>
               </div>
-              <div className="flex items-center gap-1">
-                {configFor(p.key) && <Badge variant="secondary" className="text-success">credentials set</Badge>}
-                <Button variant="ghost" size="icon" onClick={() => setEditing({ value: structuredClone(p), isNew: false })}><Pencil className="size-4" /></Button>
-                <Button variant="ghost" size="icon" onClick={() => api.deleteProvider('oauth', p.key).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
-              </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            ))}
+          </div>
+        </section>
+      )}
 
       {editing && (
         <OAuthEditor
@@ -73,48 +155,62 @@ export function ProvidersPage() {
           config={configFor(editing.value.key)}
           isNew={editing.isNew}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); load() }}
+          onSaved={(name) => {
+            toast.success(`Saved ${name}`)
+            setEditing(null)
+            load()
+          }}
         />
       )}
 
-      {library.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle>Library</CardTitle><CardDescription>Built-in templates. Adding one copies it into your providers, where you set credentials and connect.</CardDescription></CardHeader>
-          <CardContent className="space-y-2">
-            {library.map((t) => (
-              <div key={t.key} className="flex items-center justify-between rounded-xl border border-border p-3">
-                <div className="flex min-w-0 items-center gap-2">
-                  <ProviderIcon src={t.iconUrl} name={t.name} className="size-6" />
-                  <div className="flex items-center gap-2 font-medium">{t.name} <Badge variant="secondary">template</Badge></div>
-                </div>
-                <Button variant="outline" size="sm" onClick={() => addFromTemplate(t)}><Plus className="size-4" /> Add</Button>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-    </>
+      <ConfirmDialog
+        open={!!deleting}
+        title="Remove provider?"
+        description={deleting ? `This removes ${deleting.name} and its app credentials. Connected accounts will stop refreshing.` : undefined}
+        confirmLabel="Remove"
+        busy={deleteBusy}
+        error={deleteErr}
+        onCancel={() => setDeleting(undefined)}
+        onConfirm={remove}
+      />
+    </div>
   )
 }
 
-function OAuthEditor({ value, config, isNew, onClose, onSaved }: {
-  value: OAuthProvider; config?: OAuthConfigItem; isNew: boolean; onClose: () => void; onSaved: () => void
+const REDIRECT_HINT = 'https://vault.donkeywork.dev/api/oauth/callback'
+
+function OAuthEditor({
+  value,
+  config,
+  isNew,
+  onClose,
+  onSaved,
+}: {
+  value: OAuthProvider
+  config?: OAuthConfigItem
+  isNew: boolean
+  onClose: () => void
+  onSaved: (name: string) => void
 }) {
   const [m, setM] = useState<OAuthProvider>(value)
   const [discoverUrl, setDiscoverUrl] = useState('')
+  const [discovering, setDiscovering] = useState(false)
   const [rows, setRows] = useState<OAuthScope[]>(
-    value.scopes?.length ? value.scopes : (value.defaultScopes || []).map((v) => ({ value: v, description: '' })))
+    value.scopes?.length ? value.scopes : (value.defaultScopes || []).map((v) => ({ value: v, description: '' })),
+  )
   const [clientId, setClientId] = useState('')
   const [clientSecret, setClientSecret] = useState('')
   const [redirect, setRedirect] = useState(config?.redirectUri || '')
   const [aprows, setAprows] = useState<{ key: string; value: string }[]>(
-    Object.entries(value.authorizeParams || {}).map(([key, val]) => ({ key, value: val })))
+    Object.entries(value.authorizeParams || {}).map(([key, val]) => ({ key, value: val })),
+  )
   const [msg, setMsg] = useState<string>()
+  const [busy, setBusy] = useState(false)
   const set = (patch: Partial<OAuthProvider>) => setM((cur) => ({ ...cur, ...patch }))
-  const redirectHint = 'https://vault.donkeywork.dev/api/oauth/callback'
 
   const discover = async () => {
-    setMsg('Discovering…')
+    setDiscovering(true)
+    setMsg(undefined)
     try {
       const d = await api.discoverOidc(discoverUrl)
       setM((cur) => ({
@@ -126,8 +222,12 @@ function OAuthEditor({ value, config, isNew, onClose, onSaved }: {
         userinfoEndpoint: d.userinfoEndpoint || cur.userinfoEndpoint,
       }))
       if (d.scopes?.length) setRows(d.scopes)
-      setMsg(`Discovered ${d.scopes?.length || 0} scopes.`)
-    } catch (e) { setMsg(String(e)) }
+      toast.success(`Discovered ${d.scopes?.length || 0} scopes`)
+    } catch (e) {
+      setMsg(String(e))
+    } finally {
+      setDiscovering(false)
+    }
   }
 
   const addRow = () => setRows((r) => [...r, { value: '', description: '' }])
@@ -141,11 +241,18 @@ function OAuthEditor({ value, config, isNew, onClose, onSaved }: {
   const removeCredentials = async () => {
     if (!config) return
     setMsg(undefined)
-    try { await api.deleteOAuthConfig(config.id); onSaved() } catch (e) { setMsg(String(e)) }
+    try {
+      await api.deleteOAuthConfig(config.id)
+      toast.success('Removed app credentials')
+      onSaved(m.name || m.key)
+    } catch (e) {
+      setMsg(String(e))
+    }
   }
 
   const save = async () => {
     setMsg(undefined)
+    setBusy(true)
     const scopes = rows
       .filter((s) => s.value.trim())
       .map((s) => ({ value: s.value.trim(), description: s.description || '', category: s.category || '', sensitive: !!s.sensitive }))
@@ -155,106 +262,195 @@ function OAuthEditor({ value, config, isNew, onClose, onSaved }: {
     try {
       await api.upsertOAuthProvider({ ...m, parentId: m.parentId, scopeDelimiter: m.scopeDelimiter || ' ', defaultScopes, scopes, authorizeParams })
       if (clientId.trim()) {
-        await api.upsertOAuthConfig({ provider: m.key, clientId: clientId.trim(), clientSecret: clientSecret || undefined, scopes: defaultScopes, redirectUri: redirect || undefined })
+        await api.upsertOAuthConfig({
+          provider: m.key,
+          clientId: clientId.trim(),
+          clientSecret: clientSecret || undefined,
+          scopes: defaultScopes,
+          redirectUri: redirect || undefined,
+        })
       }
-      onSaved()
-    } catch (e) { setMsg(String(e)) }
+      onSaved(m.name || m.key)
+    } catch (e) {
+      setMsg(String(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose() }}>
-      <DialogContent className="max-h-[92vh] overflow-y-auto sm:max-w-3xl">
-        <DialogHeader>
-          <DialogTitle>{isNew ? (value.key ? `Add ${value.key}` : 'New custom provider') : `Edit ${value.key}`}</DialogTitle>
-          <DialogDescription>Define endpoints, scopes, authorize-params and credentials. Discover from an issuer URL, or fill them in manually.</DialogDescription>
-        </DialogHeader>
-        <div className="space-y-3">
-          {isNew && (
-            <div className="flex items-end gap-2">
-              <div className="flex-1"><Label className={lbl}>OIDC discovery URL (issuer)</Label><Input value={discoverUrl} onChange={(e) => setDiscoverUrl(e.target.value)} placeholder="https://issuer.example.com" /></div>
-              <Button variant="outline" onClick={discover} disabled={!discoverUrl}><Search className="size-4" /> Discover</Button>
-            </div>
-          )}
-          <div className="grid gap-3 sm:grid-cols-2">
-            <div><Label className={lbl}>Slug (id)</Label><Input value={m.key} onChange={(e) => set({ key: e.target.value })} disabled={!isNew} placeholder="letters, digits, - or _" /></div>
-            <div><Label className={lbl}>Name</Label><Input value={m.name} onChange={(e) => set({ name: e.target.value })} /></div>
-            <div className="sm:col-span-2"><Label className={lbl}>Icon URL (optional)</Label><Input value={m.iconUrl || ''} onChange={(e) => set({ iconUrl: e.target.value })} /></div>
-            <div className="sm:col-span-2"><Label className={lbl}>Authorization endpoint</Label><Input value={m.authorizationEndpoint} onChange={(e) => set({ authorizationEndpoint: e.target.value })} /></div>
-            <div className="sm:col-span-2"><Label className={lbl}>Token endpoint</Label><Input value={m.tokenEndpoint} onChange={(e) => set({ tokenEndpoint: e.target.value })} /></div>
-            <div className="sm:col-span-2"><Label className={lbl}>Userinfo endpoint</Label><Input value={m.userinfoEndpoint} onChange={(e) => set({ userinfoEndpoint: e.target.value })} /></div>
-            <div><Label className={lbl}>Token endpoint authentication</Label><Select value={m.tokenEndpointAuthMethod || 'client_secret_post'} onValueChange={(v) => set({ tokenEndpointAuthMethod: v })}>
-              <SelectTrigger><SelectValue /></SelectTrigger><SelectContent>
-              <SelectItem value="client_secret_post">Client secret in request body</SelectItem>
-              <SelectItem value="client_secret_basic">HTTP Basic (X confidential apps)</SelectItem>
-            </SelectContent></Select></div>
-            <div><Label className={lbl}>Account field (optional)</Label><Input value={m.userinfoAccountPath || ''} onChange={(e) => set({ userinfoAccountPath: e.target.value })} placeholder="e.g. data.username" /></div>
-          </div>
-
-          <div className="space-y-2 border-t border-border pt-3">
-            <div className="text-xs font-medium text-muted-foreground">OAuth app credentials</div>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div><Label className={lbl}>Client ID</Label><Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={config ? config.clientIdMasked : ''} /></div>
-              <div><Label className={lbl}>Client secret</Label><Input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={config ? '(blank keeps existing)' : ''} /></div>
-              <div className="sm:col-span-2">
-                <Label className={lbl}>Redirect URI</Label>
-                <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                  <span>Allow-list this exact URL with the provider:</span>
-                  <code className="text-accent">{redirectHint}</code>
-                  <CopyButton value={redirectHint} />
-                </div>
+      <DialogContent className="max-w-3xl">
+        <form
+          className="contents"
+          onSubmit={(e) => {
+            e.preventDefault()
+            void save()
+          }}
+        >
+          <DialogHeader>
+            <div className="flex items-center gap-3">
+              <ProviderIcon src={m.iconUrl} name={m.name || m.key || '?'} className="size-10" />
+              <div className="min-w-0">
+                <DialogTitle className="truncate">{isNew ? (value.key ? `Add ${value.name || value.key}` : 'New custom provider') : `Edit ${value.name || value.key}`}</DialogTitle>
+                <DialogDescription className="mt-0.5">Endpoints, scopes, authorize parameters, and the OAuth app credentials.</DialogDescription>
               </div>
             </div>
-            <div className="flex items-center justify-between">
-              <p className="text-xs text-muted-foreground">Leave Client ID blank to save provider changes only without touching stored credentials.</p>
-              {config && <Button variant="ghost" size="sm" onClick={removeCredentials}><Trash2 className="size-4 text-destructive" /> Remove credentials</Button>}
-            </div>
-          </div>
-
-          <div className="space-y-2 border-t border-border pt-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-muted-foreground">Scopes</div>
-              <Button variant="outline" size="sm" onClick={addRow}><Plus className="size-4" /> Add scope</Button>
-            </div>
-            {rows.length === 0 && <p className="text-sm text-muted-foreground">No scopes yet — add the scopes this provider supports.</p>}
-            {rows.map((s, i) => (
-              <div key={i} className="space-y-1 rounded-lg border border-border p-2">
-                <div className="grid gap-1 sm:grid-cols-2">
-                  <Input value={s.value} onChange={(e) => setRow(i, { value: e.target.value })} placeholder="scope value (e.g. files.metadata.read)" />
-                  <Input value={s.description || ''} onChange={(e) => setRow(i, { description: e.target.value })} placeholder="description (shown on Connect)" />
+          </DialogHeader>
+          <DialogBody className="space-y-7">
+            {isNew && (
+              <FormSection title="Discover">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <FormField label="OIDC issuer URL" className="flex-1" hint="Fills the endpoints and scopes from the issuer's discovery document.">
+                    <Input value={discoverUrl} onChange={(e) => setDiscoverUrl(e.target.value)} placeholder="https://issuer.example.com" className="font-mono" />
+                  </FormField>
+                  <Button variant="secondary" className="sm:mb-[26px]" onClick={discover} disabled={!discoverUrl || discovering}>
+                    <Search /> {discovering ? 'Discovering…' : 'Discover'}
+                  </Button>
                 </div>
-                <div className="flex items-center gap-3">
-                  <Input value={s.category || ''} onChange={(e) => setRow(i, { category: e.target.value })} placeholder="category (optional)" className="h-8 flex-1" />
-                  <label className="flex cursor-pointer items-center gap-1 text-xs text-muted-foreground">
-                    <input type="checkbox" checked={!!s.sensitive} onChange={(e) => setRow(i, { sensitive: e.target.checked })} /> sensitive
-                  </label>
-                  <Button variant="ghost" size="icon" onClick={() => delRow(i)}><Trash2 className="size-4 text-destructive" /></Button>
+              </FormSection>
+            )}
+
+            <FormSection title="Provider">
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Slug" required hint="Letters, digits, - or _. Agents reference the provider by this.">
+                  <Input value={m.key} onChange={(e) => set({ key: e.target.value })} disabled={!isNew} placeholder="e.g. github" className="font-mono" />
+                </FormField>
+                <FormField label="Name">
+                  <Input value={m.name} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. GitHub" />
+                </FormField>
+                <FormField label="Icon URL" className="sm:col-span-2">
+                  <Input value={m.iconUrl || ''} onChange={(e) => set({ iconUrl: e.target.value })} placeholder="https://…/logo.svg" className="font-mono" />
+                </FormField>
+                <FormField label="Authorization endpoint" className="sm:col-span-2">
+                  <Input value={m.authorizationEndpoint} onChange={(e) => set({ authorizationEndpoint: e.target.value })} className="font-mono" />
+                </FormField>
+                <FormField label="Token endpoint" className="sm:col-span-2">
+                  <Input value={m.tokenEndpoint} onChange={(e) => set({ tokenEndpoint: e.target.value })} className="font-mono" />
+                </FormField>
+                <FormField label="Userinfo endpoint" className="sm:col-span-2">
+                  <Input value={m.userinfoEndpoint} onChange={(e) => set({ userinfoEndpoint: e.target.value })} className="font-mono" />
+                </FormField>
+                <FormField label="Token endpoint authentication">
+                  <Select value={m.tokenEndpointAuthMethod || 'client_secret_post'} onValueChange={(v) => set({ tokenEndpointAuthMethod: v })}>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="client_secret_post">Client secret in request body</SelectItem>
+                      <SelectItem value="client_secret_basic">HTTP Basic (X confidential apps)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </FormField>
+                <FormField label="Account field" hint="Path into the userinfo response naming the account, e.g. data.username.">
+                  <Input value={m.userinfoAccountPath || ''} onChange={(e) => set({ userinfoAccountPath: e.target.value })} placeholder="email" className="font-mono" />
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="OAuth app credentials"
+              actions={
+                config && (
+                  <Button variant="ghost" size="sm" className="text-danger hover:text-danger" onClick={removeCredentials}>
+                    <Trash2 /> Remove credentials
+                  </Button>
+                )
+              }
+            >
+              <div className="grid gap-4 sm:grid-cols-2">
+                <FormField label="Client ID" hint={config ? 'Leave blank to keep the stored credentials untouched.' : undefined}>
+                  <Input value={clientId} onChange={(e) => setClientId(e.target.value)} placeholder={config ? config.clientIdMasked : ''} autoComplete="off" className="font-mono" />
+                </FormField>
+                <FormField label="Client secret">
+                  <Input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} placeholder={config ? 'Blank keeps the existing secret' : ''} autoComplete="new-password" className="font-mono" />
+                </FormField>
+                <FormField label="Redirect URI" className="sm:col-span-2" hint="Allow-list this exact URL in the provider's OAuth app settings.">
+                  <div className="flex items-center gap-2">
+                    <Input value={redirect} onChange={(e) => setRedirect(e.target.value)} placeholder={REDIRECT_HINT} className="font-mono" />
+                    <CopyButton value={redirect || REDIRECT_HINT} label="Copy redirect URI" />
+                  </div>
+                </FormField>
+              </div>
+            </FormSection>
+
+            <FormSection
+              title="Scopes"
+              actions={
+                <Button variant="secondary" size="sm" onClick={addRow}>
+                  <Plus /> Add scope
+                </Button>
+              }
+            >
+              {rows.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No scopes yet. Add the scopes this provider supports so they can be picked on Connect.</p>
+              ) : (
+                <div className="space-y-2">
+                  {rows.map((s, i) => (
+                    <div key={i} className="grid gap-2 rounded-xl border border-border bg-elevated/40 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.7fr)_auto_auto] sm:items-center">
+                      <Input value={s.value} onChange={(e) => setRow(i, { value: e.target.value })} placeholder="scope, e.g. repo" className="h-9 font-mono" aria-label="Scope value" />
+                      <Input value={s.description || ''} onChange={(e) => setRow(i, { description: e.target.value })} placeholder="Description shown on Connect" className="h-9" aria-label="Scope description" />
+                      <Input value={s.category || ''} onChange={(e) => setRow(i, { category: e.target.value })} placeholder="Category" className="h-9" aria-label="Scope category" />
+                      <label className="flex cursor-pointer items-center gap-2 whitespace-nowrap text-xs text-muted-foreground">
+                        <Checkbox checked={!!s.sensitive} onCheckedChange={(v) => setRow(i, { sensitive: v === true })} /> Sensitive
+                      </label>
+                      <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Remove scope" onClick={() => delRow(i)}>
+                        <Trash2 />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+            </FormSection>
 
-          <div className="space-y-2 border-t border-border pt-3">
-            <div className="flex items-center justify-between">
-              <div className="text-xs font-medium text-muted-foreground">Authorization parameters</div>
-              <Button variant="outline" size="sm" onClick={addAp}><Plus className="size-4" /> Add parameter</Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Extra query params on the authorize URL — e.g. <code className="text-accent">token_access_type=offline</code> (Dropbox) or <code className="text-accent">access_type=offline</code> (Google) to be issued a refresh token.</p>
-            {aprows.map((p, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <Input value={p.key} onChange={(e) => setAp(i, { key: e.target.value })} placeholder="param (e.g. token_access_type)" className="flex-1" />
-                <span className="text-muted-foreground">=</span>
-                <Input value={p.value} onChange={(e) => setAp(i, { value: e.target.value })} placeholder="value (e.g. offline)" className="flex-1" />
-                <Button variant="ghost" size="icon" onClick={() => delAp(i)}><Trash2 className="size-4 text-destructive" /></Button>
-              </div>
-            ))}
-          </div>
+            <FormSection
+              title="Authorization parameters"
+              actions={
+                <Button variant="secondary" size="sm" onClick={addAp}>
+                  <Plus /> Add parameter
+                </Button>
+              }
+            >
+              <p className="text-xs leading-5 text-muted-foreground">
+                Extra query parameters on the authorize URL. <code className="rounded bg-code px-1 py-0.5 text-code-foreground">token_access_type=offline</code> (Dropbox) or{' '}
+                <code className="rounded bg-code px-1 py-0.5 text-code-foreground">access_type=offline</code> (Google) ask for a refresh token.
+              </p>
+              {aprows.map((p, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <Input value={p.key} onChange={(e) => setAp(i, { key: e.target.value })} placeholder="parameter" className="h-9 flex-1 font-mono" aria-label="Parameter name" />
+                  <span className="font-mono text-muted-foreground">=</span>
+                  <Input value={p.value} onChange={(e) => setAp(i, { value: e.target.value })} placeholder="value" className="h-9 flex-1 font-mono" aria-label="Parameter value" />
+                  <Button variant="ghost" size="iconSm" className="hover:text-danger" aria-label="Remove parameter" onClick={() => delAp(i)}>
+                    <Trash2 />
+                  </Button>
+                </div>
+              ))}
+            </FormSection>
 
-          {msg && <p className="text-sm text-muted-foreground">{msg}</p>}
-          <Button onClick={save} disabled={!m.key}>Save</Button>
-        </div>
+            {msg && <Callout tone="danger">{msg}</Callout>}
+          </DialogBody>
+          <DialogFooter>
+            <Button variant="outline" onClick={onClose}>Cancel</Button>
+            <Button type="submit" variant="primary" disabled={!m.key || busy}>
+              {busy ? 'Saving…' : isNew ? 'Add provider' : 'Save changes'}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   )
 }
 
-const blankOAuth = (): OAuthProvider => ({ key: '', parentId: undefined, name: '', iconUrl: '', docsUrl: '', authorizationEndpoint: '', tokenEndpoint: '', userinfoEndpoint: '', scopeDelimiter: ' ', defaultScopes: [], scopes: [] })
+const blankOAuth = (): OAuthProvider => ({
+  key: '',
+  parentId: undefined,
+  name: '',
+  iconUrl: '',
+  docsUrl: '',
+  authorizationEndpoint: '',
+  tokenEndpoint: '',
+  userinfoEndpoint: '',
+  scopeDelimiter: ' ',
+  defaultScopes: [],
+  scopes: [],
+})

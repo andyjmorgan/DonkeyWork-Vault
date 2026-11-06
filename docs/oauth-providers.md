@@ -13,7 +13,7 @@ The vault supports two kinds of provider setup:
 2. Add a provider from the library or click **Add custom**.
 3. Configure provider endpoints, scopes, authorize parameters, and app credentials.
 4. Register the vault callback URL with the provider.
-5. Go to **OAuth Connect**.
+5. Go to **Connect**.
 6. Select scopes and connect the account.
 7. Use `dwvault oauth get <provider>` to retrieve live access tokens.
 
@@ -65,7 +65,7 @@ Provider slugs must contain only letters, digits, `_`, or `-`.
 
 ## Scopes
 
-Scopes define what the provider may grant and what users can choose on **OAuth Connect**.
+Scopes define what the provider may grant and what users can choose on **Connect**.
 
 Each scope can include:
 
@@ -93,13 +93,13 @@ These parameters are provider-specific. Use the provider's OAuth docs to confirm
 
 After provider configuration:
 
-1. Open **OAuth Connect**.
+1. Open **Connect**.
 2. Select the provider.
 3. Choose scopes.
 4. Click **Connect**.
 5. Complete the provider authorization prompt.
 
-The connected account appears in **OAuth Connect** and **Credentials**.
+The connected account appears in **Connect** and **Credentials**.
 
 Use the CLI:
 
@@ -113,7 +113,7 @@ dwvault oauth get microsoft --account alice@example.com
 
 Open **Providers**, edit the provider, and enter a new client secret. Leaving client ID blank saves provider definition changes only and does not touch stored app credentials.
 
-Removing provider credentials prevents new connects. Existing connected token records can be removed from **OAuth Connect**.
+Removing provider credentials prevents new connects. Existing connected token records can be removed from **Connect**.
 
 Deleting a provider removes that provider definition and its related app configs and connected tokens for your account.
 
@@ -131,7 +131,7 @@ granted permissions.
 3. Register `https://vault.donkeywork.dev/api/oauth/callback` as an exact callback URL.
 4. In Vault, open **Providers**, add **X** from the library, and enter the app's OAuth 2.0 client ID and client secret.
 5. Keep the template's HTTP Basic token authentication and `data.username` account field, then save.
-6. Open **OAuth Connect**, select X, choose scopes, and connect in your browser.
+6. Open **Connect**, select X, choose scopes, and connect in your browser.
 
 Use the OAuth 2.0 client credentials, not OAuth 1.0a consumer keys or an app-only
 bearer token. This template supports confidential apps, which can keep a client

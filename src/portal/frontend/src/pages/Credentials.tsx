@@ -1,19 +1,37 @@
-import { useEffect, useMemo, useState } from 'react'
-import { Trash2, Plus, Pencil, Eye, Search, ChevronLeft, ChevronRight } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
+import {
+  Database,
+  Eye,
+  KeyRound,
+  Lock,
+  Pencil,
+  Plug,
+  Plus,
+  Search,
+  ShieldCheck,
+  Terminal,
+  Trash2,
+  UserRound,
+  type LucideIcon,
+} from 'lucide-react'
 import { Button } from '../ui/components/button'
 import { Input } from '../ui/components/input'
 import { Textarea } from '../ui/components/textarea'
-import { Label } from '../ui/components/label'
 import { Badge } from '../ui/components/badge'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from '../ui/components/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/components/select'
+import { PageHeader } from '../components/PageHeader'
+import { ListCard, ListBar, ListHead, ListRows, ListRow, Cell, RowActions, ListEmpty, ListPager, Primary } from '../components/ListCard'
+import { IconTile } from '../components/IconTile'
+import { ProviderIcon } from '../components/ProviderIcon'
 import { CopyButton } from '../components/CopyButton'
-import { Field } from '../components/Field'
-import { api, type ApiKeyItem, type NewApiKey, type OAuthTokenItem, type CredentialKind } from '../api'
+import { ConfirmDialog } from '../components/ConfirmDialog'
+import { FormField } from '../components/FormField'
+import { Callout } from '../components/Callout'
+import { absoluteTime, relativeTime } from '../lib'
+import { api, type ApiKeyItem, type NewApiKey, type OAuthTokenItem, type OAuthProvider, type CredentialKind } from '../api'
 
-const lbl = 'mb-1 block text-xs text-muted-foreground'
 const PAGE_SIZE = 10
 
 // Flatten only values, not property names, so every text field returned for a credential is
@@ -32,30 +50,36 @@ const matchesSearch = (value: unknown, query: string, extra: string[] = []) => {
   return terms.every((term) => searchable.includes(term))
 }
 
-// Localize the internal kind discriminator to a human label for the console.
-const kindLabel: Record<CredentialKind, string> = {
-  opaque: 'Opaque',
-  header_api_key: 'Header API key',
-  http_basic: 'HTTP Basic',
-  username_password: 'Username + password',
-  ssh: 'SSH',
-  connection_string: 'Connection string',
+// Localize the internal kind discriminator to a human label and an icon for the console.
+const kinds: Record<CredentialKind, { label: string; icon: LucideIcon }> = {
+  header_api_key: { label: 'Header API key', icon: KeyRound },
+  opaque: { label: 'Opaque secret', icon: Lock },
+  http_basic: { label: 'HTTP Basic', icon: ShieldCheck },
+  username_password: { label: 'Username + password', icon: UserRound },
+  ssh: { label: 'SSH', icon: Terminal },
+  connection_string: { label: 'Connection string', icon: Database },
 }
-const prettyKind = (k: CredentialKind) => kindLabel[k] ?? k
+const prettyKind = (k: CredentialKind) => kinds[k]?.label ?? k
+const kindIcon = (k: CredentialKind) => kinds[k]?.icon ?? Lock
 
 // Each credential shape needs a different field set. This config drives the add/edit form body so it
-// reflects the chosen kind, rather than the old binary header/basic switch.
+// reflects the chosen kind.
 type FieldConf = {
-  username?: boolean      // show (and require) a username input
-  secretLabel: string     // label for the secret input
-  headerPrefix?: boolean  // show the Header + Prefix inputs (header_api_key only)
-  baseUrlLabel: string    // label for the base URL / host input
-  note?: string           // helper line rendered under the fields
+  username?: boolean // show (and require) a username input
+  secretLabel: string // label for the secret input
+  headerPrefix?: boolean // show the Header + Prefix inputs (header_api_key only)
+  baseUrlLabel: string // label for the base URL / host input
+  note?: string // helper line rendered under the fields
 }
 const shapeConf: Record<CredentialKind, FieldConf> = {
   opaque: { secretLabel: 'Secret', baseUrlLabel: 'Base URL / host' },
   header_api_key: { secretLabel: 'Secret', headerPrefix: true, baseUrlLabel: 'Base URL' },
-  http_basic: { username: true, secretLabel: 'Password', baseUrlLabel: 'Base URL', note: 'Sent as Authorization: Basic base64(username:password) — header and prefix are handled for you.' },
+  http_basic: {
+    username: true,
+    secretLabel: 'Password',
+    baseUrlLabel: 'Base URL',
+    note: 'Sent as Authorization: Basic base64(username:password) — the header and prefix are handled for you.',
+  },
   username_password: { username: true, secretLabel: 'Password', baseUrlLabel: 'Base URL / host' },
   ssh: { username: true, secretLabel: 'Password / private key', baseUrlLabel: 'Host' },
   connection_string: { secretLabel: 'Connection string', baseUrlLabel: 'Base URL' },
@@ -64,52 +88,68 @@ const shapeConf: Record<CredentialKind, FieldConf> = {
 // One-line "how it authenticates" summary for the list, keyed off kind so username-bearing shapes
 // (ssh, username_password) read sensibly instead of being mislabelled as Basic.
 const authSummary = (k: ApiKeyItem): string => {
-  if (k.username) return `${prettyKind(k.kind)} · ${k.username}`
-  if (k.header) return `${k.header}${k.prefix ? ` · ${k.prefix.trim()}` : ''}`
+  if (k.username) return k.username
+  if (k.header) return `${k.header}${k.prefix ? `: ${k.prefix.trim()} …` : ''}`
   return '—'
 }
 
 // Google-style OAuth scopes are full URLs (https://www.googleapis.com/auth/calendar) that overflow
-// the pill; show the meaningful tail. Short scopes (gist, Calendars.Read) are shown as-is.
-const shortScope = (s: string) => (s.includes('://') ? (s.replace(/\/+$/, '').split('/').pop() || s) : s)
+// the tag; show the meaningful tail. Short scopes (gist, Calendars.Read) are shown as-is.
+const shortScope = (s: string) => (s.includes('://') ? s.replace(/\/+$/, '').split('/').pop() || s : s)
 
-function ScopeBadges({ scopes, className = '' }: { scopes: string[]; className?: string }) {
+function ScopeBadges({ scopes, max = 3 }: { scopes: string[]; max?: number }) {
+  if (!scopes?.length) return <span className="text-xs text-muted-foreground">—</span>
   return (
-    <div className={`flex flex-wrap gap-1 ${className}`}>
-      {scopes.slice(0, 3).map((s) => (
-        <Badge key={s} variant="secondary" title={s} className="max-w-[10rem] truncate">{shortScope(s)}</Badge>
+    <div className="flex flex-wrap gap-1">
+      {scopes.slice(0, max).map((s) => (
+        <Badge key={s} mono title={s} className="max-w-40 truncate">
+          {shortScope(s)}
+        </Badge>
       ))}
-      {scopes.length > 3 && <Badge variant="secondary">+{scopes.length - 3}</Badge>}
+      {scopes.length > max && (
+        <Badge mono title={scopes.slice(max).join('\n')}>
+          +{scopes.length - max}
+        </Badge>
+      )}
     </div>
   )
 }
 
+const KEY_COLS = 'minmax(0,1.7fr) 160px minmax(0,1.1fr) minmax(0,1.1fr) 132px'
+const TOKEN_COLS = 'minmax(0,1.5fr) minmax(0,1.6fr) 170px 100px'
+
+type FormState = { open: boolean; item?: ApiKeyItem; kind: CredentialKind; view?: boolean }
+const closedForm: FormState = { open: false, kind: 'header_api_key' }
+
 export function CredentialsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
+  const [providers, setProviders] = useState<OAuthProvider[]>([])
+  const [loaded, setLoaded] = useState(false)
   const [search, setSearch] = useState('')
   const [keyPage, setKeyPage] = useState(0)
   const [tokenPage, setTokenPage] = useState(0)
   const [err, setErr] = useState<string>()
-  const [form, setForm] = useState<{ open: boolean; item?: ApiKeyItem; kind: CredentialKind; view?: boolean }>({ open: false, kind: 'header_api_key' })
+  const [form, setForm] = useState<FormState>(closedForm)
   const [deleting, setDeleting] = useState<{ kind: 'apiKey'; item: ApiKeyItem } | { kind: 'oauthToken'; item: OAuthTokenItem }>()
   const [deleteBusy, setDeleteBusy] = useState(false)
   const [deleteErr, setDeleteErr] = useState<string>()
 
   const load = () => {
-    api.apiKeys().then((items) => { setKeys(items); setErr(undefined) }).catch((e) => setErr(String(e)))
+    api
+      .apiKeys()
+      .then((items) => { setKeys(items); setErr(undefined) })
+      .catch((e) => setErr(String(e)))
+      .finally(() => setLoaded(true))
     api.oauthTokens().then(setTokens).catch(() => {})
+    api.oauthProviders().then(setProviders).catch(() => {})
   }
   useEffect(() => { load() }, [])
 
-  const filteredKeys = useMemo(
-    () => keys.filter((key) => matchesSearch(key, search, [prettyKind(key.kind)])),
-    [keys, search],
-  )
-  const filteredTokens = useMemo(
-    () => tokens.filter((token) => matchesSearch(token, search)),
-    [tokens, search],
-  )
+  const providerOf = (key: string) => providers.find((p) => p.key === key)
+
+  const filteredKeys = useMemo(() => keys.filter((key) => matchesSearch(key, search, [prettyKind(key.kind)])), [keys, search])
+  const filteredTokens = useMemo(() => tokens.filter((token) => matchesSearch(token, search)), [tokens, search])
   const keyPageCount = Math.max(1, Math.ceil(filteredKeys.length / PAGE_SIZE))
   const tokenPageCount = Math.max(1, Math.ceil(filteredTokens.length / PAGE_SIZE))
   const currentKeyPage = Math.min(keyPage, keyPageCount - 1)
@@ -130,16 +170,18 @@ export function CredentialsPage() {
   const edit = (item: ApiKeyItem) => setForm({ open: true, item, kind: item.kind })
   const view = (item: ApiKeyItem) => setForm({ open: true, item, kind: item.kind, view: true })
   const requestDelete = (target: NonNullable<typeof deleting>) => {
-    setForm({ open: false, kind: 'header_api_key' })
+    setForm(closedForm)
     setDeleteErr(undefined)
     setDeleting(target)
   }
   const remove = async () => {
     if (!deleting) return
-    setDeleteBusy(true); setDeleteErr(undefined)
+    setDeleteBusy(true)
+    setDeleteErr(undefined)
     try {
       if (deleting.kind === 'apiKey') await api.deleteApiKey(deleting.item.id)
       else await api.deleteOAuthToken(deleting.item.id)
+      toast.success(deleting.kind === 'apiKey' ? `Deleted ${deleting.item.name}` : `Disconnected ${deleting.item.provider}`)
       setDeleting(undefined)
       load()
     } catch (e) {
@@ -154,229 +196,259 @@ export function CredentialsPage() {
   const formKind: CredentialKind = form.item?.kind ?? form.kind
 
   return (
-    <>
-      <div className="relative">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-        <Input
-          type="search"
-          value={search}
-          onChange={(event) => updateSearch(event.target.value)}
-          placeholder="Search credentials"
-          aria-label="Search credentials"
-          className="pl-9"
-        />
-      </div>
+    <div className="space-y-6">
+      <PageHeader
+        title="Credentials"
+        description="Stored secrets and OAuth connections your agents can use. Each one is self-describing, so an agent knows how to send it."
+        actions={
+          <Button variant="primary" onClick={() => setForm({ open: true, kind: 'header_api_key' })}>
+            <Plus /> New credential
+          </Button>
+        }
+      />
 
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle>API keys</CardTitle>
-            <CardDescription>What's stored and how to use each.</CardDescription>
+      {err && <Callout tone="danger">{err}</Callout>}
+
+      <ListCard>
+        <ListBar>
+          <span>
+            {filteredKeys.length.toLocaleString()} {filteredKeys.length === 1 ? 'secret' : 'secrets'}
+            {search && keys.length !== filteredKeys.length ? ` of ${keys.length}` : ''}
+          </span>
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              type="search"
+              value={search}
+              onChange={(event) => updateSearch(event.target.value)}
+              placeholder="Search credentials"
+              aria-label="Search credentials"
+              className="h-9 pl-9"
+            />
           </div>
-          <Button size="icon" variant="outline" aria-label="Add credential" onClick={() => setForm({ open: true, kind: 'header_api_key' })}><Plus className="size-4" /></Button>
-        </CardHeader>
-        <CardContent>
-          {err && <p className="text-sm text-destructive">{err}</p>}
-          {filteredKeys.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {keys.length === 0 ? 'No API keys yet — add one with the + button.' : 'No API keys match your search.'}
-            </p>
-          ) : (
-            <>
-              {/* Desktop: table. */}
-              <div className="hidden sm:block">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Kind</TableHead><TableHead>Auth</TableHead><TableHead>Base URL</TableHead><TableHead>Secret</TableHead><TableHead /></TableRow></TableHeader>
-                  <TableBody>
-                    {visibleKeys.map((k) => (
-                      <TableRow key={k.id} className="cursor-pointer" onClick={() => view(k)}>
-                        <TableCell>
-                          <div className="font-medium">{k.name}</div>
-                          {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
-                        </TableCell>
-                        <TableCell className="whitespace-nowrap"><Badge variant="secondary">{prettyKind(k.kind)}</Badge></TableCell>
-                        <TableCell className="whitespace-nowrap text-muted-foreground">{authSummary(k)}</TableCell>
-                        <TableCell className="max-w-[12rem] truncate text-muted-foreground">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{k.baseUrl || 'docs'}</a> : k.baseUrl}</TableCell>
-                        <TableCell onClick={(e) => e.stopPropagation()}><RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} /></TableCell>
-                        <TableCell className="text-right" onClick={(e) => e.stopPropagation()}>
-                          <Button variant="ghost" size="icon" aria-label={`Edit ${k.name}`} onClick={() => edit(k)}><Pencil className="size-4" /></Button>
-                          <Button variant="ghost" size="icon" aria-label={`Delete ${k.name}`} onClick={() => requestDelete({ kind: 'apiKey', item: k })}><Trash2 className="size-4 text-destructive" /></Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {/* Mobile: a card per key with a two-column detail grid. */}
-              <div className="space-y-3 sm:hidden">
-                {visibleKeys.map((k) => (
-                  <div key={k.id} className="cursor-pointer rounded-xl border border-border p-3" onClick={() => view(k)}>
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-medium">{k.name}</div>
-                        {k.description && <div className="truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
-                      </div>
-                      <div className="-mr-1 flex shrink-0" onClick={(e) => e.stopPropagation()}>
-                        <Button variant="ghost" size="icon" aria-label={`Edit ${k.name}`} onClick={() => edit(k)}><Pencil className="size-4" /></Button>
-                        <Button variant="ghost" size="icon" aria-label={`Delete ${k.name}`} onClick={() => requestDelete({ kind: 'apiKey', item: k })}><Trash2 className="size-4 text-destructive" /></Button>
-                      </div>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
-                      <Field label="Kind">{prettyKind(k.kind)}</Field>
-                      <Field label="Auth">{authSummary(k)}</Field>
-                      <Field label="Base URL">{k.docsUrl ? <a className="text-accent hover:underline" href={k.docsUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()}>{k.baseUrl || 'docs'}</a> : (k.baseUrl || '—')}</Field>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                      <span className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Secret</span>
-                      <RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <CredentialPager
-                total={filteredKeys.length}
-                page={currentKeyPage}
-                onPage={setKeyPage}
-                label="API keys"
-              />
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={form.open} onOpenChange={(o) => { if (!o) setForm({ open: false, kind: 'header_api_key' }) }}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>{form.item ? (form.view ? form.item.name : `Edit ${form.item.name}`) : 'Add a credential'}</DialogTitle>
-            <DialogDescription>{form.view ? 'Read-only view of this credential.' : 'Self-describing — description / host / docs help agents discover how to use it.'}</DialogDescription>
-          </DialogHeader>
-          <StoreKey
-            key={`${form.item?.id ?? 'new'}-${form.view ? 'view' : 'edit'}`}
-            initial={form.item}
-            kind={formKind}
-            readOnly={!!form.view}
-            onClose={() => setForm({ open: false, kind: 'header_api_key' })}
-            onEdit={form.item ? () => edit(form.item!) : undefined}
-            onDelete={form.item ? () => requestDelete({ kind: 'apiKey', item: form.item! }) : undefined}
-            onStored={() => { load(); setForm({ open: false, kind: 'header_api_key' }) }}
+        </ListBar>
+        {visibleKeys.length > 0 && (
+          <ListHead cols={KEY_COLS}>
+            <span>Credential</span>
+            <span>Kind</span>
+            <span>Auth</span>
+            <span>Base URL</span>
+            <span className="text-right">Actions</span>
+          </ListHead>
+        )}
+        {filteredKeys.length === 0 ? (
+          <ListEmpty
+            icon={KeyRound}
+            title={keys.length === 0 ? (loaded ? 'No secrets stored yet' : 'Loading…') : 'No secrets match your search'}
+            hint={keys.length === 0 && loaded ? 'Store an API key, password, SSH key, or connection string and agents can fetch it by name.' : undefined}
+            action={
+              keys.length === 0 && loaded ? (
+                <Button variant="secondary" onClick={() => setForm({ open: true, kind: 'header_api_key' })}>
+                  <Plus /> New credential
+                </Button>
+              ) : undefined
+            }
           />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!deleting} onOpenChange={(open) => { if (!open && !deleteBusy) setDeleting(undefined) }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Delete credential?</DialogTitle>
-            <DialogDescription>
-              {deleting?.kind === 'apiKey'
-                ? `This permanently deletes ${deleting.item.name}.`
-                : `This permanently deletes the ${deleting?.item.provider}${deleting?.item.account ? ` connection for ${deleting.item.account}` : ' connection'}.`}
-            </DialogDescription>
-          </DialogHeader>
-          {deleteErr && <p className="text-sm text-destructive">{deleteErr}</p>}
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" disabled={deleteBusy} onClick={() => setDeleting(undefined)}>Cancel</Button>
-            <Button variant="destructive" disabled={deleteBusy} onClick={remove}>{deleteBusy ? 'Deleting…' : 'Delete'}</Button>
-          </div>
-        </DialogContent>
-      </Dialog>
-
-      <Card>
-        <CardHeader><CardTitle>Connected OAuth accounts</CardTitle></CardHeader>
-        <CardContent>
-          {filteredTokens.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              {tokens.length === 0 ? 'No OAuth tokens — connect a provider from the OAuth Connect tab.' : 'No OAuth accounts match your search.'}
-            </p>
-          ) : (
-            <>
-              {/* Desktop: table. */}
-              <div className="hidden sm:block">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Provider</TableHead><TableHead>Account</TableHead><TableHead>Expires</TableHead><TableHead>Scopes</TableHead><TableHead>Token</TableHead><TableHead /></TableRow></TableHeader>
-                  <TableBody>
-                    {visibleTokens.map((t) => (
-                      <TableRow key={t.id}>
-                        <TableCell className="font-medium">{t.provider}</TableCell>
-                        <TableCell>{t.account}</TableCell>
-                        <TableCell className="text-muted-foreground">{t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '—'}</TableCell>
-                        <TableCell><ScopeBadges scopes={t.scopes} className="max-w-[16rem]" /></TableCell>
-                        <TableCell><RevealButton title={`${t.provider}${t.account ? ` · ${t.account}` : ''}`} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} /></TableCell>
-                        <TableCell className="text-right"><Button variant="ghost" size="icon" aria-label={`Delete ${t.provider} connection`} onClick={() => requestDelete({ kind: 'oauthToken', item: t })}><Trash2 className="size-4 text-destructive" /></Button></TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {/* Mobile: a card per connected account. */}
-              <div className="space-y-3 sm:hidden">
-                {visibleTokens.map((t) => (
-                  <div key={t.id} className="rounded-xl border border-border p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-medium">{t.provider}</div>
-                        {t.account && <div className="truncate text-xs text-muted-foreground">{t.account}</div>}
-                      </div>
-                      <div className="-mr-1 flex shrink-0">
-                        <RevealButton title={`${t.provider}${t.account ? ` · ${t.account}` : ''}`} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} />
-                        <Button variant="ghost" size="icon" aria-label={`Delete ${t.provider} connection`} onClick={() => requestDelete({ kind: 'oauthToken', item: t })}><Trash2 className="size-4 text-destructive" /></Button>
-                      </div>
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
-                      <Field label="Expires">{t.expiresAt ? new Date(t.expiresAt).toLocaleString() : '—'}</Field>
-                      <Field label="Scopes" truncate={false}>
-                        <ScopeBadges scopes={t.scopes} />
-                      </Field>
-                    </div>
+        ) : (
+          <>
+            <ListRows>
+              {visibleKeys.map((k) => (
+                <ListRow key={k.id} cols={KEY_COLS} onClick={() => view(k)}>
+                  <div className="flex min-w-0 items-center gap-3">
+                    <IconTile icon={kindIcon(k.kind)} />
+                    <Primary title={k.name} subtitle={k.description || undefined} />
                   </div>
-                ))}
-              </div>
-              <CredentialPager
-                total={filteredTokens.length}
-                page={currentTokenPage}
-                onPage={setTokenPage}
-                label="OAuth accounts"
+                  <Cell label="Kind">
+                    <Badge>{prettyKind(k.kind)}</Badge>
+                  </Cell>
+                  <Cell label="Auth">
+                    <span className="block truncate font-mono text-xs text-muted-foreground" title={authSummary(k)}>
+                      {authSummary(k)}
+                    </span>
+                  </Cell>
+                  <Cell label="Base URL">
+                    {k.baseUrl || k.docsUrl ? (
+                      <a
+                        className="block truncate font-mono text-xs text-foreground underline decoration-accent/60 underline-offset-[3px] hover:text-accent"
+                        href={k.docsUrl || k.baseUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        title={k.docsUrl ? `Docs: ${k.docsUrl}` : k.baseUrl}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {k.baseUrl || 'docs'}
+                      </a>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </Cell>
+                  <RowActions>
+                    <RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} />
+                    <Button variant="ghost" size="icon" aria-label={`Edit ${k.name}`} title="Edit" onClick={() => edit(k)}>
+                      <Pencil />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="hover:text-danger"
+                      aria-label={`Delete ${k.name}`}
+                      title="Delete"
+                      onClick={() => requestDelete({ kind: 'apiKey', item: k })}
+                    >
+                      <Trash2 />
+                    </Button>
+                  </RowActions>
+                </ListRow>
+              ))}
+            </ListRows>
+            {filteredKeys.length > PAGE_SIZE && (
+              <ListPager
+                from={currentKeyPage * PAGE_SIZE + 1}
+                to={Math.min((currentKeyPage + 1) * PAGE_SIZE, filteredKeys.length)}
+                total={filteredKeys.length}
+                canPrev={currentKeyPage > 0}
+                canNext={(currentKeyPage + 1) * PAGE_SIZE < filteredKeys.length}
+                onPrev={() => setKeyPage(currentKeyPage - 1)}
+                onNext={() => setKeyPage(currentKeyPage + 1)}
               />
-            </>
+            )}
+          </>
+        )}
+      </ListCard>
+
+      <ListCard>
+        <ListBar>
+          <span>
+            {filteredTokens.length.toLocaleString()} connected {filteredTokens.length === 1 ? 'account' : 'accounts'}
+          </span>
+        </ListBar>
+        {visibleTokens.length > 0 && (
+          <ListHead cols={TOKEN_COLS}>
+            <span>Account</span>
+            <span>Scopes</span>
+            <span>Expires</span>
+            <span className="text-right">Actions</span>
+          </ListHead>
+        )}
+        {filteredTokens.length === 0 ? (
+          <ListEmpty
+            icon={Plug}
+            title={tokens.length === 0 ? 'No OAuth accounts connected' : 'No accounts match your search'}
+            hint={tokens.length === 0 ? 'Connect a provider and the vault will keep its access token fresh for you.' : undefined}
+          />
+        ) : (
+          <>
+            <ListRows>
+              {visibleTokens.map((t) => {
+                const p = providerOf(t.provider)
+                const title = `${p?.name ?? t.provider}${t.account ? ` · ${t.account}` : ''}`
+                return (
+                  <ListRow key={t.id} cols={TOKEN_COLS}>
+                    <div className="flex min-w-0 items-center gap-3">
+                      <ProviderIcon src={p?.iconUrl} name={p?.name ?? t.provider} />
+                      <Primary title={t.account || p?.name || t.provider} subtitle={t.account ? p?.name ?? t.provider : undefined} />
+                    </div>
+                    <Cell label="Scopes">
+                      <ScopeBadges scopes={t.scopes} />
+                    </Cell>
+                    <Cell label="Expires">
+                      <Expiry at={t.expiresAt} />
+                    </Cell>
+                    <RowActions>
+                      <RevealButton title={title} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="hover:text-danger"
+                        aria-label={`Disconnect ${title}`}
+                        title="Disconnect"
+                        onClick={() => requestDelete({ kind: 'oauthToken', item: t })}
+                      >
+                        <Trash2 />
+                      </Button>
+                    </RowActions>
+                  </ListRow>
+                )
+              })}
+            </ListRows>
+            {filteredTokens.length > PAGE_SIZE && (
+              <ListPager
+                from={currentTokenPage * PAGE_SIZE + 1}
+                to={Math.min((currentTokenPage + 1) * PAGE_SIZE, filteredTokens.length)}
+                total={filteredTokens.length}
+                canPrev={currentTokenPage > 0}
+                canNext={(currentTokenPage + 1) * PAGE_SIZE < filteredTokens.length}
+                onPrev={() => setTokenPage(currentTokenPage - 1)}
+                onNext={() => setTokenPage(currentTokenPage + 1)}
+              />
+            )}
+          </>
+        )}
+      </ListCard>
+
+      <Dialog open={form.open} onOpenChange={(o) => { if (!o) setForm(closedForm) }}>
+        <DialogContent className="max-w-xl">
+          {form.view && form.item ? (
+            <CredentialDetail
+              item={form.item}
+              onClose={() => setForm(closedForm)}
+              onEdit={() => edit(form.item!)}
+              onDelete={() => requestDelete({ kind: 'apiKey', item: form.item! })}
+            />
+          ) : (
+            <CredentialForm
+              key={`${form.item?.id ?? 'new'}-${formKind}`}
+              initial={form.item}
+              kind={formKind}
+              onClose={() => setForm(closedForm)}
+              onStored={(name) => {
+                toast.success(form.item ? `Saved ${name}` : `Stored ${name}`)
+                load()
+                setForm(closedForm)
+              }}
+            />
           )}
-        </CardContent>
-      </Card>
-    </>
+        </DialogContent>
+      </Dialog>
+
+      <ConfirmDialog
+        open={!!deleting}
+        title={deleting?.kind === 'apiKey' ? 'Delete credential?' : 'Disconnect account?'}
+        description={
+          deleting?.kind === 'apiKey'
+            ? `This permanently deletes ${deleting.item.name}. Agents using it by name will start failing.`
+            : deleting
+              ? `This removes the stored ${providerOf(deleting.item.provider)?.name ?? deleting.item.provider} token${deleting.item.account ? ` for ${deleting.item.account}` : ''}. You can reconnect later.`
+              : undefined
+        }
+        confirmLabel={deleting?.kind === 'apiKey' ? 'Delete' : 'Disconnect'}
+        busy={deleteBusy}
+        error={deleteErr}
+        onCancel={() => setDeleting(undefined)}
+        onConfirm={remove}
+      />
+    </div>
   )
 }
 
-function CredentialPager({ total, page, onPage, label }: {
-  total: number
-  page: number
-  onPage: (page: number) => void
-  label: string
-}) {
-  const from = page * PAGE_SIZE + 1
-  const to = Math.min((page + 1) * PAGE_SIZE, total)
-  const canNext = to < total
-
+/** Relative expiry with the absolute time on hover; past expiries read as warnings. */
+function Expiry({ at }: { at?: string | null }) {
+  if (!at) return <span className="text-xs text-muted-foreground">No expiry</span>
+  const expired = new Date(at).getTime() < Date.now()
   return (
-    <div className="mt-4 flex items-center justify-between">
-      <span className="text-xs text-muted-foreground">{from}–{to} of {total}</span>
-      <div className="flex items-center gap-1">
-        <Button variant="outline" size="icon" aria-label={`Previous ${label} page`} disabled={page === 0} onClick={() => onPage(page - 1)}>
-          <ChevronLeft className="size-4" />
-        </Button>
-        <Button variant="outline" size="icon" aria-label={`Next ${label} page`} disabled={!canNext} onClick={() => onPage(page + 1)}>
-          <ChevronRight className="size-4" />
-        </Button>
-      </div>
-    </div>
+    <span className={`block truncate font-mono text-xs ${expired ? 'text-warning' : 'text-muted-foreground'}`} title={absoluteTime(at)}>
+      {expired ? 'expired ' : ''}
+      {relativeTime(at)}
+    </span>
   )
 }
 
 // Middle-truncate a long secret for display so a giant value (e.g. a Microsoft JWT, which
 // can run thousands of chars) can't push the reveal modal off-screen. The full value is
 // still what the CopyButton copies — this only affects what's shown.
-const middleTruncate = (s: string, max = 64) =>
-  s.length > max ? `${s.slice(0, max / 2 - 1)}…${s.slice(-(max / 2 - 1))}` : s
+const middleTruncate = (s: string, max = 64) => (s.length > max ? `${s.slice(0, max / 2 - 1)}…${s.slice(-(max / 2 - 1))}` : s)
 
-// Reveal a secret in a modal (not inline) so long values can't push the row off-screen on
+// Reveal a secret in a dialog (not inline) so long values can't push the row off-screen on
 // mobile. The value is fetched on click and discarded when the dialog closes.
 function RevealButton({ title, load }: { title: string; load: () => Promise<string> }) {
   const [open, setOpen] = useState(false)
@@ -385,134 +457,274 @@ function RevealButton({ title, load }: { title: string; load: () => Promise<stri
   const [err, setErr] = useState<string>()
 
   const reveal = async () => {
-    setBusy(true); setErr(undefined)
-    try { setVal(await load()); setOpen(true) }
-    catch (e) { setErr(String(e)); setOpen(true) }
-    finally { setBusy(false) }
+    setBusy(true)
+    setErr(undefined)
+    try {
+      setVal(await load())
+      setOpen(true)
+    } catch (e) {
+      setErr(String(e))
+      setOpen(true)
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
     <>
-      <Button variant="ghost" size="icon" aria-label="Reveal" disabled={busy} onClick={reveal}><Eye className="size-4" /></Button>
+      <Button variant="ghost" size="icon" aria-label={`Reveal ${title}`} title="Reveal" disabled={busy} onClick={reveal}>
+        <Eye />
+      </Button>
       <Dialog open={open} onOpenChange={(o) => { setOpen(o); if (!o) setVal(undefined) }}>
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent className="max-w-lg" onOpenAutoFocus={(e) => { e.preventDefault(); (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[data-reveal]')?.focus() }}>
           <DialogHeader>
             <DialogTitle className="break-all">{title}</DialogTitle>
-            <DialogDescription>Copy the value — keep it secret.</DialogDescription>
+            <DialogDescription>Copy the value and keep it out of transcripts, logs, and commits.</DialogDescription>
           </DialogHeader>
-          {err ? (
-            <p className="text-sm text-destructive">{err}</p>
-          ) : (
-            <div className="flex items-start gap-2 rounded-xl border border-border bg-muted/40 p-3">
-              <code className="min-w-0 flex-1 break-all text-sm" title={val}>{val !== undefined ? middleTruncate(val) : ''}</code>
-              {val !== undefined && <CopyButton value={val} />}
-            </div>
-          )}
+          <DialogBody>
+            {err ? (
+              <Callout tone="danger">{err}</Callout>
+            ) : (
+              <div data-reveal tabIndex={-1} className="flex items-start gap-2 rounded-xl border border-border bg-code p-3 outline-none">
+                <code className="min-w-0 flex-1 break-all font-mono text-sm text-code-foreground" title={val}>
+                  {val !== undefined ? middleTruncate(val) : ''}
+                </code>
+                {val !== undefined && <CopyButton value={val} />}
+              </div>
+            )}
+          </DialogBody>
         </DialogContent>
       </Dialog>
     </>
   )
 }
 
-function StoreKey({ initial, kind: initialKind, readOnly = false, onClose, onEdit, onDelete, onStored }: { initial?: ApiKeyItem; kind: CredentialKind; readOnly?: boolean; onClose?: () => void; onEdit?: () => void; onDelete?: () => void; onStored: () => void }) {
-  // Read-only view is always opened with a stored credential. Guarding here keeps a stray render
-  // with no `initial` (e.g. the brief frame as the dialog clears its item on close) from throwing.
-  const view = readOnly && !!initial
-  // The kind is editable while adding (the selector swaps the form body live); once stored it's fixed,
-  // so on edit/view it's shown read-only. The parent remounts this only on item/view changes.
+/** A label/value row in the read-only credential view. */
+function DetailRow({ label, children, mono = false }: { label: string; children: ReactNode; mono?: boolean }) {
+  return (
+    <div className="grid gap-1 py-3 sm:grid-cols-[140px_minmax(0,1fr)] sm:gap-4">
+      <dt className="text-xs font-semibold text-muted-foreground sm:pt-0.5">{label}</dt>
+      <dd className={`min-w-0 break-words text-sm ${mono ? 'font-mono text-[13px]' : ''}`}>{children}</dd>
+    </div>
+  )
+}
+
+function CredentialDetail({ item, onClose, onEdit, onDelete }: { item: ApiKeyItem; onClose: () => void; onEdit: () => void; onDelete: () => void }) {
+  const conf = shapeConf[item.kind]
+  const Icon = kindIcon(item.kind)
+  const link = (url?: string) =>
+    url ? (
+      <a className="underline decoration-accent/60 underline-offset-[3px] hover:text-accent" href={url} target="_blank" rel="noreferrer">
+        {url}
+      </a>
+    ) : (
+      <span className="text-muted-foreground">—</span>
+    )
+  return (
+    <>
+      <DialogHeader>
+        <div className="flex items-center gap-3">
+          <IconTile icon={Icon} className="size-10" />
+          <div className="min-w-0">
+            <DialogTitle className="truncate">{item.name}</DialogTitle>
+            <DialogDescription className="mt-0.5">{prettyKind(item.kind)}</DialogDescription>
+          </div>
+        </div>
+      </DialogHeader>
+      <DialogBody className="space-y-0">
+        <dl className="divide-y divide-border">
+          {item.description && <DetailRow label="Description">{item.description}</DetailRow>}
+          {conf.username && (
+            <DetailRow label="Username" mono>
+              {item.username || '—'}
+            </DetailRow>
+          )}
+          <DetailRow label={conf.secretLabel}>
+            <div className="flex items-center justify-between gap-2 rounded-lg border border-border bg-code pl-3 pr-1">
+              <code className="font-mono text-sm text-muted-foreground">••••••••••••</code>
+              <RevealButton title={item.name} load={() => api.revealApiKey(item.name).then((r) => r.secret)} />
+            </div>
+          </DetailRow>
+          {conf.headerPrefix && (
+            <DetailRow label="Header" mono>
+              {item.header ? (
+                <>
+                  {item.header}
+                  {item.prefix && <span className="text-muted-foreground">: {item.prefix.trim()} …</span>}
+                </>
+              ) : (
+                <span className="text-muted-foreground">Default (Authorization: Bearer)</span>
+              )}
+            </DetailRow>
+          )}
+          <DetailRow label={conf.baseUrlLabel} mono>
+            {link(item.baseUrl)}
+          </DetailRow>
+          <DetailRow label="API docs" mono>
+            {link(item.docsUrl)}
+          </DetailRow>
+          <DetailRow label="Created" mono>
+            <span title={absoluteTime(item.createdAt)}>{relativeTime(item.createdAt)}</span>
+          </DetailRow>
+          <DetailRow label="Last used" mono>
+            <span title={absoluteTime(item.lastUsedAt)}>{item.lastUsedAt ? relativeTime(item.lastUsedAt) : 'Never'}</span>
+          </DetailRow>
+        </dl>
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="ghost" className="mr-auto text-danger hover:text-danger" onClick={onDelete}>
+          <Trash2 /> Delete
+        </Button>
+        <Button variant="outline" onClick={onClose}>Close</Button>
+        <Button variant="primary" onClick={onEdit}>
+          <Pencil /> Edit
+        </Button>
+      </DialogFooter>
+    </>
+  )
+}
+
+function CredentialForm({
+  initial,
+  kind: initialKind,
+  onClose,
+  onStored,
+}: {
+  initial?: ApiKeyItem
+  kind: CredentialKind
+  onClose: () => void
+  onStored: (name: string) => void
+}) {
+  // The kind is editable while adding (the selector swaps the form body live); once stored it's fixed.
   const [kind, setKind] = useState<CredentialKind>(initialKind)
   const conf = shapeConf[kind]
   const [k, setK] = useState({
-    name: initial?.name ?? '', secret: '', description: initial?.description ?? '',
-    baseUrl: initial?.baseUrl ?? '', docsUrl: initial?.docsUrl ?? '', header: initial?.header ?? '', prefix: initial?.prefix ?? '',
+    name: initial?.name ?? '',
+    secret: '',
+    description: initial?.description ?? '',
+    baseUrl: initial?.baseUrl ?? '',
+    docsUrl: initial?.docsUrl ?? '',
+    header: initial?.header ?? '',
+    prefix: initial?.prefix ?? '',
     username: initial?.username ?? '',
   })
   const [msg, setMsg] = useState<string>()
   const [busy, setBusy] = useState(false)
   const set = (patch: Partial<typeof k>) => setK({ ...k, ...patch })
   const editing = !!initial
-
-  // In read-only view, fields render as muted, non-editable surfaces and the secret is fetched
-  // on demand via the reveal flow rather than shown as a blank password box.
-  const ro = readOnly ? 'cursor-default bg-muted/40 focus-visible:ring-0 focus-visible:border-input' : ''
-  const fieldProps = (value: string) => readOnly ? { value, readOnly: true, className: ro } : undefined
+  const canSave = !!k.name && (editing || !!k.secret) && (!conf.username || !!k.username.trim())
 
   const submit = async () => {
-    setBusy(true); setMsg(undefined)
+    if (!canSave) return
+    setBusy(true)
+    setMsg(undefined)
     // Send only the fields this shape uses so another shape's values can't leak through: clear the
     // username for shapes without one, and header/prefix for shapes that don't expose them.
     const payload: NewApiKey = {
-      ...k, kind,
+      ...k,
+      kind,
       username: conf.username ? k.username.trim() : '',
       header: conf.headerPrefix ? k.header : '',
       prefix: conf.headerPrefix ? k.prefix : '',
     }
-    try { await api.createApiKey(payload); onStored() }
-    catch (e) { setMsg(String(e)) }
-    finally { setBusy(false) }
+    try {
+      await api.createApiKey(payload)
+      onStored(k.name)
+    } catch (e) {
+      setMsg(String(e))
+    } finally {
+      setBusy(false)
+    }
   }
 
   return (
-    <div className="grid gap-3">
-      <div className="grid gap-3 sm:grid-cols-2">
-        <div className="sm:col-span-2">
-          <Label className={lbl}>Kind</Label>
-          {editing || readOnly ? (
-            <Input value={prettyKind(kind)} readOnly className={ro} />
-          ) : (
-            <Select value={kind} onValueChange={(v) => setKind(v as CredentialKind)}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                {(Object.keys(kindLabel) as CredentialKind[]).map((kk) => (
-                  <SelectItem key={kk} value={kk}>{kindLabel[kk]}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+    <form
+      className="contents"
+      onSubmit={(e) => {
+        e.preventDefault()
+        void submit()
+      }}
+    >
+      <DialogHeader>
+        <DialogTitle>{editing ? `Edit ${initial.name}` : 'New credential'}</DialogTitle>
+        <DialogDescription>
+          {editing
+            ? 'Leave the secret blank to keep the stored value.'
+            : 'Self-describing: the description, host, and docs link tell agents how to use it.'}
+        </DialogDescription>
+      </DialogHeader>
+      <DialogBody>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <FormField label="Kind" className="sm:col-span-2">
+            {editing ? (
+              <Input value={prettyKind(kind)} readOnly />
+            ) : (
+              <Select value={kind} onValueChange={(v) => setKind(v as CredentialKind)}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(Object.keys(kinds) as CredentialKind[]).map((kk) => (
+                    <SelectItem key={kk} value={kk}>
+                      {kinds[kk].label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </FormField>
+
+          <FormField label="Name" required className={conf.username ? '' : 'sm:col-span-2'}>
+            <Input value={k.name} readOnly={editing} autoFocus={!editing} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. grafana-prod" />
+          </FormField>
+
+          {conf.username && (
+            <FormField label="Username" required>
+              <Input value={k.username} onChange={(e) => set({ username: e.target.value })} placeholder="e.g. admin" autoComplete="off" />
+            </FormField>
+          )}
+
+          <FormField label={conf.secretLabel} required={!editing} className="sm:col-span-2">
+            <Input
+              type="password"
+              value={k.secret}
+              onChange={(e) => set({ secret: e.target.value })}
+              placeholder={editing ? 'Leave blank to keep the current value' : ''}
+              autoComplete="new-password"
+              className="font-mono"
+            />
+          </FormField>
+
+          <FormField label="Description" className="sm:col-span-2">
+            <Textarea rows={2} value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="What this credential is for" />
+          </FormField>
+          <FormField label={conf.baseUrlLabel}>
+            <Input value={k.baseUrl} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" className="font-mono" />
+          </FormField>
+          <FormField label="API docs link">
+            <Input value={k.docsUrl} onChange={(e) => set({ docsUrl: e.target.value })} placeholder="https://docs.example.com" className="font-mono" />
+          </FormField>
+
+          {conf.headerPrefix && (
+            <>
+              <FormField label="Header" hint="Defaults to Authorization.">
+                <Input value={k.header} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" className="font-mono" />
+              </FormField>
+              <FormField label="Prefix" hint="Placed before the secret, e.g. Bearer.">
+                <Input value={k.prefix} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " className="font-mono" />
+              </FormField>
+            </>
           )}
         </div>
-
-        <div><Label className={lbl}>Name{readOnly ? '' : ' *'}</Label><Input value={k.name} readOnly={editing || readOnly} className={ro} onChange={(e) => set({ name: e.target.value })} placeholder="e.g. grafana-prod" /></div>
-
-        {conf.username && (
-          <div><Label className={lbl}>Username{readOnly ? '' : ' *'}</Label><Input value={k.username} readOnly={readOnly} className={ro} onChange={(e) => set({ username: e.target.value })} placeholder="e.g. admin" /></div>
-        )}
-
-        <div className={conf.username ? 'sm:col-span-2' : ''}><Label className={lbl}>{conf.secretLabel}</Label>{view ? <RevealField title={initial!.name} load={() => api.revealApiKey(initial!.name).then((r) => r.secret)} /> : <Input type="password" value={k.secret} onChange={(e) => set({ secret: e.target.value })} placeholder={editing ? '(leave blank to keep)' : ''} />}</div>
-
-        <div className="sm:col-span-2"><Label className={lbl}>Description</Label><Textarea {...fieldProps(k.description)} rows={3} value={k.description} onChange={(e) => set({ description: e.target.value })} placeholder="what this credential is for" /></div>
-        <div><Label className={lbl}>{conf.baseUrlLabel}</Label><Input value={k.baseUrl} readOnly={readOnly} className={ro} onChange={(e) => set({ baseUrl: e.target.value })} placeholder="https://api.example.com" /></div>
-        <div><Label className={lbl}>API docs link</Label><Input value={k.docsUrl} readOnly={readOnly} className={ro} onChange={(e) => set({ docsUrl: e.target.value })} placeholder="https://docs.example.com" /></div>
-
-        {conf.headerPrefix && (
-          <>
-            <div><Label className={lbl}>Header (optional)</Label><Input value={k.header} readOnly={readOnly} className={ro} onChange={(e) => set({ header: e.target.value })} placeholder="Authorization" /></div>
-            <div><Label className={lbl}>Prefix (optional)</Label><Input value={k.prefix} readOnly={readOnly} className={ro} onChange={(e) => set({ prefix: e.target.value })} placeholder="Bearer " /></div>
-          </>
-        )}
-        {conf.note && <p className="text-xs text-muted-foreground sm:col-span-2">{conf.note}</p>}
-
-        {msg && <p className="text-sm text-destructive sm:col-span-2">{msg}</p>}
-        {readOnly ? (
-          <div className="flex flex-wrap justify-end gap-2 sm:col-span-2">
-            {onDelete && <Button variant="ghost" className="mr-auto text-destructive hover:text-destructive" onClick={onDelete}><Trash2 className="size-4" /> Delete</Button>}
-            {onEdit && <Button variant="outline" onClick={onEdit}><Pencil className="size-4" /> Edit</Button>}
-            <Button variant="outline" onClick={onClose}>Close</Button>
-          </div>
-        ) : (
-          <div className="sm:col-span-2"><Button onClick={submit} disabled={busy || !k.name || (!editing && !k.secret) || (!!conf.username && !k.username.trim())}>{busy ? 'Saving…' : (editing ? 'Save changes' : 'Save key')}</Button></div>
-        )}
-      </div>
-    </div>
-  )
-}
-
-// The secret slot in the read-only view: a muted box with an inline reveal button, mirroring the
-// reveal-in-modal flow used in the credential table so a plaintext secret is fetched only on demand.
-function RevealField({ title, load }: { title: string; load: () => Promise<string> }) {
-  return (
-    <div className="flex min-h-10 items-center justify-between rounded-xl border border-input bg-muted/40 pl-3 pr-1">
-      <code className="text-sm text-muted-foreground">••••••••</code>
-      <RevealButton title={title} load={load} />
-    </div>
+        {conf.note && <Callout>{conf.note}</Callout>}
+        {msg && <Callout tone="danger">{msg}</Callout>}
+      </DialogBody>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>Cancel</Button>
+        <Button type="submit" variant="primary" disabled={busy || !canSave}>
+          {busy ? 'Saving…' : editing ? 'Save changes' : 'Store credential'}
+        </Button>
+      </DialogFooter>
+    </form>
   )
 }

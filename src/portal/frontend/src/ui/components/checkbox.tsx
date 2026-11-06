@@ -1,35 +1,25 @@
 import * as React from 'react'
-import * as CheckboxPrimitives from '@radix-ui/react-checkbox'
-import { cn } from '../lib/utils'
+import * as CheckboxPrimitive from '@radix-ui/react-checkbox'
+import { Check } from 'lucide-react'
+import { cn } from '../../lib'
 
 const Checkbox = React.forwardRef<
-  React.ElementRef<typeof CheckboxPrimitives.Root>,
-  React.ComponentPropsWithoutRef<typeof CheckboxPrimitives.Root>
+  React.ElementRef<typeof CheckboxPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
 >(({ className, ...props }, ref) => (
-  <CheckboxPrimitives.Root
+  <CheckboxPrimitive.Root
     ref={ref}
     className={cn(
-      'peer h-4 w-4 shrink-0 rounded-sm border border-primary shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:bg-accent data-[state=checked]:text-accent-foreground',
-      className
+      'peer grid size-4 shrink-0 cursor-pointer place-items-center rounded-[5px] border border-border-strong bg-elevated transition-colors disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-accent data-[state=checked]:bg-accent data-[state=checked]:text-on-accent',
+      className,
     )}
     {...props}
   >
-    <CheckboxPrimitives.Indicator className={cn('flex items-center justify-center text-current')}>
-      <svg
-        xmlns="http://www.w3.org/2000/svg"
-        viewBox="0 0 24 24"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="3"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        className="h-3 w-3"
-      >
-        <polyline points="20 6 9 17 4 12" />
-      </svg>
-    </CheckboxPrimitives.Indicator>
-  </CheckboxPrimitives.Root>
+    <CheckboxPrimitive.Indicator className="grid place-items-center text-current">
+      <Check className="size-3" strokeWidth={3} />
+    </CheckboxPrimitive.Indicator>
+  </CheckboxPrimitive.Root>
 ))
-Checkbox.displayName = CheckboxPrimitives.Root.displayName
+Checkbox.displayName = CheckboxPrimitive.Root.displayName
 
 export { Checkbox }

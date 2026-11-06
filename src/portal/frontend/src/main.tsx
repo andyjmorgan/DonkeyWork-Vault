@@ -19,6 +19,16 @@ initAuth()
     )
   })
   .catch((err) => {
-    document.getElementById('root')!.innerHTML =
-      `<div style="padding:2rem;font-family:Inter,sans-serif">Authentication failed: ${err}</div>`
+    const root = document.getElementById('root')!
+    root.className = 'grid h-full place-items-center p-6'
+    const card = document.createElement('div')
+    card.className = 'max-w-sm rounded-2xl border border-border bg-card p-6 text-sm'
+    const title = document.createElement('h1')
+    title.className = 'text-lg font-semibold'
+    title.textContent = 'Could not reach the sign-in service'
+    const body = document.createElement('p')
+    body.className = 'mt-2 text-muted-foreground'
+    body.textContent = String(err)
+    card.append(title, body)
+    root.replaceChildren(card)
   })

@@ -2,15 +2,18 @@
 
 The web app is the main console for humans. It is served by the same vault service as the API.
 
+Opening the app shows the sign-in screen: pick an identity provider (Google, GitHub, Microsoft, Apple) or sign in with a username and password. The theme toggle and your account menu (Profile, documentation, sign out) sit in the header; the sidebar collapses to an icon rail with the control in its footer.
+
 ## Navigation
 
 The signed-in app has these areas:
 
 - **Credentials**: store and reveal API keys, passwords, connection strings, SSH credentials, and connected OAuth tokens.
 - **Providers**: add OAuth providers, edit scopes and authorize parameters, and save OAuth app client credentials.
-- **OAuth Connect**: connect an OAuth account after its provider and app credentials are configured.
+- **Connect**: connect an OAuth account after its provider and app credentials are configured.
+- **API keys**: manage scoped `dwv_...` access keys for the CLI and agents.
 - **Audit trail**: review credential access, auth events, token refreshes, and failures.
-- **Profile**: view your identity and manage scoped `dwv_...` access keys for the CLI and agents.
+- **Profile** (account menu): view your identity as the vault sees it.
 
 ## Credentials
 
@@ -42,7 +45,7 @@ Use **Reveal** only when you need to copy a value manually. The CLI is usually s
 
 ## Providers
 
-Use **Providers** before using **OAuth Connect**.
+Use **Providers** before using **Connect**.
 
 The built-in library contains provider templates such as Google, Microsoft, GitHub, Dropbox, and Box. Adding a template copies it into your own provider list. You can then edit it without changing the built-in template.
 
@@ -53,13 +56,13 @@ For each provider, configure:
 - **Authorization endpoint**: provider authorization URL.
 - **Token endpoint**: provider token URL.
 - **Userinfo endpoint**: optional endpoint used to label connected accounts.
-- **Scopes**: values shown as checkboxes on OAuth Connect.
+- **Scopes**: values shown as checkboxes on Connect.
 - **Authorization parameters**: extra authorize URL query parameters, such as `access_type=offline` or `prompt=consent`.
 - **OAuth app credentials**: client ID and client secret from the provider's developer portal.
 
-## OAuth Connect
+## Connect
 
-Use **OAuth Connect** after a provider has app credentials.
+Use **Connect** after a provider has app credentials.
 
 1. Select the provider.
 2. Choose scopes.
@@ -69,9 +72,9 @@ Use **OAuth Connect** after a provider has app credentials.
 
 Connected OAuth accounts also appear on **Credentials**, where you can reveal an access token on demand.
 
-## Profile and API Keys
+## API Keys
 
-Profile shows your vault user id and tenant id. It also manages access keys for the CLI, scripts, and agents.
+**API keys** manages access keys for the CLI, scripts, and agents. Profile (in the account menu) shows your vault user id and tenant id.
 
 Access key rules:
 
