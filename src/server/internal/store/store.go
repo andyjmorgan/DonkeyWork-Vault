@@ -40,6 +40,9 @@ type Store interface {
 	GetOAuthStateByState(ctx context.Context, state string) (*OAuthState, error)
 	// DeleteOAuthState returns the number of rows deleted, so a concurrent replay can be rejected.
 	DeleteOAuthState(ctx context.Context, id uuid.UUID) (int64, error)
+	// DeleteExpiredOAuthStates reaps rows from abandoned flows (the user never returned to the
+	// callback), which DeleteOAuthState never removes; returns the number of rows deleted.
+	DeleteExpiredOAuthStates(ctx context.Context) (int64, error)
 
 	// --- oauth tokens ---
 	InsertOAuthToken(ctx context.Context, t *OAuthToken) error

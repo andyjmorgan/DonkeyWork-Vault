@@ -383,6 +383,24 @@ func (m *Mem) DeleteOAuthState(_ context.Context, id uuid.UUID) (int64, error) {
 	return 0, nil
 }
 
+// DeleteExpiredOAuthStates removes states whose TTL has lapsed, returning the number deleted.
+func (m *Mem) DeleteExpiredOAuthStates(_ context.Context) (int64, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if err := m.fail(); err != nil {
+		return 0, err
+	}
+	now := time.Now()
+	var deleted int64
+	for id, s := range m.states {
+		if s.ExpiresAt.Before(now) {
+			delete(m.states, id)
+			deleted++
+		}
+	}
+	return deleted, nil
+}
+
 // ---- oauth tokens ----
 
 // InsertOAuthToken stores a new OAuth token, assigning an ID and creation time if unset.

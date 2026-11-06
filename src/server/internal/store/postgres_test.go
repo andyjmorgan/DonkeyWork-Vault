@@ -181,6 +181,40 @@ func TestOAuthConfigAndTokenAndState(t *testing.T) {
 	}
 }
 
+// TestDeleteExpiredOAuthStates exercises the abandoned-flow reaper against real Postgres: a lapsed
+// state is removed while a still-live one survives.
+func TestDeleteExpiredOAuthStates(t *testing.T) {
+	u := uuid.New()
+	expired := &store.OAuthState{State: "exp-" + u.String(), Provider: "acme", CodeVerifier: "v",
+		OwnerUserID: u, OwnerTenantID: uuid.New(), RedirectURI: "https://cb", ExpiresAt: time.Now().Add(-time.Minute)}
+	live := &store.OAuthState{State: "live-" + u.String(), Provider: "acme", CodeVerifier: "v",
+		OwnerUserID: u, OwnerTenantID: uuid.New(), RedirectURI: "https://cb", ExpiresAt: time.Now().Add(time.Hour)}
+	if err := pg.InsertOAuthState(ctx(), expired); err != nil {
+		t.Fatal(err)
+	}
+	if err := pg.InsertOAuthState(ctx(), live); err != nil {
+		t.Fatal(err)
+	}
+
+	n, err := pg.DeleteExpiredOAuthStates(ctx())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n < 1 {
+		t.Fatalf("expected at least the expired row reaped, got %d", n)
+	}
+	if g, _ := pg.GetOAuthStateByState(ctx(), expired.State); g != nil {
+		t.Fatal("expired state should be reaped")
+	}
+	if g, _ := pg.GetOAuthStateByState(ctx(), live.State); g == nil {
+		t.Fatal("live state should remain")
+	}
+	// Clean up the live row so it does not leak into other tests sharing the schema.
+	if _, err := pg.DeleteOAuthState(ctx(), live.ID); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestManifestCascade(t *testing.T) {
 	u := uuid.New()
 	pid := uuid.New()
