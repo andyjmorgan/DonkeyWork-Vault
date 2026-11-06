@@ -17,7 +17,7 @@ The signed-in app has these areas:
 
 ## Credentials
 
-Use **Credentials** to store non-OAuth secrets and to reveal connected OAuth access tokens.
+Use **Credentials** to store non-OAuth secrets and to reveal connected OAuth access tokens. The page has two tabs: **Secrets** for stored credentials and **OAuth accounts** for connected providers. The tab is kept in the URL (`/credentials?tab=oauth`), so links and reloads land on the same view.
 
 When adding a credential, use a stable name. Scripts and agents use this name later:
 
@@ -70,7 +70,7 @@ Use **Connect** after a provider has app credentials.
 4. Complete the provider's browser authorization flow.
 5. Return to the vault and confirm the connected account appears.
 
-Connected OAuth accounts also appear on **Credentials**, where you can reveal an access token on demand.
+Connected OAuth accounts also appear on the **OAuth accounts** tab of **Credentials**, where you can reveal an access token on demand.
 
 ## API Keys
 

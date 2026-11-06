@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import { toast } from 'sonner'
 import {
   Database,
@@ -22,6 +23,7 @@ import { Badge } from '../ui/components/badge'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogBody, DialogFooter } from '../ui/components/dialog'
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/components/select'
 import { PageHeader } from '../components/PageHeader'
+import { Tabs, TabPanel } from '../components/Tabs'
 import { ListCard, ListBar, ListHead, ListRows, ListRow, Cell, RowActions, ListEmpty, ListPager, Primary } from '../components/ListCard'
 import { IconTile } from '../components/IconTile'
 import { ProviderIcon } from '../components/ProviderIcon'
@@ -121,11 +123,23 @@ const TOKEN_COLS = 'minmax(0,1.5fr) minmax(0,1.6fr) 170px 100px'
 type FormState = { open: boolean; item?: ApiKeyItem; kind: CredentialKind; view?: boolean }
 const closedForm: FormState = { open: false, kind: 'header_api_key' }
 
+type TabKey = 'secrets' | 'oauth'
+const TAB_PARAM = 'tab'
+
 export function CredentialsPage() {
   const [keys, setKeys] = useState<ApiKeyItem[]>([])
   const [tokens, setTokens] = useState<OAuthTokenItem[]>([])
   const [providers, setProviders] = useState<OAuthProvider[]>([])
   const [loaded, setLoaded] = useState(false)
+  const [params, setParams] = useSearchParams()
+  // The active tab lives in the URL so a reload or a shared link lands on the same view.
+  const tab: TabKey = params.get(TAB_PARAM) === 'oauth' ? 'oauth' : 'secrets'
+  const setTab = (next: TabKey) => {
+    const nextParams = new URLSearchParams(params)
+    if (next === 'secrets') nextParams.delete(TAB_PARAM)
+    else nextParams.set(TAB_PARAM, next)
+    setParams(nextParams, { replace: true })
+  }
   const [search, setSearch] = useState('')
   const [keyPage, setKeyPage] = useState(0)
   const [tokenPage, setTokenPage] = useState(0)
@@ -201,190 +215,217 @@ export function CredentialsPage() {
         title="Credentials"
         description="Stored secrets and OAuth connections your agents can use. Each one is self-describing, so an agent knows how to send it."
         actions={
-          <Button variant="primary" onClick={() => setForm({ open: true, kind: 'header_api_key' })}>
-            <Plus /> New credential
-          </Button>
+          tab === 'secrets' ? (
+            <Button variant="primary" onClick={() => setForm({ open: true, kind: 'header_api_key' })}>
+              <Plus /> New credential
+            </Button>
+          ) : (
+            <Button variant="primary" asChild>
+              <Link to="/oauthconnect">
+                <Plug /> Connect account
+              </Link>
+            </Button>
+          )
         }
       />
 
       {err && <Callout tone="danger">{err}</Callout>}
 
-      <ListCard>
-        <ListBar>
-          <span>
-            {filteredKeys.length.toLocaleString()} {filteredKeys.length === 1 ? 'secret' : 'secrets'}
-            {search && keys.length !== filteredKeys.length ? ` of ${keys.length}` : ''}
-          </span>
-          <div className="relative w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              type="search"
-              value={search}
-              onChange={(event) => updateSearch(event.target.value)}
-              placeholder="Search credentials"
-              aria-label="Search credentials"
-              className="h-9 pl-9"
-            />
-          </div>
-        </ListBar>
-        {visibleKeys.length > 0 && (
-          <ListHead cols={KEY_COLS}>
-            <span>Credential</span>
-            <span>Kind</span>
-            <span>Auth</span>
-            <span>Base URL</span>
-            <span className="text-right">Actions</span>
-          </ListHead>
-        )}
-        {filteredKeys.length === 0 ? (
-          <ListEmpty
-            icon={KeyRound}
-            title={keys.length === 0 ? (loaded ? 'No secrets stored yet' : 'Loading…') : 'No secrets match your search'}
-            hint={keys.length === 0 && loaded ? 'Store an API key, password, SSH key, or connection string and agents can fetch it by name.' : undefined}
-            action={
-              keys.length === 0 && loaded ? (
-                <Button variant="secondary" onClick={() => setForm({ open: true, kind: 'header_api_key' })}>
-                  <Plus /> New credential
-                </Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <>
-            <ListRows>
-              {visibleKeys.map((k) => (
-                <ListRow key={k.id} cols={KEY_COLS} onClick={() => view(k)}>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <IconTile icon={kindIcon(k.kind)} />
-                    <Primary title={k.name} subtitle={k.description || undefined} />
-                  </div>
-                  <Cell label="Kind">
-                    <Badge>{prettyKind(k.kind)}</Badge>
-                  </Cell>
-                  <Cell label="Auth">
-                    <span className="block truncate font-mono text-xs text-muted-foreground" title={authSummary(k)}>
-                      {authSummary(k)}
-                    </span>
-                  </Cell>
-                  <Cell label="Base URL">
-                    {k.baseUrl || k.docsUrl ? (
-                      <a
-                        className="block truncate font-mono text-xs text-foreground underline decoration-accent/60 underline-offset-[3px] hover:text-accent"
-                        href={k.docsUrl || k.baseUrl}
-                        target="_blank"
-                        rel="noreferrer"
-                        title={k.docsUrl ? `Docs: ${k.docsUrl}` : k.baseUrl}
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {k.baseUrl || 'docs'}
-                      </a>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
-                  </Cell>
-                  <RowActions>
-                    <RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} />
-                    <Button variant="ghost" size="icon" aria-label={`Edit ${k.name}`} title="Edit" onClick={() => edit(k)}>
-                      <Pencil />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="hover:text-danger"
-                      aria-label={`Delete ${k.name}`}
-                      title="Delete"
-                      onClick={() => requestDelete({ kind: 'apiKey', item: k })}
-                    >
-                      <Trash2 />
-                    </Button>
-                  </RowActions>
-                </ListRow>
-              ))}
-            </ListRows>
-            {filteredKeys.length > PAGE_SIZE && (
-              <ListPager
-                from={currentKeyPage * PAGE_SIZE + 1}
-                to={Math.min((currentKeyPage + 1) * PAGE_SIZE, filteredKeys.length)}
-                total={filteredKeys.length}
-                canPrev={currentKeyPage > 0}
-                canNext={(currentKeyPage + 1) * PAGE_SIZE < filteredKeys.length}
-                onPrev={() => setKeyPage(currentKeyPage - 1)}
-                onNext={() => setKeyPage(currentKeyPage + 1)}
-              />
-            )}
-          </>
-        )}
-      </ListCard>
+      <Tabs
+        label="Credential type"
+        value={tab}
+        onChange={setTab}
+        tabs={[
+          { key: 'secrets', label: 'Secrets', count: loaded ? keys.length : undefined },
+          { key: 'oauth', label: 'OAuth accounts', count: loaded ? tokens.length : undefined },
+        ]}
+      />
 
-      <ListCard>
-        <ListBar>
-          <span>
-            {filteredTokens.length.toLocaleString()} connected {filteredTokens.length === 1 ? 'account' : 'accounts'}
-          </span>
-        </ListBar>
-        {visibleTokens.length > 0 && (
-          <ListHead cols={TOKEN_COLS}>
-            <span>Account</span>
-            <span>Scopes</span>
-            <span>Expires</span>
-            <span className="text-right">Actions</span>
-          </ListHead>
-        )}
-        {filteredTokens.length === 0 ? (
-          <ListEmpty
-            icon={Plug}
-            title={tokens.length === 0 ? 'No OAuth accounts connected' : 'No accounts match your search'}
-            hint={tokens.length === 0 ? 'Connect a provider and the vault will keep its access token fresh for you.' : undefined}
-          />
-        ) : (
-          <>
-            <ListRows>
-              {visibleTokens.map((t) => {
-                const p = providerOf(t.provider)
-                const title = `${p?.name ?? t.provider}${t.account ? ` · ${t.account}` : ''}`
-                return (
-                  <ListRow key={t.id} cols={TOKEN_COLS}>
-                    <div className="flex min-w-0 items-center gap-3">
-                      <ProviderIcon src={p?.iconUrl} name={p?.name ?? t.provider} />
-                      <Primary title={t.account || p?.name || t.provider} subtitle={t.account ? p?.name ?? t.provider : undefined} />
-                    </div>
-                    <Cell label="Scopes">
-                      <ScopeBadges scopes={t.scopes} />
-                    </Cell>
-                    <Cell label="Expires">
-                      <Expiry at={t.expiresAt} />
-                    </Cell>
-                    <RowActions>
-                      <RevealButton title={title} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} />
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="hover:text-danger"
-                        aria-label={`Disconnect ${title}`}
-                        title="Disconnect"
-                        onClick={() => requestDelete({ kind: 'oauthToken', item: t })}
-                      >
-                        <Trash2 />
-                      </Button>
-                    </RowActions>
-                  </ListRow>
-                )
-              })}
-            </ListRows>
-            {filteredTokens.length > PAGE_SIZE && (
-              <ListPager
-                from={currentTokenPage * PAGE_SIZE + 1}
-                to={Math.min((currentTokenPage + 1) * PAGE_SIZE, filteredTokens.length)}
-                total={filteredTokens.length}
-                canPrev={currentTokenPage > 0}
-                canNext={(currentTokenPage + 1) * PAGE_SIZE < filteredTokens.length}
-                onPrev={() => setTokenPage(currentTokenPage - 1)}
-                onNext={() => setTokenPage(currentTokenPage + 1)}
-              />
+      {tab === 'secrets' && (
+        <TabPanel tabKey="secrets">
+          <ListCard>
+            <ListBar>
+              <span>
+                {filteredKeys.length.toLocaleString()} {filteredKeys.length === 1 ? 'secret' : 'secrets'}
+                {search && keys.length !== filteredKeys.length ? ` of ${keys.length}` : ''}
+              </span>
+              <SearchBox value={search} onChange={updateSearch} placeholder="Search secrets" />
+            </ListBar>
+            {visibleKeys.length > 0 && (
+              <ListHead cols={KEY_COLS}>
+                <span>Credential</span>
+                <span>Kind</span>
+                <span>Auth</span>
+                <span>Base URL</span>
+                <span className="text-right">Actions</span>
+              </ListHead>
             )}
-          </>
-        )}
-      </ListCard>
+            {filteredKeys.length === 0 ? (
+              <ListEmpty
+                icon={KeyRound}
+                title={keys.length === 0 ? (loaded ? 'No secrets stored yet' : 'Loading…') : 'No secrets match your search'}
+                hint={keys.length === 0 && loaded ? 'Store an API key, password, SSH key, or connection string and agents can fetch it by name.' : undefined}
+                action={
+                  keys.length === 0 && loaded ? (
+                    <Button variant="secondary" onClick={() => setForm({ open: true, kind: 'header_api_key' })}>
+                      <Plus /> New credential
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <>
+                <ListRows>
+                  {visibleKeys.map((k) => (
+                    <ListRow key={k.id} cols={KEY_COLS} onClick={() => view(k)}>
+                      <div className="flex min-w-0 items-center gap-3">
+                        <IconTile icon={kindIcon(k.kind)} />
+                        <Primary title={k.name} subtitle={k.description || undefined} />
+                      </div>
+                      <Cell label="Kind">
+                        <Badge>{prettyKind(k.kind)}</Badge>
+                      </Cell>
+                      <Cell label="Auth">
+                        <span className="block truncate font-mono text-xs text-muted-foreground" title={authSummary(k)}>
+                          {authSummary(k)}
+                        </span>
+                      </Cell>
+                      <Cell label="Base URL">
+                        {k.baseUrl || k.docsUrl ? (
+                          <a
+                            className="block truncate font-mono text-xs text-foreground underline decoration-accent/60 underline-offset-[3px] hover:text-accent"
+                            href={k.docsUrl || k.baseUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={k.docsUrl ? `Docs: ${k.docsUrl}` : k.baseUrl}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            {k.baseUrl || 'docs'}
+                          </a>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">—</span>
+                        )}
+                      </Cell>
+                      <RowActions>
+                        <RevealButton title={k.name} load={() => api.revealApiKey(k.name).then((r) => r.secret)} />
+                        <Button variant="ghost" size="icon" aria-label={`Edit ${k.name}`} title="Edit" onClick={() => edit(k)}>
+                          <Pencil />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="hover:text-danger"
+                          aria-label={`Delete ${k.name}`}
+                          title="Delete"
+                          onClick={() => requestDelete({ kind: 'apiKey', item: k })}
+                        >
+                          <Trash2 />
+                        </Button>
+                      </RowActions>
+                    </ListRow>
+                  ))}
+                </ListRows>
+                {filteredKeys.length > PAGE_SIZE && (
+                  <ListPager
+                    from={currentKeyPage * PAGE_SIZE + 1}
+                    to={Math.min((currentKeyPage + 1) * PAGE_SIZE, filteredKeys.length)}
+                    total={filteredKeys.length}
+                    canPrev={currentKeyPage > 0}
+                    canNext={(currentKeyPage + 1) * PAGE_SIZE < filteredKeys.length}
+                    onPrev={() => setKeyPage(currentKeyPage - 1)}
+                    onNext={() => setKeyPage(currentKeyPage + 1)}
+                  />
+                )}
+              </>
+            )}
+          </ListCard>
+        </TabPanel>
+      )}
+
+      {tab === 'oauth' && (
+        <TabPanel tabKey="oauth">
+          <ListCard>
+            <ListBar>
+              <span>
+                {filteredTokens.length.toLocaleString()} connected {filteredTokens.length === 1 ? 'account' : 'accounts'}
+                {search && tokens.length !== filteredTokens.length ? ` of ${tokens.length}` : ''}
+              </span>
+              <SearchBox value={search} onChange={updateSearch} placeholder="Search accounts" />
+            </ListBar>
+            {visibleTokens.length > 0 && (
+              <ListHead cols={TOKEN_COLS}>
+                <span>Account</span>
+                <span>Scopes</span>
+                <span>Expires</span>
+                <span className="text-right">Actions</span>
+              </ListHead>
+            )}
+            {filteredTokens.length === 0 ? (
+              <ListEmpty
+                icon={Plug}
+                title={tokens.length === 0 ? (loaded ? 'No OAuth accounts connected' : 'Loading…') : 'No accounts match your search'}
+                hint={tokens.length === 0 && loaded ? 'Connect a provider and the vault will keep its access token fresh for you.' : undefined}
+                action={
+                  tokens.length === 0 && loaded ? (
+                    <Button variant="secondary" asChild>
+                      <Link to="/oauthconnect">
+                        <Plug /> Connect account
+                      </Link>
+                    </Button>
+                  ) : undefined
+                }
+              />
+            ) : (
+              <>
+                <ListRows>
+                  {visibleTokens.map((t) => {
+                    const p = providerOf(t.provider)
+                    const title = `${p?.name ?? t.provider}${t.account ? ` · ${t.account}` : ''}`
+                    return (
+                      <ListRow key={t.id} cols={TOKEN_COLS}>
+                        <div className="flex min-w-0 items-center gap-3">
+                          <ProviderIcon src={p?.iconUrl} name={p?.name ?? t.provider} />
+                          <Primary title={t.account || p?.name || t.provider} subtitle={t.account ? p?.name ?? t.provider : undefined} />
+                        </div>
+                        <Cell label="Scopes">
+                          <ScopeBadges scopes={t.scopes} />
+                        </Cell>
+                        <Cell label="Expires">
+                          <Expiry at={t.expiresAt} />
+                        </Cell>
+                        <RowActions>
+                          <RevealButton title={title} load={() => api.revealOAuthToken(t.provider, t.account).then((r) => r.accessToken)} />
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="hover:text-danger"
+                            aria-label={`Disconnect ${title}`}
+                            title="Disconnect"
+                            onClick={() => requestDelete({ kind: 'oauthToken', item: t })}
+                          >
+                            <Trash2 />
+                          </Button>
+                        </RowActions>
+                      </ListRow>
+                    )
+                  })}
+                </ListRows>
+                {filteredTokens.length > PAGE_SIZE && (
+                  <ListPager
+                    from={currentTokenPage * PAGE_SIZE + 1}
+                    to={Math.min((currentTokenPage + 1) * PAGE_SIZE, filteredTokens.length)}
+                    total={filteredTokens.length}
+                    canPrev={currentTokenPage > 0}
+                    canNext={(currentTokenPage + 1) * PAGE_SIZE < filteredTokens.length}
+                    onPrev={() => setTokenPage(currentTokenPage - 1)}
+                    onNext={() => setTokenPage(currentTokenPage + 1)}
+                  />
+                )}
+              </>
+            )}
+          </ListCard>
+        </TabPanel>
+      )}
 
       <Dialog open={form.open} onOpenChange={(o) => { if (!o) setForm(closedForm) }}>
         <DialogContent className="max-w-xl">
@@ -426,6 +467,22 @@ export function CredentialsPage() {
         error={deleteErr}
         onCancel={() => setDeleting(undefined)}
         onConfirm={remove}
+      />
+    </div>
+  )
+}
+
+function SearchBox({ value, onChange, placeholder }: { value: string; onChange: (value: string) => void; placeholder: string }) {
+  return (
+    <div className="relative w-full sm:w-72">
+      <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+      <Input
+        type="search"
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        aria-label={placeholder}
+        className="h-9 pl-9"
       />
     </div>
   )
