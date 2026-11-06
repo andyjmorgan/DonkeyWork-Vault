@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="src/portal/frontend/public/donkeywork.png" alt="DonkeyWork Vault" width="160">
+  <img src="src/portal/frontend/public/brand/am-ai-sage-dark.svg" alt="andrewmorgan.ai Vault" width="120">
 </p>
 
 <h1 align="center">DonkeyWork Vault</h1>
@@ -230,7 +230,7 @@ The vault serves a React console (the same origin as the API) where you:
 
 - **Credentials** — add/edit/delete self-describing API keys; reveal a stored secret or a live OAuth
   access token on demand.
-- **OAuth Connect** — enter your OAuth app's client id/secret, pick scopes from a described catalog,
+- **Connect** — enter your OAuth app's client id/secret, pick scopes from a described catalog,
   and connect via browser redirect; see connected accounts.
 - **Providers** — add custom OAuth providers via OIDC discovery (paste an issuer URL); built-ins are
   read-only.

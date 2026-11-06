@@ -175,12 +175,13 @@ func run() error {
 }
 
 // withStaticFallback serves the SPA from webRoot for non-API routes, falling back to index.html so
-// client-side routing works. /api and /healthz pass through to the API handler.
+// client-side routing works. /api/… and /healthz pass through to the API handler; the prefix needs
+// its slash so SPA routes such as /access-keys aren't mistaken for API calls.
 func withStaticFallback(api http.Handler, webRoot string) http.Handler {
 	fs := http.FileServer(http.Dir(webRoot))
 	index := filepath.Join(webRoot, "index.html")
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if strings.HasPrefix(r.URL.Path, "/api") || r.URL.Path == "/healthz" {
+		if strings.HasPrefix(r.URL.Path, "/api/") || r.URL.Path == "/healthz" {
 			api.ServeHTTP(w, r)
 			return
 		}

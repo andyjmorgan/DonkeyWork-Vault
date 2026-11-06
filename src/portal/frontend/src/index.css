@@ -1,73 +1,176 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
+@import '@fontsource/ibm-plex-sans/latin-400.css';
+@import '@fontsource/ibm-plex-sans/latin-500.css';
+@import '@fontsource/ibm-plex-sans/latin-600.css';
+@import '@fontsource/ibm-plex-mono/latin-400.css';
+@import '@fontsource/ibm-plex-mono/latin-500.css';
 
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* andrewmorgan.ai brand tokens (Obsidian: Projects/Andrewmorgan.ai/Brand & Style Guide), shared
+   with the sandbox and chalk. Sage is the identity colour; status hues are desaturated so they
+   never compete with it. The light theme is warm off-white, the dark theme graphite. */
+:root {
+  --background: #f5f7f4;
+  --foreground: #172033;
+  --card: #ffffff;
+  --elevated: #eef2ee;
+  --sidebar: #eef2ee;
+  --code: #edf0ed;
+  --code-foreground: #26352d;
+  --border: #dce2dd;
+  --border-strong: #c3ccc5;
+  --muted-foreground: #56635d;
+  --faint-foreground: #7b867f;
+  --accent: #4f735d;
+  --accent-strong: #42634f;
+  --accent-subtle: #e5ece7;
+  --on-accent: #ffffff;
+  --success: #39755c;
+  --warning: #9a6b2f;
+  --danger: #a94e52;
+  --info: #496f8f;
+  --plum: #7a5c85;
+  color-scheme: light;
+}
+.dark {
+  --background: #0b0f13;
+  --foreground: #f2f5f1;
+  --card: #111821;
+  --elevated: #182029;
+  --sidebar: #111821;
+  --code: #151c22;
+  --code-foreground: #cfd8d1;
+  --border: #28322e;
+  --border-strong: #39453f;
+  --muted-foreground: #aab4ae;
+  --faint-foreground: #7e8983;
+  --accent: #76947d;
+  --accent-strong: #86a18d;
+  --accent-subtle: #1e3026;
+  --on-accent: #111821;
+  --success: #69a487;
+  --warning: #c99a5a;
+  --danger: #d6787c;
+  --info: #78a0be;
+  --plum: #a88bb3;
+  color-scheme: dark;
+}
+
+/* Utilities on the tokens (bg-accent, text-danger/80, border-border, …). "-strong" is the
+   hover/emphasis step, mixed toward the text colour so it reads in both themes. */
+@theme inline {
+  --font-sans: 'IBM Plex Sans', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-elevated: var(--elevated);
+  --color-sidebar: var(--sidebar);
+  --color-code: var(--code);
+  --color-code-foreground: var(--code-foreground);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-faint-foreground: var(--faint-foreground);
+  --color-accent: var(--accent);
+  --color-accent-strong: var(--accent-strong);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-on-accent: var(--on-accent);
+  --color-success: var(--success);
+  --color-success-strong: color-mix(in srgb, var(--success) 80%, var(--foreground));
+  --color-warning: var(--warning);
+  --color-warning-strong: color-mix(in srgb, var(--warning) 80%, var(--foreground));
+  --color-danger: var(--danger);
+  --color-danger-strong: color-mix(in srgb, var(--danger) 80%, var(--foreground));
+  --color-info: var(--info);
+  --color-info-strong: color-mix(in srgb, var(--info) 80%, var(--foreground));
+  --color-plum: var(--plum);
+  --animate-overlay-in: overlay-in 160ms ease-out both;
+  --animate-dialog-in: dialog-in 180ms ease-out both;
+  --animate-menu-in: menu-in 140ms ease-out both;
+}
+
+* {
+  box-sizing: border-box;
+  border-color: var(--border);
+}
+html {
+  font-family: var(--font-sans);
+  background: var(--background);
+}
+html,
+body,
+#root {
+  height: 100%;
+}
+body {
+  margin: 0;
+  min-width: 320px;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+h1,
+h2,
+h3 {
+  font-weight: 600;
+}
+code,
+kbd,
+pre {
+  font-family: var(--font-mono);
+}
+::selection {
+  background: color-mix(in srgb, var(--accent) 28%, transparent);
+}
 @layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 210 40% 98%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 187 86% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 210 40% 98%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 192 91% 37%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 84% 60%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 160 84% 39%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 192 91% 37%;
-    --radius: 0.75rem;
-    --sidebar-background: 210 40% 98%;
-    --sidebar-foreground: 222 47% 11%;
-    --sidebar-border: 214 32% 91%;
+  :focus-visible:not(input, textarea, select) {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--muted-foreground) 30%, transparent) transparent;
+}
 
-  .dark {
-    --background: 216 28% 5%;
-    --foreground: 0 0% 100%;
-    --card: 216 23% 7%;
-    --card-foreground: 0 0% 100%;
-    --popover: 216 20% 10%;
-    --popover-foreground: 0 0% 100%;
-    --primary: 187 86% 53%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 216 20% 11%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 216 17% 13%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 187 86% 53%;
-    --accent-foreground: 0 0% 100%;
-    --destructive: 0 63% 50%;
-    --destructive-foreground: 0 0% 100%;
-    --success: 160 84% 39%;
-    --success-foreground: 0 0% 100%;
-    --warning: 38 92% 50%;
-    --warning-foreground: 216 28% 5%;
-    --border: 220 13% 12%;
-    --input: 220 13% 14%;
-    --ring: 187 86% 53%;
-    --sidebar-background: 216 28% 5%;
-    --sidebar-foreground: 0 0% 100%;
-    --sidebar-border: 0 0% 100%;
+@keyframes overlay-in {
+  from {
+    opacity: 0;
   }
-
-  * { border-color: hsl(var(--border)); }
-  body {
-    margin: 0;
-    background: hsl(var(--background));
-    color: hsl(var(--foreground));
-    font-family: Inter, system-ui, sans-serif;
+  to {
+    opacity: 1;
   }
-  html, body, #root { height: 100%; }
+}
+/* Centering uses Tailwind's `translate` property, so the keyframes only touch `scale`. */
+@keyframes dialog-in {
+  from {
+    opacity: 0;
+    scale: 0.97;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

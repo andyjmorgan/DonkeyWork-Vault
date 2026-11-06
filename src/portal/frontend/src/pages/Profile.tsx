@@ -1,199 +1,50 @@
-import { useEffect, useState } from 'react'
-import { useOutletContext } from 'react-router-dom'
-import { Trash2, Plus, KeyRound, ShieldAlert } from 'lucide-react'
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../ui/components/card'
-import { Table, TableHeader, TableRow, TableHead, TableBody, TableCell } from '../ui/components/table'
+import { Link, useOutletContext } from 'react-router-dom'
+import { KeySquare } from 'lucide-react'
 import { Button } from '../ui/components/button'
-import { Input } from '../ui/components/input'
-import { Label } from '../ui/components/label'
-import { Badge } from '../ui/components/badge'
-import { Switch } from '../ui/components/switch'
-import { Checkbox } from '../ui/components/checkbox'
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '../ui/components/dialog'
+import { PageHeader } from '../components/PageHeader'
 import { CopyButton } from '../components/CopyButton'
-import { Field } from '../components/Field'
-import { api, type AccessKey, type AccessScope, type Me } from '../api'
-
-const lbl = 'mb-1 block text-xs text-muted-foreground'
-
-const SCOPES: { value: AccessScope; label: string; hint: string }[] = [
-  { value: 'vault:read', label: 'vault:read', hint: 'Read credentials, tokens, and config (GET).' },
-  { value: 'vault:readwrite', label: 'vault:readwrite', hint: 'Read + create/update/delete credentials.' },
-  { value: 'vault:audit', label: 'vault:audit', hint: 'Read the audit trail.' },
-]
+import { cn, initials } from '../lib'
+import type { Me } from '../api'
 
 export function ProfilePage() {
   const { me } = useOutletContext<{ me: Me | null }>()
-  const [keys, setKeys] = useState<AccessKey[]>([])
-  const [err, setErr] = useState<string>()
-  const [open, setOpen] = useState(false)
-  const [created, setCreated] = useState<{ name: string; secret: string }>()
-
-  const load = () => api.accessKeys().then(setKeys).catch((e) => setErr(String(e)))
-  useEffect(() => { load() }, [])
-
-  const toggle = async (k: AccessKey) => {
-    await api.setAccessKeyEnabled(k.id, !k.enabled).catch((e) => setErr(String(e)))
-    load()
-  }
-
   return (
-    <>
-      <Card>
-        <CardHeader>
-          <CardTitle>Profile</CardTitle>
-          <CardDescription>Your identity as the vault sees it.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <IdRow label="User ID" value={me?.userId} />
-          <IdRow label="Tenant ID" value={me?.tenantId || '(default)'} copyable={!!me?.tenantId} />
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="flex-row items-center justify-between">
-          <div>
-            <CardTitle>API keys</CardTitle>
-            <CardDescription>Scoped credentials for the CLI and agents. The secret is shown once.</CardDescription>
+    <div className="space-y-6">
+      <PageHeader
+        title="Profile"
+        description="Your identity as the vault sees it. Credentials you store and accounts you connect are scoped to this user."
+        actions={
+          <Button variant="secondary" asChild>
+            <Link to="/access-keys">
+              <KeySquare /> Manage API keys
+            </Link>
+          </Button>
+        }
+      />
+      <div className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="flex items-center gap-4 border-b border-border p-5">
+          <span className="grid size-12 place-items-center rounded-full bg-elevated text-sm font-semibold">{initials(me?.name, me?.email)}</span>
+          <div className="min-w-0">
+            <div className="truncate text-base font-semibold">{me?.name || me?.email || 'Signed in'}</div>
+            {me?.email && me.name && <div className="truncate text-sm text-muted-foreground">{me.email}</div>}
           </div>
-          <Button size="icon" variant="outline" aria-label="Add API key" onClick={() => setOpen(true)}><Plus className="size-4" /></Button>
-        </CardHeader>
-        <CardContent>
-          {err && <p className="mb-2 text-sm text-destructive">{err}</p>}
-          {keys.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No API keys yet — add one with the + button.</p>
-          ) : (
-            <>
-              {/* Desktop: table. */}
-              <div className="hidden sm:block">
-                <Table>
-                  <TableHeader><TableRow><TableHead>Name</TableHead><TableHead>Key</TableHead><TableHead>Scopes</TableHead><TableHead>Last used</TableHead><TableHead>Enabled</TableHead><TableHead /></TableRow></TableHeader>
-                  <TableBody>
-                    {keys.map((k) => (
-                      <TableRow key={k.id}>
-                        <TableCell>
-                          <div className="font-medium">{k.name}</div>
-                          {k.description && <div className="max-w-[14rem] truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
-                        </TableCell>
-                        <TableCell><code className="text-xs text-muted-foreground">{k.prefix}…</code></TableCell>
-                        <TableCell><div className="flex max-w-[18rem] flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}</div></TableCell>
-                        <TableCell className="text-muted-foreground">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : '—'}</TableCell>
-                        <TableCell><Switch checked={k.enabled} onCheckedChange={() => toggle(k)} aria-label="Enabled" /></TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteAccessKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-              {/* Mobile: a card per key with a two-column detail grid. */}
-              <div className="space-y-3 sm:hidden">
-                {keys.map((k) => (
-                  <div key={k.id} className="rounded-xl border border-border p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-medium">{k.name}</div>
-                        {k.description && <div className="truncate text-xs text-muted-foreground" title={k.description}>{k.description}</div>}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-2">
-                        <Switch checked={k.enabled} onCheckedChange={() => toggle(k)} aria-label="Enabled" />
-                        <Button variant="ghost" size="icon" aria-label="Delete" onClick={() => api.deleteAccessKey(k.id).then(load)}><Trash2 className="size-4 text-destructive" /></Button>
-                      </div>
-                    </div>
-                    <div className="mt-2 flex flex-wrap gap-1">{k.scopes.map((s) => <Badge key={s} variant="secondary">{s}</Badge>)}</div>
-                    <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-2">
-                      <Field label="Key"><code className="text-xs">{k.prefix}…</code></Field>
-                      <Field label="Last used">{k.lastUsedAt ? new Date(k.lastUsedAt).toLocaleString() : '—'}</Field>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle>Create an API key</DialogTitle>
-            <DialogDescription>Pick a name and the scopes it may use. The secret is shown only once.</DialogDescription>
-          </DialogHeader>
-          <CreateKey onCreated={(c) => { setOpen(false); setCreated(c); load() }} />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog open={!!created} onOpenChange={(o) => { if (!o) setCreated(undefined) }}>
-        <DialogContent className="sm:max-w-xl">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><KeyRound className="size-4 text-accent" /> {created?.name}</DialogTitle>
-            <DialogDescription>Copy it now — it won't be shown again. If you lose it, delete the key and make a new one.</DialogDescription>
-          </DialogHeader>
-          <div className="flex items-center gap-2 rounded-xl border border-border bg-muted/40 p-3">
-            <code className="min-w-0 flex-1 break-all text-sm">{created?.secret}</code>
-            {created && <CopyButton value={created.secret} />}
-          </div>
-          <p className="flex items-center gap-1.5 text-xs text-warning"><ShieldAlert className="size-3.5" /> Store it in your secret manager or the CLI's VAULT_API_KEY.</p>
-        </DialogContent>
-      </Dialog>
-    </>
-  )
-}
-
-function IdRow({ label, value, copyable = true }: { label: string; value?: string; copyable?: boolean }) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="w-24 shrink-0 text-xs text-muted-foreground">{label}</span>
-      <code className="min-w-0 flex-1 truncate text-sm">{value ?? '—'}</code>
-      {copyable && value && <CopyButton value={value} />}
+        </div>
+        <dl className="divide-y divide-border">
+          <Row label="User ID" value={me?.userId} mono />
+          <Row label="Tenant" value={me?.tenantId || 'default'} mono copyable={!!me?.tenantId} />
+          <Row label="Email" value={me?.email} />
+        </dl>
+      </div>
     </div>
   )
 }
 
-function CreateKey({ onCreated }: { onCreated: (c: { name: string; secret: string }) => void }) {
-  const [name, setName] = useState('')
-  const [description, setDescription] = useState('')
-  const [scopes, setScopes] = useState<AccessScope[]>([])
-  const [msg, setMsg] = useState<string>()
-  const [busy, setBusy] = useState(false)
-
-  const toggleScope = (s: AccessScope) =>
-    setScopes((cur) => (cur.includes(s) ? cur.filter((x) => x !== s) : [...cur, s]))
-
-  const submit = async () => {
-    setMsg(undefined)
-    setBusy(true)
-    try {
-      const r = await api.createAccessKey({ name, description: description || undefined, scopes })
-      onCreated({ name: r.name, secret: r.secret })
-    } catch (e) {
-      setMsg(String(e))
-    } finally {
-      setBusy(false)
-    }
-  }
-
+function Row({ label, value, mono = false, copyable = true }: { label: string; value?: string; mono?: boolean; copyable?: boolean }) {
   return (
-    <div className="grid gap-3">
-      <div><Label className={lbl}>Name *</Label><Input value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. agent-bot" /></div>
-      <div><Label className={lbl}>Description</Label><Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="what this key is for" /></div>
-      <div>
-        <Label className={lbl}>Scopes *</Label>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {SCOPES.map((s) => (
-            <label key={s.value} className="flex cursor-pointer items-start gap-2 rounded-xl border border-border p-2.5 transition-all duration-200 hover:bg-muted">
-              <Checkbox checked={scopes.includes(s.value)} onCheckedChange={() => toggleScope(s.value)} className="mt-0.5" />
-              <span className="min-w-0">
-                <span className="block font-mono text-xs">{s.label}</span>
-                <span className="block text-xs text-muted-foreground">{s.hint}</span>
-              </span>
-            </label>
-          ))}
-        </div>
-      </div>
-      {msg && <p className="text-sm text-destructive">{msg}</p>}
-      <div><Button onClick={submit} disabled={busy || !name || scopes.length === 0}>Create key</Button></div>
+    <div className="grid gap-1 px-5 py-3 sm:grid-cols-[140px_minmax(0,1fr)_auto] sm:items-center sm:gap-4">
+      <dt className="text-xs font-semibold text-muted-foreground">{label}</dt>
+      <dd className={cn('min-w-0 truncate text-sm', mono && 'font-mono text-[13px]')}>{value ?? '—'}</dd>
+      <dd className="hidden sm:block">{copyable && value ? <CopyButton value={value} /> : <span className="inline-block size-8" />}</dd>
     </div>
   )
 }

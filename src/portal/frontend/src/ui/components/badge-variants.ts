@@ -1,32 +1,24 @@
-import { cva } from "class-variance-authority"
+import { cva } from 'class-variance-authority'
 
+// Small rectangular tags (6px radius per the style guide). Status that needs a pill shape
+// goes through StatusPill instead.
 export const badgeVariants = cva(
-  "inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2",
+  'inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-0.5 text-[11px] font-medium leading-5 transition-colors',
   {
     variants: {
       variant: {
-        default:
-          "bg-accent/20 text-accent border-accent/30",
-        secondary:
-          "bg-secondary text-secondary-foreground border-border",
-        destructive:
-          "bg-destructive/20 text-destructive border-destructive/30",
-        outline: "text-foreground border-border",
-        // Status variants matching design system
-        success:
-          "bg-emerald-500/20 text-emerald-500 border-emerald-500/30 dark:text-emerald-400 dark:border-emerald-400/30",
-        warning:
-          "bg-amber-500/20 text-amber-600 border-amber-500/30 dark:text-amber-400 dark:border-amber-400/30",
-        pending:
-          "bg-slate-500/20 text-slate-600 border-slate-500/30 dark:text-slate-400 dark:border-slate-400/30",
-        inProgress:
-          "bg-blue-500/20 text-blue-600 border-blue-500/30 dark:text-blue-400 dark:border-blue-400/30",
-        muted:
-          "bg-muted text-muted-foreground border-border",
+        muted: 'border-border bg-elevated text-muted-foreground',
+        outline: 'border-border bg-transparent text-foreground',
+        accent: 'border-accent/20 bg-accent/10 text-accent',
+        success: 'border-success/20 bg-success/10 text-success',
+        warning: 'border-warning/20 bg-warning/10 text-warning',
+        danger: 'border-danger/20 bg-danger/10 text-danger',
+        info: 'border-info/20 bg-info/10 text-info',
+        plum: 'border-plum/20 bg-plum/10 text-plum',
       },
     },
     defaultVariants: {
-      variant: "default",
+      variant: 'muted',
     },
-  }
+  },
 )

@@ -45,7 +45,7 @@ dwvault auth login
 In an interactive terminal this shows a selector with two methods:
 
 1. **OAuth device login** (default, recommended). The CLI prints an activation URL from the vault's identity provider. Open it in any browser, approve the request, and the CLI stores the resulting access and refresh tokens. Tokens are refreshed automatically on use.
-2. **Paste API key**. Paste a `dwv_...` access key created in the web app under **Profile**. Use this for automation or anywhere browser login is impractical.
+2. **Paste API key**. Paste a `dwv_...` access key created in the web app under **API keys**. Use this for automation or anywhere browser login is impractical.
 
 Scripts and non-interactive shells must pick a method explicitly:
 

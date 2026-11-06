@@ -3,14 +3,16 @@ import { UserManager, type User, WebStorageStateStore } from 'oidc-client-ts'
 // Generic OIDC (Authorization Code + PKCE). Vendor-neutral: issuer/client/scopes come from
 // the BFF's /api/config at runtime, so the same build works against any OIDC IdP.
 //
-// The public landing ("/") renders without auth — login is an explicit action (login()), not a
-// forced redirect on load. After the IdP round-trip the browser returns to "/", we complete the
-// sign-in, then restore the route the user was heading to (default /credentials).
+// "/" is the sign-in screen when there's no session and the app when there is. Login is an
+// explicit action (login()), optionally with a Keycloak identity-provider hint so the user lands
+// straight on Google/GitHub/… instead of the realm's chooser. After the IdP round-trip the browser
+// returns to "/", we complete the sign-in, then restore the route the user was heading to.
 let mgr: UserManager | null = null
 let current: User | null = null
 let authEnabled = false
 
 const RETURN_TO_KEY = 'vault.returnTo'
+const DEFAULT_ROUTE = '/credentials'
 
 export async function initAuth(): Promise<void> {
   const cfg = await fetch('/api/config').then((r) => r.json()).catch(() => ({}))
@@ -39,7 +41,7 @@ export async function initAuth(): Promise<void> {
       current = null
     }
     // Restore where the user was going, then drop the OIDC query params.
-    const returnTo = sessionStorage.getItem(RETURN_TO_KEY) || '/credentials'
+    const returnTo = sessionStorage.getItem(RETURN_TO_KEY) || DEFAULT_ROUTE
     sessionStorage.removeItem(RETURN_TO_KEY)
     window.history.replaceState({}, '', returnTo)
   } else {
@@ -52,14 +54,17 @@ export function isAuthed(): boolean {
   return !authEnabled || (!!current && !current.expired)
 }
 
-/** Start the OIDC login; on return the app lands on `returnTo`. */
-export function login(returnTo = '/credentials'): void {
+/**
+ * Start the OIDC login; on return the app lands on `returnTo`. `idpHint` is a Keycloak
+ * identity-provider alias (google, github, …) that skips the realm's provider chooser.
+ */
+export function login(returnTo = DEFAULT_ROUTE, idpHint?: string): void {
   if (!mgr) {
     window.location.assign(returnTo) // auth disabled — just enter the app
     return
   }
-  sessionStorage.setItem(RETURN_TO_KEY, returnTo)
-  void mgr.signinRedirect()
+  sessionStorage.setItem(RETURN_TO_KEY, returnTo.startsWith('/') && returnTo !== '/' ? returnTo : DEFAULT_ROUTE)
+  void mgr.signinRedirect(idpHint ? { extraQueryParams: { kc_idp_hint: idpHint } } : undefined)
 }
 
 export async function getToken(): Promise<string> {
