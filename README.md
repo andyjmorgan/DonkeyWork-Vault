@@ -1,3 +1,18 @@
+> [!IMPORTANT]
+> **DonkeyWork Vault now lives inside [Bifrost](https://github.com/andyjmorgan/Bifrost).**
+> On 2026-11-23 the Vault server was folded into Bifrost as its keyring: same API, same data, same
+> encryption format. This repository is archived and no longer developed.
+>
+> - **The hosted vault still answers.** `https://vault.donkeywork.dev` serves the same API from
+>   Bifrost, so an installed `dwvault` and existing access keys keep working unchanged. Opening it in
+>   a browser takes you to Bifrost's console.
+> - **The server code** is in Bifrost under `internal/keyring`, and the console's pages are in
+>   Bifrost's web UI.
+> - **The CLI's successor is `bifrost`**, in Bifrost's `cli/` directory. The `dwvault` releases and
+>   `install.sh` here remain downloadable; no further `dwvault` releases will be made.
+>
+> Everything below describes Vault as it was at the time of archiving.
+
 <p align="center">
   <img src="src/portal/frontend/public/brand/am-ai-sage-dark.svg" alt="andrewmorgan.ai Vault" width="120">
 </p>
